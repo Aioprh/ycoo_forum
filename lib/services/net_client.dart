@@ -71,6 +71,6 @@ class NetClient {
         if (i < times - 1) await Future<void>.delayed(delay);
       }
     }
-    Error.throwWithStackTrace(last! as Object, StackTrace.current);
+    Error.throwWithStackTrace(last!, StackTrace.current);
   }
 }

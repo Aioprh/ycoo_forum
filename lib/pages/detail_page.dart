@@ -79,6 +79,14 @@ class _DetailPageState extends State<DetailPage> {
   pre,code{white-space:pre-wrap;word-break:break-all;}
   table{width:100%;border-collapse:collapse;}
   .attach-notice{background:#f6f7fb;padding:12px;border-radius:8px;color:#666;margin:8px 0;}
+  .post-card{background:#f7f8fa;border-radius:10px;padding:12px 14px;margin:12px 0;}
+  .post-card:first-child{margin-top:0;}
+  .post-hd{display:flex;align-items:center;flex-wrap:wrap;gap:6px;}
+  .p-floor{color:#8a919f;font-size:12px;}
+  .p-author{font-weight:600;color:#222;font-size:14px;}
+  .p-level{color:#4e6ef2;font-size:11px;background:#eef1fd;padding:1px 6px;border-radius:8px;}
+  .p-time{color:#999;font-size:12px;margin-top:4px;}
+  .post-card .p-body{margin-top:8px;font-size:15px;}
 </style>
 </head>
 <body>

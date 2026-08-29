@@ -175,7 +175,8 @@ class ApiService {
         .replaceAll('- 源论坛', '')
         .trim();
 
-    final body = doc.querySelector('.comiis_message_table')?.innerHtml ?? '';
+    // 楼主 + 全部回复楼层拼成完整评论区 HTML(交给 WebView 渲染)。
+    final body = _collectPosts(doc).join();
 
     return ThreadDetail(
       tid: tid,
@@ -190,6 +191,44 @@ class ApiService {
       boardName: boardName,
       bodyHtml: body,
     );
+  }
+
+  /// 收集帖子全部回帖楼层(每层一个 `comiis_postli`),拼成带楼头样式的一段 HTML。
+  ///
+  /// 楼层号/作者/等级/时间位于所在 `comiis_postli` 的头部节点,正文是
+  /// 其中的 `.comiis_message_table`。图片等相对路径依赖 WebView 的
+  /// `<base href>` 解析,故此处不逐个补全。
+  static List<String> _collectPosts(dom.Document doc) {
+    final tables = doc.querySelectorAll('.comiis_message_table');
+    final out = <String>[];
+    for (final t in tables) {
+      final content = t.innerHtml.trim();
+      var author = '', level = '', floor = '', time = '';
+      dom.Element? post = t.parent;
+      while (post != null && !post.classes.contains('comiis_postli')) {
+        post = post.parent;
+      }
+      if (post != null) {
+        author = _normSpace(post.querySelector('.top_user')?.text ?? '');
+        level = _normSpace(post.querySelector('.top_lev')?.text ?? '');
+        floor = _normSpace(post.querySelector('.f_d.y')?.text ?? '');
+        time = _normSpace(
+                post.querySelector('.kmtime')?.text ??
+                    post.querySelector('.comiis_tm')?.text ??
+                    '');
+      }
+      if (floor.isEmpty) floor = out.isEmpty ? '楼主' : '${out.length + 1}楼';
+      out.add('<div class="post-card">'
+          '<div class="post-hd">'
+          '<span class="p-floor">$floor</span>'
+          '<b class="p-author">$author</b>'
+          '${level.isEmpty ? '' : '<span class="p-level">$level</span>'}'
+          '</div>'
+          '${time.isEmpty ? '' : '<div class="p-time">$time</div>'}'
+          '<div class="p-body">$content</div>'
+          '</div>');
+    }
+    return out;
   }
 
   // ------------------------------------------------------------------
