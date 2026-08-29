@@ -27,7 +27,9 @@ class _HomePageState extends State<HomePage> {
   int _index = 0;
 
   Future<List<ThreadItem>> _load(String view) async {
-    final url = ApiService.guideUrl(view);
+    // ycoo.net 的 mobile=2 导读模板目前只返回一个公告/置顶条目。
+    // 原生客户端使用桌面导读 HTML 作为数据源，再用通用解析器提取帖子列表。
+    final url = 'https://www.ycoo.net/forum.php?mod=guide&view=$view';
     try {
       final primary = await ApiService.instance.fetchThreads(url);
       if (primary.isNotEmpty) return primary;
