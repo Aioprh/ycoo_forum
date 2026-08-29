@@ -18,13 +18,14 @@ class ApiService {
   static String _abs(String u) {
     if (u.isEmpty) return '';
     if (u.startsWith('http://') || u.startsWith('https://')) return u;
+    if (u.startsWith('//')) return 'https:$u';
+    if (u.startsWith('/')) return _base + u.substring(1);
     return _base + u.replaceFirst(RegExp(r'^\./'), '');
   }
 
   Future<String> _get(String url, {Map<String, String>? query}) async {
     final client = await NetClient.instance.client;
-    final params = <String, String>{...?query};
-    params['_ycoo_ts'] = DateTime.now().millisecondsSinceEpoch.toString();
+    final params = <String, String>{...?query, '_ycoo_ts': DateTime.now().millisecondsSinceEpoch.toString()};
     final uri = Uri.parse(url).replace(queryParameters: params);
     final headers = <String, String>{
       'User-Agent': NetClient.ua,
@@ -35,21 +36,13 @@ class ApiService {
     };
     final cookie = AuthService.instance.authCookie;
     if (cookie != null && cookie.isNotEmpty) headers['Cookie'] = cookie;
-
-    final resp = await NetClient.retry(() => client
-        .get(uri, headers: headers)
-        .timeout(_timeout));
-    if (resp.statusCode != 200) {
-      throw Exception('请求失败 HTTP ${resp.statusCode}');
-    }
+    final resp = await NetClient.retry(() => client.get(uri, headers: headers).timeout(_timeout));
+    if (resp.statusCode != 200) throw Exception('请求失败 HTTP ${resp.statusCode}');
     return NetClient.decode(resp.bodyBytes);
   }
 
-  static String guideUrl(String view) =>
-      '$_base' 'forum.php?mod=guide&view=$view&mobile=2';
-
-  static String forumUrl(int fid, int page) =>
-      '$_base' 'forum.php?mod=forumdisplay&fid=$fid&mobile=2&page=$page';
+  static String guideUrl(String view) => '$_base' 'forum.php?mod=guide&view=$view&mobile=2';
+  static String forumUrl(int fid, int page) => '$_base' 'forum.php?mod=forumdisplay&fid=$fid&mobile=2&page=$page';
 
   Future<List<ThreadItem>> fetchThreads(String url) async {
     final html = await _get(url);
@@ -59,19 +52,20 @@ class ApiService {
       final item = _parseThreadItem(li);
       if (item != null) items.add(item);
     }
+    // 模板变化时使用通用 thread/tid 选择器兜底。
+    if (items.isEmpty) return _parseGenericThreads(doc);
     return items;
   }
 
   ThreadItem? _parseThreadItem(dom.Element li) {
     final titleA = li.querySelector('.mmlist_li_box h2 a');
-    final title = titleA?.text.replaceAll(RegExp(r'\s+'), ' ').trim() ?? '';
+    final title = _normSpace(titleA?.text ?? '');
     final href = titleA?.attributes['href'] ?? '';
     final tid = _firstInt(RegExp(r'thread-(\d+)'), href) ?? 0;
     if (tid == 0 || title.isEmpty) return null;
     final boardA = li.querySelector('.comiis_xznalist_bk a');
     final boardHref = boardA?.attributes['href'] ?? '';
-    final nums = li.querySelectorAll('.comiis_xznalist_bottom span.comiis_tm')
-        .map((e) => int.tryParse(e.text.trim()) ?? 0).toList();
+    final nums = li.querySelectorAll('.comiis_xznalist_bottom span.comiis_tm').map((e) => int.tryParse(e.text.trim()) ?? 0).toList();
     final topAuthor = li.querySelector('.forumlist_li_top .top_user');
     return ThreadItem(
       tid: tid,
@@ -90,13 +84,30 @@ class ApiService {
     );
   }
 
+  List<ThreadItem> _parseGenericThreads(dom.Document doc) {
+    final result = <ThreadItem>[];
+    final seen = <int>{};
+    for (final a in doc.querySelectorAll('a[href]')) {
+      final href = a.attributes['href'] ?? '';
+      final match = RegExp(r'(?:thread-|[?&]tid=)(\d+)', caseSensitive: false).firstMatch(href);
+      if (match == null) continue;
+      final tid = int.tryParse(match.group(1)!) ?? 0;
+      final title = _normSpace(a.text);
+      if (tid <= 0 || title.length < 2 || !seen.add(tid) || _navigationTitle(title)) continue;
+      final parent = _normSpace(a.parent?.text ?? '');
+      final fid = _firstInt(RegExp(r'(?:forum-|[?&]fid=)(\d+)'), a.parent?.outerHtml ?? '') ?? 0;
+      result.add(ThreadItem(tid: tid, title: title, author: '', avatar: '', fid: fid, boardName: '', level: '', time: '', subtitle: parent == title ? '' : parent.replaceFirst(title, '').trim(), cover: '', likeCount: 0, replyCount: 0, viewCount: 0));
+      if (result.length >= 50) break;
+    }
+    return result;
+  }
+
   static String get boardUrl => '$_base' 'forum.php?forumlist=1&mobile=2';
 
   Future<List<ForumCategory>> fetchBoards() async {
     final html = await _get(boardUrl);
     final doc = parser.parse(html);
-    final names = doc.querySelectorAll('.comiis_bbs_show h2')
-        .map((e) => _normSpace(e.text)).where((e) => e.isNotEmpty).toList();
+    final names = doc.querySelectorAll('.comiis_bbs_show h2').map((e) => _normSpace(e.text)).where((e) => e.isNotEmpty).toList();
     final groups = doc.querySelectorAll('.comiis_forum_nbox');
     final cats = <ForumCategory>[];
     for (var i = 0; i < groups.length; i++) {
@@ -107,12 +118,9 @@ class ApiService {
         final href = a?.attributes['href'] ?? '';
         final fid = _firstInt(RegExp(r'forum-(\d+)'), href) ?? 0;
         if (fid == 0) continue;
-        boards.add(ForumBoard(
-          fid: fid,
-          name: _normSpace(a?.querySelector('span')?.text ?? ''),
-          icon: _abs(a?.querySelector('img')?.attributes['src'] ?? ''),
-          today: _normSpace(a?.querySelector('p')?.text ?? ''),
-        ));
+        final boardName = _normSpace(a?.querySelector('span')?.text ?? a?.text ?? '');
+        if (boardName.isEmpty) continue;
+        boards.add(ForumBoard(fid: fid, name: boardName, icon: _abs(a?.querySelector('img')?.attributes['src'] ?? ''), today: _normSpace(a?.querySelector('p')?.text ?? '')));
       }
       if (boards.isNotEmpty) cats.add(ForumCategory(name: name, boards: boards));
     }
@@ -128,22 +136,22 @@ class ApiService {
     final boardLink = doc.querySelector('.comiis_bankuai .bankuai_tit a');
     final boardName = _normSpace(boardLink?.text ?? '');
     var title = _firstMeta(doc, 'og:title') ?? _firstMeta(doc, 'title') ?? '';
-    final titleMatch = RegExp(r'<title>(.*?)</title>').firstMatch(html);
-    if (title.isEmpty && titleMatch != null) title = titleMatch.group(1)!;
-    if (boardName.isNotEmpty) {
-      title = title.replaceAll(' - $boardName', '').replaceAll('-$boardName', '');
-    }
+    final titleMatch = RegExp(r'<title>(.*?)</title>', caseSensitive: false, dotAll: true).firstMatch(html);
+    if (title.isEmpty && titleMatch != null) title = _stripTags(titleMatch.group(1)!);
+    if (boardName.isNotEmpty) title = title.replaceAll(' - $boardName', '').replaceAll('-$boardName', '');
     title = title.replaceAll(' - 源论坛', '').replaceAll('- 源论坛', '').trim();
 
     final paid = _parsePaidState(doc);
-    final body = _collectPosts(doc).join();
+    final posts = _collectPosts(doc);
+    final body = posts.join();
+    final firstPost = doc.querySelector('.comiis_postli');
     return ThreadDetail(
       tid: tid,
       title: title,
-      author: _normSpace(doc.querySelector('.top_user')?.text ?? ''),
-      avatar: _abs(doc.querySelector('img.top_tximg')?.attributes['src'] ?? ''),
-      level: _normSpace(doc.querySelector('.top_lev')?.text ?? ''),
-      time: _normSpace(doc.querySelector('.comiis_postli_time .kmtime')?.text ?? ''),
+      author: _normSpace(firstPost?.querySelector('.top_user')?.text ?? doc.querySelector('.top_user')?.text ?? ''),
+      avatar: _abs(firstPost?.querySelector('img.top_tximg')?.attributes['src'] ?? doc.querySelector('img.top_tximg')?.attributes['src'] ?? ''),
+      level: _normSpace(firstPost?.querySelector('.top_lev')?.text ?? doc.querySelector('.top_lev')?.text ?? ''),
+      time: _normSpace(firstPost?.querySelector('.comiis_postli_time .kmtime')?.text ?? doc.querySelector('.comiis_postli_time .kmtime')?.text ?? ''),
       fid: _firstInt(RegExp(r'forum-(\d+)'), boardLink?.attributes['href'] ?? '') ?? 0,
       boardName: boardName,
       bodyHtml: body,
@@ -155,11 +163,10 @@ class ApiService {
   }
 
   _PaidState _parsePaidState(dom.Document doc) {
-    for (final e in doc.querySelectorAll('a,button,input,form')) {
-      final text = _normSpace(e.text);
-      final value = e.attributes['value'] ?? '';
-      final title = e.attributes['title'] ?? '';
-      final all = '$text $value $title';
+    final firstPost = doc.querySelector('.comiis_postli');
+    final firstText = _normSpace(firstPost?.text ?? '');
+    for (final e in (firstPost ?? doc.body!).querySelectorAll('a,button,input,form')) {
+      final all = '${_normSpace(e.text)} ${e.attributes['value'] ?? ''} ${e.attributes['title'] ?? ''}';
       if (!all.contains('购买主题') && !all.contains('本主题需向作者支付')) continue;
       final price = _firstInt(RegExp(r'(?:支付|需要)\s*(\d+)\s*星币'), all);
       final href = _abs(e.attributes['href'] ?? '');
@@ -168,20 +175,16 @@ class ApiService {
       if (action.isNotEmpty) return _PaidState(true, price, '星币', action);
       return _PaidState(true, price, '星币', '');
     }
-    final allText = _normSpace(doc.body?.text ?? '');
-    if (allText.contains('本主题需向作者支付') && allText.contains('星币')) {
-      return _PaidState(true, _firstInt(RegExp(r'支付\s*(\d+)\s*星币'), allText), '星币', '');
+    if (firstText.contains('本主题需向作者支付') && firstText.contains('星币')) {
+      return _PaidState(true, _firstInt(RegExp(r'支付\s*(\d+)\s*星币'), firstText), '星币', '');
     }
     return const _PaidState(false, null, '星币', '');
   }
 
-  /// 在原生 HTTP 层完成站点原有的购买主题流程。
-  /// 不保存账号密码，只复用 WebView 登录后持久化的 Cookie。
+  /// 使用当前论坛 Cookie 在原生 HTTP 层完成已确认的主题购买。
   Future<PurchaseResult> purchaseThread(int tid) async {
     final cookie = AuthService.instance.authCookie;
-    if (cookie == null || cookie.isEmpty) {
-      return const PurchaseResult(false, '请先登录论坛');
-    }
+    if (cookie == null || cookie.isEmpty) return const PurchaseResult(false, '请先登录论坛');
     final client = await NetClient.instance.client;
     final headers = <String, String>{
       'User-Agent': NetClient.ua,
@@ -193,71 +196,77 @@ class ApiService {
       'Cookie': cookie,
     };
     try {
-      final sourceResp = await client.get(
-        Uri.parse(detailUrl(tid)),
-        headers: headers,
-      ).timeout(_timeout);
+      final sourceResp = await client.get(Uri.parse('${detailUrl(tid)}?mobile=2&_ycoo_buy=${DateTime.now().millisecondsSinceEpoch}'), headers: headers).timeout(_timeout);
+      if (sourceResp.statusCode != 200) return PurchaseResult(false, '读取购买页面失败 HTTP ${sourceResp.statusCode}');
       final source = NetClient.decode(sourceResp.bodyBytes);
       final sourceDoc = parser.parse(source);
-      if (_isUnlocked(sourceDoc)) {
-        return const PurchaseResult(true, '主题已经购买，无需重复购买');
-      }
+      if (_isUnlocked(sourceDoc)) return const PurchaseResult(true, '主题已经购买，正在刷新正文');
 
-      final buy = _findPurchaseForm(sourceDoc, tid);
-      if (buy == null) {
-        return const PurchaseResult(false, '未找到原站购买表单，可能是站点模板或购买插件已变更');
-      }
+      final target = await _resolvePurchaseTarget(client, sourceDoc, tid, headers);
+      if (target == null) return const PurchaseResult(false, '未找到原站购买入口，请刷新帖子后重试');
 
-      final form = <String, String>{...buy.fields};
-      form.putIfAbsent('tid', () => '$tid');
-      if (form['formhash'] == null || form['formhash']!.isEmpty) {
-        final formhash = NetClient.first(
-          RegExp(r'''name=["']formhash["'][^>]*value=["']([^"']+)["']''', caseSensitive: false),
-          source,
-        );
-        if (formhash != null && formhash.isNotEmpty) form['formhash'] = formhash;
-      }
-      final formhash = form['formhash'];
-      if (formhash == null || formhash.isEmpty) {
-        return const PurchaseResult(false, '未取得购买令牌(formhash)，请重新打开帖子后再试');
-      }
-
-      final submit = await client.post(
-        Uri.parse(_abs(buy.action)),
-        headers: {...headers, 'Content-Type': 'application/x-www-form-urlencoded'},
-        body: form,
-      ).timeout(_timeout);
-      final resultHtml = NetClient.decode(submit.bodyBytes);
-      final resultDoc = parser.parse(resultHtml);
-      final resultText = _normSpace(resultDoc.body?.text ?? resultHtml);
-
-      if (_looksLikePurchaseSuccess(resultText, resultDoc)) {
-        // 购买完成后强制重新请求主题，确保拿到服务器解锁后的正文，而不是评论缓存。
-        final refreshed = await client.get(
-          Uri.parse('${detailUrl(tid)}?refresh=${DateTime.now().millisecondsSinceEpoch}'),
-          headers: headers,
-        ).timeout(_timeout);
-        final refreshedDoc = parser.parse(NetClient.decode(refreshed.bodyBytes));
-        if (_isUnlocked(refreshedDoc) && _collectPosts(refreshedDoc).isNotEmpty) {
-          return const PurchaseResult(true, '购买成功，正文已解锁');
+      dom.Document resultDoc;
+      String resultHtml;
+      if (target.form != null) {
+        final form = <String, String>{...target.form!.fields};
+        form['tid'] = form['tid']?.isNotEmpty == true ? form['tid']! : '$tid';
+        form['formhash'] = form['formhash']?.isNotEmpty == true ? form['formhash']! : (_firstInputValue(sourceDoc, 'formhash') ?? '');
+        if (form['formhash']!.isEmpty) return const PurchaseResult(false, '未取得购买令牌，请刷新帖子后重试');
+        final submit = await client.post(Uri.parse(target.form!.action), headers: {...headers, 'Content-Type': 'application/x-www-form-urlencoded; charset=UTF-8'}, body: form).timeout(_timeout);
+        resultHtml = NetClient.decode(submit.bodyBytes);
+        resultDoc = parser.parse(resultHtml);
+      } else {
+        final response = await client.get(Uri.parse(target.url), headers: headers).timeout(_timeout);
+        resultHtml = NetClient.decode(response.bodyBytes);
+        resultDoc = parser.parse(resultHtml);
+        // 购买链接有时先打开确认页；若页面仍有表单，立即提交该确认表单。
+        final confirm = _firstPurchaseForm(resultDoc, tid);
+        if (confirm != null) {
+          final form = <String, String>{...confirm.fields};
+          form['tid'] = form['tid']?.isNotEmpty == true ? form['tid']! : '$tid';
+          form['formhash'] = form['formhash']?.isNotEmpty == true ? form['formhash']! : (_firstInputValue(resultDoc, 'formhash') ?? '');
+          if (form['formhash']!.isEmpty) return const PurchaseResult(false, '购买确认页缺少 formhash，请刷新帖子后重试');
+          final submit = await client.post(Uri.parse(confirm.action), headers: {...headers, 'Content-Type': 'application/x-www-form-urlencoded; charset=UTF-8'}, body: form).timeout(_timeout);
+          resultHtml = NetClient.decode(submit.bodyBytes);
+          resultDoc = parser.parse(resultHtml);
         }
-        return const PurchaseResult(false, '购买请求已返回成功，但帖子正文仍未解锁，请重新进入帖子确认购买状态');
       }
 
-      final failure = _purchaseFailure(resultText);
-      return PurchaseResult(false, failure ?? '购买失败，请检查星币余额或论坛提示');
-    } catch (_) {
-      return const PurchaseResult(false, '购买请求失败，请稍后重试');
+      final resultText = _normSpace(resultDoc.body?.text ?? resultHtml);
+      if (!_looksLikePurchaseSuccess(resultText, resultDoc) && !_isUnlocked(resultDoc)) {
+        return PurchaseResult(false, _purchaseFailure(resultText) ?? '购买失败，请检查星币余额或论坛提示');
+      }
+
+      final refreshed = await client.get(Uri.parse('${detailUrl(tid)}?mobile=2&_ycoo_refresh=${DateTime.now().millisecondsSinceEpoch}'), headers: headers).timeout(_timeout);
+      final refreshedDoc = parser.parse(NetClient.decode(refreshed.bodyBytes));
+      if (_isUnlocked(refreshedDoc) && _collectPosts(refreshedDoc).isNotEmpty) {
+        return const PurchaseResult(true, '购买成功，正文已解锁');
+      }
+      return const PurchaseResult(false, '购买已返回成功，但正文刷新仍未解锁，请重新进入帖子确认状态');
+    } catch (e) {
+      return PurchaseResult(false, '购买请求失败：${e.toString().replaceFirst('Exception: ', '')}');
     }
   }
 
-  _PurchaseForm? _findPurchaseForm(dom.Document doc, int tid) {
+  Future<_PurchaseTarget?> _resolvePurchaseTarget(dynamic client, dom.Document doc, int tid, Map<String, String> headers) async {
+    final form = _firstPurchaseForm(doc, tid);
+    if (form != null) return _PurchaseTarget.form(form);
+    for (final a in doc.querySelectorAll('a[href]')) {
+      final href = a.attributes['href'] ?? '';
+      final text = _normSpace(a.text);
+      if (!text.contains('购买主题') && !href.toLowerCase().contains('buythread') && !href.toLowerCase().contains('buytopic')) continue;
+      if (href.startsWith('javascript:') || href.isEmpty) continue;
+      return _PurchaseTarget.url(_abs(href));
+    }
+    return null;
+  }
+
+  _PurchaseForm? _firstPurchaseForm(dom.Document doc, int tid) {
     for (final form in doc.querySelectorAll('form')) {
       final text = _normSpace(form.text);
       final action = form.attributes['action'] ?? '';
       final blob = '${form.innerHtml} $action $text';
-      final looksPaid = blob.contains('购买主题') || blob.contains('buythread') ||
-          blob.contains('buytopic') || blob.contains('星币') || blob.contains('threadid');
+      final looksPaid = blob.contains('购买主题') || blob.toLowerCase().contains('buythread') || blob.toLowerCase().contains('buytopic') || blob.contains('星币') || blob.contains('threadid') || form.querySelector('input[name="formhash"]') != null;
       if (!looksPaid) continue;
       final fields = <String, String>{};
       for (final input in form.querySelectorAll('input')) {
@@ -265,69 +274,69 @@ class ApiService {
         if (name == null || name.isEmpty) continue;
         fields[name] = input.attributes['value'] ?? '';
       }
-      final actionUrl = _abs(action.isEmpty ? detailUrl(tid) : action);
-      return _PurchaseForm(actionUrl, fields);
-    }
-    // 有些模板只有购买链接，没有 form。先定位链接；其目标通常是原站确认购买页，
-    // 仍然由上层解析确认页的表单，不直接在这里扣费。
-    for (final a in doc.querySelectorAll('a')) {
-      final href = a.attributes['href'] ?? '';
-      final text = _normSpace(a.text);
-      if (text.contains('购买主题') || href.contains('buythread') || href.contains('buytopic')) {
-        return _PurchaseForm(_abs(href), <String, String>{});
-      }
+      return _PurchaseForm(_abs(action.isEmpty ? detailUrl(tid) : action), fields);
     }
     return null;
   }
 
   bool _isUnlocked(dom.Document doc) {
-    final text = _normSpace(doc.body?.text ?? '');
-    final paidNotice = text.contains('本主题需向作者支付') || text.contains('购买主题') && text.contains('星币');
+    final firstPost = doc.querySelector('.comiis_postli');
+    final firstText = _normSpace(firstPost?.text ?? '');
+    if (firstPost == null) return false;
+    final paidNotice = firstText.contains('本主题需向作者支付') || (firstText.contains('购买主题') && firstText.contains('星币'));
     final posts = _collectPosts(doc);
-    if (posts.isEmpty) return false;
-    // 购买成功后服务端通常不再输出购买提示，同时正文帖仍存在。
-    return !paidNotice;
+    return posts.isNotEmpty && !paidNotice;
   }
 
   bool _looksLikePurchaseSuccess(String text, dom.Document doc) {
-    if (text.contains('购买成功') || text.contains('购买成功！') || text.contains('操作成功')) return true;
-    if (text.contains('已经购买') || text.contains('已购买')) return true;
-    if (doc.querySelector('.comiis_message_table') != null && !text.contains('本主题需向作者支付')) return true;
-    return false;
+    if (text.contains('购买成功') || text.contains('购买成功！') || text.contains('操作成功') || text.contains('已经购买') || text.contains('已购买')) return true;
+    final message = doc.querySelector('.comiis_message_table, .showmessage, .alert_info');
+    return message != null && !text.contains('购买失败') && !text.contains('星币不足');
   }
 
   String? _purchaseFailure(String text) {
-    const keys = <String>['星币不足', '余额不足', '积分不足', '没有足够', '无权购买', '购买失败', '请先登录', 'formhash', '验证失败'];
-    for (final key in keys) {
-      if (text.contains(key)) return key;
-    }
+    const keys = <String>['星币不足','余额不足','积分不足','没有足够','无权购买','购买失败','请先登录','formhash','验证失败','非法请求'];
+    for (final key in keys) if (text.contains(key)) return key;
     return null;
   }
 
   static List<String> _collectPosts(dom.Document doc) {
-    final tables = doc.querySelectorAll('.comiis_message_table');
     final out = <String>[];
-    for (final t in tables) {
-      final content = t.innerHtml.trim();
-      var author = '', level = '', floor = '', time = '';
-      dom.Element? post = t.parent;
-      while (post != null && !post.classes.contains('comiis_postli')) post = post.parent;
-      if (post != null) {
-        author = _normSpace(post.querySelector('.top_user')?.text ?? '');
-        level = _normSpace(post.querySelector('.top_lev')?.text ?? '');
-        floor = _normSpace(post.querySelector('.f_d.y')?.text ?? '');
-        time = _normSpace(post.querySelector('.kmtime')?.text ?? post.querySelector('.comiis_tm')?.text ?? '');
-      }
-      if (floor.isEmpty) floor = out.isEmpty ? '楼主' : '${out.length + 1}楼';
-      out.add('<div class="post-card"><div class="post-hd"><span class="p-floor">$floor</span><b class="p-author">$author</b>${level.isEmpty ? '' : '<span class="p-level">$level</span>'}</div>${time.isEmpty ? '' : '<div class="p-time">$time</div>'}<div class="p-body">$content</div></div>');
+    final postNodes = doc.querySelectorAll('.comiis_postli');
+    for (final post in postNodes) {
+      dom.Element? content = post.querySelector('.comiis_message_table');
+      content ??= post.querySelector('.t_f, .pcb, .comiis_postcontent, .comiis_message, .message');
+      if (content == null) continue;
+      final html = content.innerHtml.trim();
+      if (html.isEmpty) continue;
+      final author = _normSpace(post.querySelector('.top_user')?.text ?? '');
+      final level = _normSpace(post.querySelector('.top_lev')?.text ?? '');
+      final floor = _normSpace(post.querySelector('.f_d.y')?.text ?? '')
+          .replaceAll(RegExp(r'[^0-9A-Za-z一二三四五六七八九十楼主]'), '');
+      final time = _normSpace(post.querySelector('.kmtime')?.text ?? post.querySelector('.comiis_tm')?.text ?? '');
+      final displayFloor = floor.isEmpty ? (out.isEmpty ? '楼主' : '${out.length + 1}楼') : floor;
+      out.add('<div class="post-card"><div class="post-hd"><span class="p-floor">$displayFloor</span><b class="p-author">$author</b>${level.isEmpty ? '' : '<span class="p-level">$level</span>'}</div>${time.isEmpty ? '' : '<div class="p-time">$time</div>'}<div class="p-body">$html</div></div>');
+    }
+    if (out.isNotEmpty) return out;
+
+    // 极少数旧模板没有 comiis_postli，但保留 message_table。
+    for (final t in doc.querySelectorAll('.comiis_message_table')) {
+      final html = t.innerHtml.trim();
+      if (html.isNotEmpty) out.add('<div class="post-card"><div class="p-body">$html</div></div>');
     }
     return out;
   }
 
-  static String _normSpace(String s) {
-    s = s.replaceAll(RegExp(r'[\uE000-\uF8FF]+'), '');
-    return s.replaceAll(RegExp(r'[ \t\u00A0\u3000]+'), ' ').trim();
+  static String? _firstInputValue(dom.Document doc, String name) {
+    final input = doc.querySelector('input[name="$name"]');
+    return input?.attributes['value']?.trim();
   }
+
+  static String _normSpace(String s) => s
+      .replaceAll(RegExp(r'[\uE000-\uF8FF\uFFFD□]'), '')
+      .replaceAll(RegExp(r'[ \t\u00A0\u3000]+'), ' ')
+      .replaceAll(RegExp(r'\n{2,}'), '\n')
+      .trim();
 
   static int? _firstInt(RegExp re, String s) {
     final m = re.firstMatch(s);
@@ -341,6 +350,9 @@ class ApiService {
     }
     return null;
   }
+
+  static String _stripTags(String value) => parser.parseFragment(value).text;
+  static bool _navigationTitle(String text) => const {'下一页','上一页','首页','尾页','更多','回复','查看','详情','登录','注册','搜索'}.contains(text);
 }
 
 class _PaidState {
@@ -355,6 +367,14 @@ class _PurchaseForm {
   final String action;
   final Map<String, String> fields;
   const _PurchaseForm(this.action, this.fields);
+}
+
+class _PurchaseTarget {
+  final _PurchaseForm? form;
+  final String url;
+  const _PurchaseTarget._(this.form, this.url);
+  factory _PurchaseTarget.form(_PurchaseForm form) => _PurchaseTarget._(form, '');
+  factory _PurchaseTarget.url(String url) => _PurchaseTarget._(null, url);
 }
 
 class PurchaseResult {
