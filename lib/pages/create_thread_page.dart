@@ -3,6 +3,7 @@ import 'package:flutter/material.dart';
 import '../models/board.dart';
 import '../services/api_service.dart';
 import '../services/auth_service.dart';
+import '../services/site_fallback_service.dart';
 import '../services/thread_publish_service.dart';
 
 /// 原生发帖页：选择版块、填写标题和正文后直接提交到论坛。
@@ -30,19 +31,26 @@ class _CreateThreadPageState extends State<CreateThreadPage> {
   void dispose() { _title.dispose(); _body.dispose(); super.dispose(); }
 
   Future<void> _loadBoards() async {
+    await AuthService.instance.init();
     if (!AuthService.instance.isLoggedIn) {
       if (mounted) setState(() { _loadingBoards = false; _error = '请先登录论坛'; });
       return;
     }
     try {
-      final groups = await ApiService.instance.fetchBoards();
+      List<ForumCategory> groups;
+      try {
+        groups = await ApiService.instance.fetchBoards();
+      } catch (_) {
+        // Discuz/Comiis 改版后旧 CSS 选择器可能失效，使用稳定 fid 链接解析。
+        groups = await SiteFallbackService.instance.fetchBoards();
+      }
       final boards = groups.expand((g) => g.boards).where((b) => b.fid > 0).toList();
       if (!mounted) return;
       setState(() {
         _boards = boards;
         _fid = boards.isNotEmpty ? boards.first.fid : null;
         _loadingBoards = false;
-        if (boards.isEmpty) _error = '暂时没有可发帖的版块';
+        _error = boards.isEmpty ? '暂时没有可发帖的版块' : null;
       });
     } catch (_) {
       if (mounted) setState(() { _loadingBoards = false; _error = '版块加载失败，请稍后重试'; });
