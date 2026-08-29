@@ -130,9 +130,9 @@ class ApiService {
   static String detailUrl(int tid) => '$_base' 'thread-$tid-1-1.html';
 
   Future<ThreadDetail> fetchThreadDetail(int tid) async {
-    final html = await _get(detailUrl(tid));
+    final html = await _get(detailUrl(tid), query: {'mobile': '2'});
     final doc = parser.parse(html);
-    final boardLink = doc.querySelector('.comiis_bankuai .bankuai_tit a');
+    final boardLink = doc.querySelector('.comiis_bankuai .bankuai_tit a, .comiis_bankuai a[href*="forum-"], a[href*="forum-"]');
     final boardName = _normSpace(boardLink?.text ?? '');
     var title = _firstMeta(doc, 'og:title') ?? _firstMeta(doc, 'title') ?? '';
     final titleMatch = RegExp(r'<title>(.*?)</title>', caseSensitive: false, dotAll: true).firstMatch(html);
@@ -143,15 +143,15 @@ class ApiService {
     final paid = _parsePaidState(doc);
     final posts = _collectPosts(doc);
     final body = posts.join();
-    final firstPost = doc.querySelector('.comiis_postli');
+    final firstPost = _firstPostNode(doc);
     return ThreadDetail(
       tid: tid,
-      title: title,
-      author: _normSpace(firstPost?.querySelector('.top_user')?.text ?? doc.querySelector('.top_user')?.text ?? ''),
-      avatar: _abs(firstPost?.querySelector('img.top_tximg')?.attributes['src'] ?? doc.querySelector('img.top_tximg')?.attributes['src'] ?? ''),
-      level: _normSpace(firstPost?.querySelector('.top_lev')?.text ?? doc.querySelector('.top_lev')?.text ?? ''),
-      time: _normSpace(firstPost?.querySelector('.comiis_postli_time .kmtime')?.text ?? doc.querySelector('.comiis_postli_time .kmtime')?.text ?? ''),
-      fid: _firstInt(RegExp(r'forum-(\d+)'), boardLink?.attributes['href'] ?? '') ?? 0,
+      title: title.isEmpty ? '帖子详情' : title,
+      author: _normSpace(firstPost?.querySelector('.top_user, .authi .xw1, .authi a')?.text ?? doc.querySelector('.top_user, .authi .xw1')?.text ?? ''),
+      avatar: _abs(firstPost?.querySelector('img.top_tximg, .avatar img, .avtm img')?.attributes['src'] ?? doc.querySelector('img.top_tximg, .avatar img, .avtm img')?.attributes['src'] ?? ''),
+      level: _normSpace(firstPost?.querySelector('.top_lev, .p_pop')?.text ?? doc.querySelector('.top_lev')?.text ?? ''),
+      time: _normSpace(firstPost?.querySelector('.comiis_postli_time .kmtime, .authi em, .pti .authi')?.text ?? ''),
+      fid: _firstInt(RegExp(r'(?:forum-|[?&]fid=)(\d+)'), boardLink?.attributes['href'] ?? '') ?? _firstInt(RegExp(r'(?:forum-|[?&]fid=)(\d+)'), firstPost?.outerHtml ?? '') ?? 0,
       boardName: boardName,
       bodyHtml: body,
       isPaid: paid.isPaid,
@@ -161,18 +161,26 @@ class ApiService {
     );
   }
 
+  dom.Element? _firstPostNode(dom.Document doc) {
+    const selectors = '.comiis_postli, #postlist .plhin, #postlist .plc, #postlist > div[id^="post_"], div[id^="postmessage_"]';
+    return doc.querySelector(selectors);
+  }
+
   _PaidState _parsePaidState(dom.Document doc) {
-    final firstPost = doc.querySelector('.comiis_postli');
+    final firstPost = _firstPostNode(doc);
     final firstText = _normSpace(firstPost?.text ?? '');
-    for (final e in (firstPost ?? doc.body!).querySelectorAll('a,button,input,form')) {
-      final all = '${_normSpace(e.text)} ${e.attributes['value'] ?? ''} ${e.attributes['title'] ?? ''}';
-      if (!all.contains('购买主题') && !all.contains('本主题需向作者支付')) continue;
-      final price = _firstInt(RegExp(r'(?:支付|需要)\s*(\d+)\s*星币'), all);
-      final href = _abs(e.attributes['href'] ?? '');
-      if (href.isNotEmpty) return _PaidState(true, price, '星币', href);
-      final action = _abs(e.attributes['action'] ?? '');
-      if (action.isNotEmpty) return _PaidState(true, price, '星币', action);
-      return _PaidState(true, price, '星币', '');
+    final root = firstPost ?? doc.body;
+    if (root != null) {
+      for (final e in root.querySelectorAll('a,button,input,form')) {
+        final all = '${_normSpace(e.text)} ${e.attributes['value'] ?? ''} ${e.attributes['title'] ?? ''}';
+        if (!all.contains('购买主题') && !all.contains('本主题需向作者支付')) continue;
+        final price = _firstInt(RegExp(r'(?:支付|需要)\s*(\d+)\s*星币'), all);
+        final href = _abs(e.attributes['href'] ?? '');
+        if (href.isNotEmpty) return _PaidState(true, price, '星币', href);
+        final action = _abs(e.attributes['action'] ?? '');
+        if (action.isNotEmpty) return _PaidState(true, price, '星币', action);
+        return _PaidState(true, price, '星币', '');
+      }
     }
     if (firstText.contains('本主题需向作者支付') && firstText.contains('星币')) {
       return _PaidState(true, _firstInt(RegExp(r'支付\s*(\d+)\s*星币'), firstText), '星币', '');
@@ -277,7 +285,7 @@ class ApiService {
   }
 
   bool _isUnlocked(dom.Document doc) {
-    final firstPost = doc.querySelector('.comiis_postli');
+    final firstPost = _firstPostNode(doc);
     final firstText = _normSpace(firstPost?.text ?? '');
     if (firstPost == null) return false;
     final paidNotice = firstText.contains('本主题需向作者支付') || (firstText.contains('购买主题') && firstText.contains('星币'));
@@ -299,28 +307,39 @@ class ApiService {
 
   static List<String> _collectPosts(dom.Document doc) {
     final out = <String>[];
-    final postNodes = doc.querySelectorAll('.comiis_postli');
+    final postNodes = doc.querySelectorAll('.comiis_postli, #postlist .plhin, #postlist .plc, #postlist > div[id^="post_"], div[id^="postmessage_"]');
     for (final post in postNodes) {
       dom.Element? content = post.querySelector('.comiis_message_table');
-      content ??= post.querySelector('.t_f, .pcb, .comiis_postcontent, .comiis_message, .message');
+      content ??= post.querySelector('.t_f, .pcb, .comiis_postcontent, .comiis_message, .message, .postmessage, [id^="postmessage_"]');
+      if (content == null && post.localName == 'div' && (post.id.startsWith('postmessage_') || post.id.startsWith('post_'))) content = post;
       if (content == null) continue;
       final html = content.innerHtml.trim();
       if (html.isEmpty) continue;
-      final author = _normSpace(post.querySelector('.top_user')?.text ?? '');
-      final level = _normSpace(post.querySelector('.top_lev')?.text ?? '');
-      final floor = _normSpace(post.querySelector('.f_d.y')?.text ?? '')
+      final author = _normSpace(post.querySelector('.top_user, .authi .xw1, .authi a')?.text ?? '');
+      final level = _normSpace(post.querySelector('.top_lev, .p_pop')?.text ?? '');
+      final floor = _normSpace(post.querySelector('.f_d.y, .pi .authi em, .pls .authi em')?.text ?? '')
           .replaceAll(RegExp(r'[^0-9A-Za-z一二三四五六七八九十楼主]'), '');
-      final time = _normSpace(post.querySelector('.kmtime')?.text ?? post.querySelector('.comiis_tm')?.text ?? '');
+      final time = _normSpace(post.querySelector('.kmtime, .comiis_tm, .authi em')?.text ?? '');
       final displayFloor = floor.isEmpty ? (out.isEmpty ? '楼主' : '${out.length + 1}楼') : floor;
-      out.add('<div class="post-card"><div class="post-hd"><span class="p-floor">$displayFloor</span><b class="p-author">$author</b>${level.isEmpty ? '' : '<span class="p-level">$level</span>'}</div>${time.isEmpty ? '' : '<div class="p-time">$time</div>'}<div class="p-body">$html</div></div>');
+      out.add('<div class="post-card"><div class="post-hd"><span class="p-floor">$displayFloor</span>${author.isEmpty ? '' : '<b class="p-author">$author</b>'}${level.isEmpty ? '' : '<span class="p-level">$level</span>'}</div>${time.isEmpty ? '' : '<div class="p-time">$time</div>'}<div class="p-body">${_cleanPostHtml(html)}</div></div>');
     }
     if (out.isNotEmpty) return out;
 
-    for (final t in doc.querySelectorAll('.comiis_message_table')) {
-      final html = t.innerHtml.trim();
-      if (html.isNotEmpty) out.add('<div class="post-card"><div class="p-body">$html</div></div>');
+    for (final selector in ['.comiis_message_table', '.t_f', '.pcb', '.postmessage', '[id^="postmessage_"]']) {
+      for (final t in doc.querySelectorAll(selector)) {
+        final html = t.innerHtml.trim();
+        if (html.isNotEmpty) out.add('<div class="post-card"><div class="p-body">${_cleanPostHtml(html)}</div></div>');
+      }
+      if (out.isNotEmpty) return out;
     }
     return out;
+  }
+
+  static String _cleanPostHtml(String html) {
+    var value = html;
+    value = value.replaceAll(RegExp(r'<script[\\s\\S]*?</script>', caseSensitive: false), '');
+    value = value.replaceAll(RegExp(r'<style[\\s\\S]*?</style>', caseSensitive: false), '');
+    return value.trim();
   }
 
   static String? _firstInputValue(dom.Document doc, String name) {
@@ -329,9 +348,9 @@ class ApiService {
   }
 
   static String _normSpace(String s) => s
-      .replaceAll(RegExp(r'[\uE000-\uF8FF\uFFFD□]'), '')
-      .replaceAll(RegExp(r'[ \t\u00A0\u3000]+'), ' ')
-      .replaceAll(RegExp(r'\n{2,}'), '\n')
+      .replaceAll(RegExp(r'[\\uE000-\\uF8FF\\uFFFD□]'), '')
+      .replaceAll(RegExp(r'[ \\t\\u00A0\\u3000]+'), ' ')
+      .replaceAll(RegExp(r'\\n{2,}'), '\\n')
       .trim();
 
   static int? _firstInt(RegExp re, String s) {
