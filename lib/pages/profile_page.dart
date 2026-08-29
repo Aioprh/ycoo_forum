@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 
 import '../services/auth_service.dart';
+import '../services/member_service_v2.dart';
 import 'login_page.dart';
 import 'member_feature_page.dart';
 import 'webview_page.dart';
@@ -106,8 +107,8 @@ class _ProfilePageState extends State<ProfilePage> {
               _featureTile(icon: Icons.forum_outlined, title: '我的回帖', subtitle: '原生回复列表', onTap: () => _openNative(title: '我的回帖', path: 'home.php?mod=space&do=thread&view=me&type=reply&mobile=2', type: MemberFeatureType.replies)),
               _featureTile(icon: Icons.bookmark_border, title: '我的收藏', subtitle: '原生收藏列表', onTap: () => _openNative(title: '我的收藏', path: 'home.php?mod=space&do=favorite&view=me&mobile=2', type: MemberFeatureType.favorites)),
               _featureTile(icon: Icons.notifications_none, title: '通知', subtitle: '原生通知列表', onTap: () => _openNative(title: '通知', path: 'home.php?mod=space&do=notice&mobile=2', type: MemberFeatureType.notices)),
-              _featureTile(icon: Icons.mail_outline, title: '消息', subtitle: '站内私信', onTap: () => _openSite('home.php?mod=space&do=pm&mobile=2', '消息')),
-              _featureTile(icon: Icons.people_outline, title: '好友 / 关注', subtitle: '好友、关注与粉丝', onTap: () => _openSite('home.php?mod=space&do=friend&mobile=2', '好友 / 关注')),
+              _featureTile(icon: Icons.mail_outline, title: '消息', subtitle: '原生私信列表', onTap: () => _openNative(title: '消息', path: 'home.php?mod=space&do=pm&mobile=2', type: MemberFeatureType.messages)),
+              _featureTile(icon: Icons.people_outline, title: '好友 / 关注', subtitle: '原生好友与关注列表', onTap: () => _openNative(title: '好友 / 关注', path: 'home.php?mod=space&do=friend&mobile=2', type: MemberFeatureType.friends)),
             ]),
             _sectionHeader(context, '积分与活动'),
             GridView.count(crossAxisCount: 2, shrinkWrap: true, physics: const NeverScrollableScrollPhysics(), mainAxisSpacing: 10, crossAxisSpacing: 10, childAspectRatio: 2.55, children: [
