@@ -1,34 +1,89 @@
 import 'package:flutter/material.dart';
 
+import '../services/auth_service.dart';
+import 'login_page.dart';
 import 'webview_page.dart';
 
-/// 我的页:站点信息 / 登录 / 关于。
-class ProfilePage extends StatelessWidget {
+/// 我的页:登录态 / 站点信息 / 关于。
+class ProfilePage extends StatefulWidget {
   const ProfilePage({super.key});
 
-  static const _loginUrl =
-      'https://www.ycoo.net/member.php?mod=logging&action=login&mobile=2';
+  @override
+  State<ProfilePage> createState() => _ProfilePageState();
+}
+
+class _ProfilePageState extends State<ProfilePage> {
+  String? _username;
+  bool _ready = false;
+
+  static const _loginMessage =
+      '登录后可回帖、发帖、打卡、评分等(原生会话)';
+
+  @override
+  void initState() {
+    super.initState();
+    _load();
+  }
+
+  Future<void> _load() async {
+    await AuthService.instance.init();
+    if (!mounted) return;
+    setState(() {
+      _username = AuthService.instance.username;
+      _ready = true;
+    });
+  }
+
+  Future<void> _openLogin() async {
+    final ok = await Navigator.of(context).push<bool>(
+      MaterialPageRoute(builder: (_) => const LoginPage()),
+    );
+    if (ok == true) {
+      await _load();
+    }
+  }
+
+  Future<void> _logout() async {
+    await AuthService.instance.logout();
+    if (!mounted) return;
+    setState(() {
+      _username = null;
+      _ready = true;
+    });
+  }
 
   @override
   Widget build(BuildContext context) {
+    final loggedIn = _username != null;
     return Scaffold(
       appBar: AppBar(title: const Text('我的')),
       body: ListView(
         padding: const EdgeInsets.all(12),
         children: [
           _sectionHeader(context, '帐号'),
-          ListTile(
-            leading: const Icon(Icons.login),
-            title: const Text('登录 / 注册'),
-            subtitle: const Text('在原站页面登录后,可查看需登录资源'),
-            trailing: const Icon(Icons.chevron_right),
-            onTap: () => _openWeb(context, _loginUrl, '登录'),
-          ),
-          const ListTile(
-            leading: Icon(Icons.info_outline),
-            title: Text('说明'),
-            subtitle: Text('本站为「源论坛」民间移动端,仅做阅读展示;发布、回帖等请用网页端'),
-          ),
+          if (loggedIn)
+            _buildAccountTile()
+          else
+            ListTile(
+              leading: const Icon(Icons.login),
+              title: const Text('登录 / 注册'),
+              subtitle: const Text(_loginMessage),
+              trailing: const Icon(Icons.chevron_right),
+              onTap: _ready ? _openLogin : null,
+            ),
+          if (loggedIn)
+            ListTile(
+              leading: const Icon(Icons.logout),
+              title: const Text('退出登录'),
+              trailing: const Icon(Icons.chevron_right),
+              onTap: _logout,
+            )
+          else
+            const ListTile(
+              leading: Icon(Icons.info_outline),
+              title: Text('说明'),
+              subtitle: Text('本站为「源论坛」民间移动端;发布、回帖等需先登录(原生)'),
+            ),
           const Divider(),
           _sectionHeader(context, '关于'),
           const ListTile(
@@ -41,7 +96,8 @@ class ProfilePage extends StatelessWidget {
             title: const Text('电脑版官网'),
             subtitle: const Text('https://www.ycoo.net'),
             trailing: const Icon(Icons.chevron_right),
-            onTap: () => _openWeb(context, 'https://www.ycoo.net', '源论坛'),
+            onTap: () =>
+                _openWeb(context, 'https://www.ycoo.net', '源论坛'),
           ),
           ListTile(
             leading: const Icon(Icons.android),
@@ -50,6 +106,14 @@ class ProfilePage extends StatelessWidget {
           ),
         ],
       ),
+    );
+  }
+
+  Widget _buildAccountTile() {
+    return ListTile(
+      leading: const CircleAvatar(child: Icon(Icons.person)),
+      title: Text(_username ?? '已登录'),
+      subtitle: const Text('已通过原生会话登录'),
     );
   }
 
@@ -68,7 +132,7 @@ class ProfilePage extends StatelessWidget {
   }
 
   void _openWeb(BuildContext context, String url, String title) {
-    Navigator.of(context)
-        .push(MaterialPageRoute(builder: (_) => WebViewPage(url: url, title: title)));
+    Navigator.of(context).push(MaterialPageRoute(
+        builder: (_) => WebViewPage(url: url, title: title)));
   }
 }

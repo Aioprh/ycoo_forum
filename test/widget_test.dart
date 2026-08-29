@@ -21,6 +21,8 @@ class _NoNetClient implements HttpClient {
       case #idleTimeout:
       case #autoUncompress:
       case #connectionTimeout:
+      case #followRedirects:
+      case #maxConnectionsPerHost:
         return null;
     }
     throw const SocketException('网络已在测试中被禁用');
