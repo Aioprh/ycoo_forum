@@ -14,15 +14,13 @@ class _NoNetOverrides extends HttpOverrides {
 class _NoNetClient implements HttpClient {
   @override
   dynamic noSuchMethod(Invocation inv) {
-    // 配置项赋值、close 等只需透传忽略;真正发起请求的方法则直接抛错。
+    // 属性赋值(如 autoUncompress/followRedirects/connectionTimeout)与
+    // close 等配置操作直接忽略;真正发起网络请求的方法才抛错。
+    if (inv.isSetter) return null;
     switch (inv.memberName) {
       case #close:
-      case #userAgent:
       case #idleTimeout:
-      case #autoUncompress:
       case #connectionTimeout:
-      case #followRedirects:
-      case #maxConnectionsPerHost:
         return null;
     }
     throw const SocketException('网络已在测试中被禁用');
