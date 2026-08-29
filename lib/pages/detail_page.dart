@@ -4,6 +4,7 @@ import 'package:webview_flutter/webview_flutter.dart';
 import '../models/thread_detail.dart';
 import '../services/api_service.dart';
 import '../services/auth_service.dart';
+import '../services/thread_interaction_service.dart';
 import 'login_page.dart';
 import 'thread_list_page.dart';
 
@@ -26,6 +27,10 @@ class _DetailPageState extends State<DetailPage> {
   bool _loggedIn = false;
   String? _error;
   double _bodyHeight = 0;
+  int _likeCount = 0;
+  bool _liked = false;
+  bool _favorited = false;
+  bool _interacting = false;
 
   @override
   void initState() {
@@ -52,13 +57,35 @@ class _DetailPageState extends State<DetailPage> {
     try {
       final detail = await ApiService.instance.fetchThreadDetail(widget.tid);
       if (!mounted) return;
-      setState(() => _detail = detail);
+      setState(() {
+        _detail = detail;
+        _likeCount = detail.likeCount;
+        _liked = detail.likedByMe;
+      });
       _bodyHeight = 0;
       _bodyController = _buildBodyController(detail.bodyHtml);
+      if (_loggedIn) _loadInteractionState();
     } catch (e) {
       if (mounted) setState(() => _error = '$e');
     } finally {
       if (mounted) setState(() => _loading = false);
+    }
+  }
+
+  /// 后台同步收藏等互动状态。
+  Future<void> _loadInteractionState() async {
+    final d = _detail;
+    if (d == null) return;
+    try {
+      final state = await ThreadInteractionService.instance.fetchState(detail: d);
+      if (!mounted) return;
+      setState(() {
+        _likeCount = state.likeCount;
+        _liked = state.likedByMe;
+        _favorited = state.favorited;
+      });
+    } catch (_) {
+      // 互动状态同步失败不阻塞正文展示。
     }
   }
 
@@ -185,12 +212,107 @@ class _DetailPageState extends State<DetailPage> {
     }
   }
 
+  /// 详情页互动操作条：点赞 + 收藏（原生提交到源论坛账号）。
+  Widget _actions(BuildContext context, ThreadDetail d) {
+    final scheme = Theme.of(context).colorScheme;
+    Widget button({
+      required IconData icon,
+      required String label,
+      required bool active,
+      required VoidCallback onTap,
+    }) {
+      return Expanded(
+        child: InkWell(
+          borderRadius: BorderRadius.circular(12),
+          onTap: onTap,
+          child: Container(
+            padding: const EdgeInsets.symmetric(vertical: 8),
+            decoration: BoxDecoration(
+              color: active ? scheme.primary.withValues(alpha: 0.12) : scheme.surfaceContainerHighest.withValues(alpha: 0.5),
+              borderRadius: BorderRadius.circular(12),
+            ),
+            child: Row(mainAxisAlignment: MainAxisAlignment.center, children: [
+              Icon(icon, size: 19, color: active ? scheme.primary : scheme.onSurfaceVariant),
+              const SizedBox(width: 6),
+              Text(label, style: TextStyle(fontSize: 13, color: active ? scheme.primary : scheme.onSurfaceVariant)),
+            ]),
+          ),
+        ),
+      );
+    }
+
+    return Padding(
+      padding: const EdgeInsets.fromLTRB(16, 4, 16, 6),
+      child: Row(children: [
+        button(
+          icon: _liked ? Icons.favorite : Icons.favorite_border,
+          label: _liked ? '已点赞' : '点赞$_likeCount',
+          active: _liked,
+          onTap: () => _toggleLike(d),
+        ),
+        const SizedBox(width: 10),
+        button(
+          icon: _favorited ? Icons.star : Icons.star_border,
+          label: _favorited ? '已收藏' : '收藏',
+          active: _favorited,
+          onTap: () => _toggleFavorite(d),
+        ),
+      ]),
+    );
+  }
+
+  Future<void> _toggleLike(ThreadDetail d) async {
+    if (!_loggedIn) {
+      await _openLogin();
+      if (!_loggedIn) return;
+    }
+    if (_interacting || _sending) return;
+    if (d.firstPid <= 0) {
+      ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('暂无法定位首楼，请刷新后重试')));
+      return;
+    }
+    setState(() => _interacting = true);
+    final err = await ThreadInteractionService.instance.toggleLike(tid: d.tid, pid: d.firstPid, like: !_liked);
+    if (!mounted) return;
+    setState(() => _interacting = false);
+    if (err == null) {
+      setState(() {
+        _liked = !_liked;
+        if (_liked) {
+          _likeCount++;
+        } else if (_likeCount > 0) {
+          _likeCount--;
+        }
+      });
+    } else {
+      ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text(err)));
+    }
+  }
+
+  Future<void> _toggleFavorite(ThreadDetail d) async {
+    if (!_loggedIn) {
+      await _openLogin();
+      if (!_loggedIn) return;
+    }
+    if (_interacting || _sending) return;
+    setState(() => _interacting = true);
+    final err = await ThreadInteractionService.instance.toggleFavorite(tid: d.tid, favorite: !_favorited);
+    if (!mounted) return;
+    setState(() => _interacting = false);
+    if (err == null) {
+      setState(() => _favorited = !_favorited);
+    } else {
+      ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text(err)));
+    }
+  }
+
   Widget _buildBody(BuildContext context) {
     if (_loading) return const Center(child: CircularProgressIndicator());
     if (_error != null || _detail == null) return Center(child: Column(mainAxisSize: MainAxisSize.min, children: [const Text('详情加载失败'), const SizedBox(height: 8), FilledButton(onPressed: _fetch, child: const Text('重试'))]));
     final d = _detail!;
     return ListView(padding: const EdgeInsets.only(bottom: 24), children: [
       _header(context, d),
+      _actions(context, d),
       const Divider(),
       if (d.bodyHtml.isEmpty && d.isPaid)
         _paidNotice(context, d)

@@ -18,6 +18,13 @@ class ThreadDetail {
   /// 原站购买页面/主题页面,用于在共享 WebView 会话中完成购买。
   final String purchaseUrl;
 
+  /// 首楼帖子 id,点赞(recommend)接口需要。
+  final int firstPid;
+  /// 点赞数。
+  final int likeCount;
+  /// 当前登录用户是否已点赞首楼。
+  final bool likedByMe;
+
   const ThreadDetail({
     required this.tid,
     required this.title,
@@ -32,5 +39,8 @@ class ThreadDetail {
     this.price,
     this.currency = '星币',
     this.purchaseUrl = '',
+    this.firstPid = 0,
+    this.likeCount = 0,
+    this.likedByMe = false,
   });
 }

@@ -192,6 +192,11 @@ class ApiService {
     final posts = _collectPosts(doc);
     final body = posts.join();
     final firstPost = _firstPostNode(doc);
+    final myUid = AuthService.instance.uid ?? 0;
+    final firstPid = _firstInt(RegExp(r'id="pid(\d+)"'), html) ?? 0;
+    var likeCount = _firstInt(RegExp(r'class="comiis_recommend_nums[^"]*">\s*(\d+)'), html) ?? 0;
+    if (likeCount <= 0) likeCount = doc.querySelectorAll('.comiis_recommend_list_a li').length;
+    final likedByMe = myUid > 0 && doc.querySelectorAll('.comiis_recommend_list_a a[href*="uid=$myUid"]').isNotEmpty;
     return ThreadDetail(
       tid: tid,
       title: title.isEmpty ? '帖子详情' : title,
@@ -206,6 +211,9 @@ class ApiService {
       price: paid.price,
       currency: paid.currency,
       purchaseUrl: paid.purchaseUrl.isEmpty ? detailUrl(tid) : paid.purchaseUrl,
+      firstPid: firstPid,
+      likeCount: likeCount,
+      likedByMe: likedByMe,
     );
   }
 

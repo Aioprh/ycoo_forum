@@ -19,8 +19,11 @@ class _CreateThreadPageState extends State<CreateThreadPage> {
   final _title = TextEditingController();
   final _body = TextEditingController();
   List<ForumBoard> _boards = const [];
+  List<ThreadType> _types = const [];
   int? _fid;
+  int? _typeid;
   bool _loadingBoards = true;
+  bool _loadingTypes = false;
   bool _submitting = false;
   String? _error;
 
@@ -52,9 +55,23 @@ class _CreateThreadPageState extends State<CreateThreadPage> {
         _loadingBoards = false;
         _error = boards.isEmpty ? '暂时没有可发帖的版块' : null;
       });
+      final fid = _fid;
+      if (fid != null) _loadTypes(fid);
     } catch (_) {
       if (mounted) setState(() { _loadingBoards = false; _error = '版块加载失败，请稍后重试'; });
     }
+  }
+
+  /// 切换版块后加载该版块的主题分类（typeid）。
+  Future<void> _loadTypes(int fid) async {
+    setState(() { _loadingTypes = true; _types = const []; _typeid = null; });
+    final types = await ThreadPublishService.instance.fetchThreadTypes(fid);
+    if (!mounted) return;
+    setState(() {
+      _types = types;
+      _loadingTypes = false;
+      _typeid = types.isNotEmpty ? types.first.id : null;
+    });
   }
 
   Future<void> _submit() async {
@@ -63,7 +80,7 @@ class _CreateThreadPageState extends State<CreateThreadPage> {
     if (fid == null || fid <= 0) { setState(() => _error = '请选择发帖版块'); return; }
     FocusScope.of(context).unfocus();
     setState(() { _submitting = true; _error = null; });
-    final result = await ThreadPublishService.instance.createThread(fid: fid, subject: _title.text, message: _body.text);
+    final result = await ThreadPublishService.instance.createThread(fid: fid, subject: _title.text, message: _body.text, typeid: _typeid);
     if (!mounted) return;
     setState(() => _submitting = false);
     if (result == null) {
@@ -107,10 +124,28 @@ class _CreateThreadPageState extends State<CreateThreadPage> {
                     border: OutlineInputBorder(borderRadius: BorderRadius.circular(16), borderSide: BorderSide.none),
                   ),
                   items: _boards.map((b) => DropdownMenuItem<int>(value: b.fid, child: Text(b.name))).toList(),
-                  onChanged: _submitting ? null : (v) => setState(() => _fid = v),
+                  onChanged: _submitting ? null : (v) {
+                    setState(() => _fid = v);
+                    if (v != null) _loadTypes(v);
+                  },
                 ),
                 const SizedBox(height: 14),
               ],
+              if (_types.isNotEmpty) ...[
+                DropdownButtonFormField<int>(
+                  value: _typeid,
+                  decoration: InputDecoration(
+                    labelText: '主题分类', prefixIcon: const Icon(Icons.label_outline), filled: true,
+                    fillColor: scheme.surfaceContainerHighest.withOpacity(.45),
+                    border: OutlineInputBorder(borderRadius: BorderRadius.circular(16), borderSide: BorderSide.none),
+                  ),
+                  items: _types.map((t) => DropdownMenuItem<int>(value: t.id, child: Text(t.name))).toList(),
+                  onChanged: _submitting ? null : (v) => setState(() => _typeid = v),
+                ),
+                const SizedBox(height: 14),
+              ],
+              if (_loadingTypes)
+                const Padding(padding: EdgeInsets.symmetric(vertical: 4), child: LinearProgressIndicator(minHeight: 2)),
               TextFormField(
                 controller: _title, enabled: !_submitting, maxLength: 80, textInputAction: TextInputAction.next,
                 decoration: InputDecoration(

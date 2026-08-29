@@ -47,9 +47,53 @@ class _MemberFeaturePageState extends State<MemberFeaturePage> {
     await _future;
   }
 
+  /// 原生发送站内私信。
+  Future<void> _openSendPm() async {
+    final toCtrl = TextEditingController();
+    final msgCtrl = TextEditingController();
+    final ok = await showDialog<bool>(
+      context: context,
+      builder: (dialogContext) => AlertDialog(
+        title: const Text('发送私信'),
+        content: Column(mainAxisSize: MainAxisSize.min, children: [
+          TextField(
+            controller: toCtrl,
+            autofocus: true,
+            decoration: const InputDecoration(labelText: '收件人用户名', prefixIcon: Icon(Icons.person_outline), isDense: true),
+          ),
+          const SizedBox(height: 14),
+          TextField(
+            controller: msgCtrl,
+            maxLines: 4,
+            decoration: const InputDecoration(labelText: '私信内容', prefixIcon: Icon(Icons.chat_bubble_outline), alignLabelWithHint: true),
+          ),
+        ]),
+        actions: [
+          TextButton(onPressed: () => Navigator.pop(dialogContext, false), child: const Text('取消')),
+          FilledButton(onPressed: () => Navigator.pop(dialogContext, true), child: const Text('发送')),
+        ],
+      ),
+    ) ?? false;
+    if (!ok || !mounted) return;
+    final messenger = ScaffoldMessenger.of(context);
+    final err = await MemberServiceV2.instance.sendMessage(to: toCtrl.text, message: msgCtrl.text);
+    toCtrl.dispose();
+    msgCtrl.dispose();
+    if (!mounted) return;
+    messenger.showSnackBar(SnackBar(content: Text(err ?? '私信已发送')));
+    if (err == null) _refresh();
+  }
+
   @override
   Widget build(BuildContext context) => Scaffold(
-        appBar: AppBar(title: Text(widget.title), actions: [IconButton(onPressed: _refresh, icon: const Icon(Icons.refresh))]),
+        appBar: AppBar(
+          title: Text(widget.title),
+          actions: [
+            if (widget.type == MemberFeatureType.messages)
+              IconButton(icon: const Icon(Icons.edit_outlined), tooltip: '发送私信', onPressed: _openSendPm),
+            IconButton(onPressed: _refresh, icon: const Icon(Icons.refresh)),
+          ],
+        ),
         body: FutureBuilder<Object>(
           future: _future,
           builder: (context, snapshot) {

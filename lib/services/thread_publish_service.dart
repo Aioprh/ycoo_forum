@@ -3,16 +3,58 @@ import 'package:html/parser.dart' as parser;
 import 'auth_service.dart';
 import 'net_client.dart';
 
+/// 版块的主题分类（typeid）选项。
+class ThreadType {
+  final int id;
+  final String name;
+  const ThreadType(this.id, this.name);
+}
+
 /// 通过当前登录 Cookie 调用 Discuz 原生发帖接口。
 class ThreadPublishService {
   ThreadPublishService._();
   static final instance = ThreadPublishService._();
   static const _base = 'https://www.ycoo.net/';
 
+  /// 抓取某版块可用的主题分类（typeid 下拉选项）。失败或无需分类时返回空列表。
+  Future<List<ThreadType>> fetchThreadTypes(int fid) async {
+    if (!AuthService.instance.isLoggedIn || (AuthService.instance.authCookie ?? '').isEmpty) {
+      return const [];
+    }
+    try {
+      final client = await NetClient.instance.client;
+      final headers = <String, String>{
+        'User-Agent': NetClient.ua,
+        'Accept': 'text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8',
+        'Accept-Language': 'zh-CN,zh;q=0.9',
+        'Cache-Control': 'no-cache, no-store',
+        'Pragma': 'no-cache',
+        'Cookie': AuthService.instance.authCookie!,
+      };
+      final forumUrl = '${_base}forum.php?mod=post&action=newthread&fid=$fid&mobile=2';
+      final resp = await NetClient.retry(() => client.get(Uri.parse(forumUrl), headers: headers).timeout(NetClient.timeout));
+      if (resp.statusCode != 200) return const [];
+      final doc = parser.parse(NetClient.decode(resp.bodyBytes));
+      final result = <ThreadType>[];
+      for (final select in doc.querySelectorAll('select[name="typeid"]')) {
+        for (final opt in select.querySelectorAll('option')) {
+          final id = int.tryParse(opt.attributes['value'] ?? '');
+          final name = (opt.text ?? '').trim();
+          if (id == null || id <= 0 || name.isEmpty || name.contains('请选择')) continue;
+          result.add(ThreadType(id, name));
+        }
+      }
+      return result;
+    } catch (_) {
+      return const [];
+    }
+  }
+
   Future<String?> createThread({
     required int fid,
     required String subject,
     required String message,
+    int? typeid,
   }) async {
     if (!AuthService.instance.isLoggedIn || (AuthService.instance.authCookie ?? '').isEmpty) {
       return '请先登录论坛';
@@ -54,6 +96,7 @@ class ThreadPublishService {
       _copyIfPresent(doc, form, 'special');
       _copyIfPresent(doc, form, 'hiddenreplies');
       _copyIfPresent(doc, form, 'readperm');
+      if (typeid != null && typeid > 0) form['typeid'] = '$typeid';
 
       final response = await client.post(
         Uri.parse(forumUrl),

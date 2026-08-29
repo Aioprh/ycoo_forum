@@ -163,6 +163,72 @@ class MemberServiceV2 {
     return NativeCreditSummary(balance: balance, records: records.take(30).toList());
   }
 
+  /// 原生发送站内私信（Discuz spacecp.pm）。返回 null 表示成功，否则返回失败原因。
+  Future<String?> sendMessage({required String to, required String message}) async {
+    final target = to.trim();
+    final text = message.trim();
+    if (target.isEmpty) return '请输入收件人用户名';
+    if (text.isEmpty) return '请输入私信内容';
+    if ((AuthService.instance.authCookie ?? '').isEmpty) return '请先登录论坛';
+    try {
+      final client = await NetClient.instance.client;
+      final cookie = AuthService.instance.authCookie;
+      final headers = <String, String>{
+        'User-Agent': NetClient.ua,
+        'Accept': 'text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8',
+        'Accept-Language': 'zh-CN,zh;q=0.9',
+        'Cache-Control': 'no-cache, no-store',
+        'Pragma': 'no-cache',
+        if (cookie != null && cookie.isNotEmpty) 'Cookie': cookie,
+      };
+      final sendPath = 'home.php?mod=spacecp&ac=pm&op=send&mobile=2';
+      // 先取发送页取得最新 formhash（同时维持会话）。
+      final pageResp = await NetClient.retry(() => client.get(Uri.parse('$_base$sendPath'), headers: headers).timeout(const Duration(seconds: 20)));
+      final page = NetClient.decode(pageResp.bodyBytes);
+      final formhash = _hiddenValue(page, 'formhash');
+      if (formhash == null || formhash.isEmpty) {
+        if (_looksLikeLogin(page)) return '登录态已失效，请重新登录论坛';
+        return '未取得私信令牌(formhash)，请稍后重试';
+      }
+      final resp = await NetClient.retry(() => client.post(
+        Uri.parse('$_base$sendPath'),
+        headers: {...headers, 'Referer': '$_base$sendPath', 'Content-Type': 'application/x-www-form-urlencoded; charset=UTF-8', 'X-Requested-With': 'XMLHttpRequest'},
+        body: <String, String>{
+          'formhash': formhash,
+          'username': target,
+          'message': text,
+          'pmsubmit': 'yes',
+          'sendpm': 'true',
+        },
+      ).timeout(const Duration(seconds: 20)));
+      final body = NetClient.decode(resp.bodyBytes);
+      if (body.contains('succeed') || body.contains('发送成功') || body.contains('操作成功') || body.contains('do_success')) {
+        return null;
+      }
+      if (body.contains('请先登录') || body.contains('登录后才能')) return '登录态已失效，请重新登录论坛';
+      final msg = RegExp(r'''showError\(\s*['"]([^'"]+)['"]''').firstMatch(body)?.group(1);
+      if (msg != null) return msg.trim();
+      if (body.contains('不允许') || body.contains('没有权限')) return '当前账号不允许发送私信';
+      return '私信发送失败，请稍后重试';
+    } catch (_) {
+      return '私信请求失败，请检查网络后重试';
+    }
+  }
+
+  /// 从页面 HTML 中提取指定 name 的隐藏字段值（兼容 name/value 顺序互换）。
+  static String? _hiddenValue(String html, String name) {
+    final escaped = RegExp.escape(name);
+    final nameFirst = RegExp(
+      'name\\s*=\\s*[\"\\\']$escaped[\"\\\'][^>]*value\\s*=\\s*[\"\\\']([^\"\\\']+)[\"\\\']',
+      caseSensitive: false,
+    );
+    final valueFirst = RegExp(
+      'value\\s*=\\s*[\"\\\']([^\"\\\']+)[\"\\\'][^>]*name\\s*=\\s*[\"\\\']$escaped[\"\\\']',
+      caseSensitive: false,
+    );
+    return nameFirst.firstMatch(html)?.group(1) ?? valueFirst.firstMatch(html)?.group(1);
+  }
+
   static String _withoutMobile(String path) {
     final uri = Uri.tryParse('$_base$path');
     if (uri == null) return path;
