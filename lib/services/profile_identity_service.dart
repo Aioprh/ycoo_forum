@@ -43,7 +43,7 @@ class ProfileIdentityService {
         String? name;
         final uidPatterns = <RegExp>[
           RegExp(r'(?:uid=|uid%3D|uid/|uid-)' + uid.toString(), caseSensitive: false),
-          RegExp(r'(?:space|member)[^"\']*' + uid.toString(), caseSensitive: false),
+          RegExp(r"(?:space|member)[^\"']*" + uid.toString(), caseSensitive: false),
         ];
         for (final a in doc.querySelectorAll('a[href]')) {
           final href = a.attributes['href'] ?? '';

@@ -48,7 +48,9 @@ class _NativeSitePageState extends State<NativeSitePage> {
   bool _hasReadableText(String value) => RegExp(r'[A-Za-z0-9\u3400-\u9FFF]').hasMatch(value);
 
   dom.Element _prepareDocument(dom.Document doc) {
-    for (final node in doc.querySelectorAll(_globalSelectors.join(','))) { node.remove(); }
+    for (final node in doc.querySelectorAll(_globalSelectors.join(','))) {
+      node.remove();
+    }
     return doc.body ?? doc.documentElement!;
   }
 
@@ -58,7 +60,9 @@ class _NativeSitePageState extends State<NativeSitePage> {
       '#wp','#ct','.wp','.mn','.comiis_main','.comiis_mainbox','.comiis_mobbox',
       '.comiis_width','.comiis_forum_box','.comiis_postbox','main','article','.content',
     ];
-    for (final selector in selectors) { candidates.addAll(body.querySelectorAll(selector)); }
+    for (final selector in selectors) {
+      candidates.addAll(body.querySelectorAll(selector));
+    }
     dom.Element best = body;
     var bestScore = 0;
     for (final candidate in candidates) {
@@ -68,13 +72,21 @@ class _NativeSitePageState extends State<NativeSitePage> {
       if (candidate.querySelector('form') != null) score += 500;
       if (candidate.querySelector('input,textarea,select') != null) score += 300;
       if (candidate.querySelector('p,article,table') != null) score += 100;
-      if (score > bestScore) { best = candidate; bestScore = score; }
+      if (score > bestScore) {
+        best = candidate;
+        bestScore = score;
+      }
     }
     return best;
   }
 
   Future<void> _load() async {
-    if (mounted) setState(() { _loading = true; _error = null; });
+    if (mounted) {
+      setState(() {
+        _loading = true;
+        _error = null;
+      });
+    }
     try {
       final client = await NetClient.instance.client;
       await AuthService.instance.init();
@@ -116,16 +128,27 @@ class _NativeSitePageState extends State<NativeSitePage> {
         }
         final label = _cleanText(form.text);
         if (label.isEmpty && fields.isEmpty) continue;
-        forms.add(_FormItem(label.length > 240 ? label.substring(0, 240) : label,
-            _abs(form.attributes['action'] ?? widget.path), fields));
+        forms.add(_FormItem(
+          label.length > 240 ? label.substring(0, 240) : label,
+          _abs(form.attributes['action'] ?? widget.path),
+          fields,
+        ));
         if (forms.length >= 12) break;
       }
 
       if (!mounted) return;
-      setState(() { _bodyText = text; _links = links; _forms = forms; _loading = false; });
+      setState(() {
+        _bodyText = text;
+        _links = links;
+        _forms = forms;
+        _loading = false;
+      });
     } catch (e) {
       if (!mounted) return;
-      setState(() { _error = e.toString().replaceFirst('Exception: ', ''); _loading = false; });
+      setState(() {
+        _error = e.toString().replaceFirst('Exception: ', '');
+        _loading = false;
+      });
     }
   }
 
@@ -135,7 +158,11 @@ class _NativeSitePageState extends State<NativeSitePage> {
       context: context,
       builder: (dialogContext) => AlertDialog(
         title: Text(form.label.isEmpty ? '提交操作' : form.label, maxLines: 3, overflow: TextOverflow.ellipsis),
-        content: TextField(controller: controller, autofocus: true, decoration: const InputDecoration(labelText: '输入内容（可选）')),
+        content: TextField(
+          controller: controller,
+          autofocus: true,
+          decoration: const InputDecoration(labelText: '输入内容（可选）'),
+        ),
         actions: [
           TextButton(onPressed: () => Navigator.pop(dialogContext), child: const Text('取消')),
           FilledButton(onPressed: () => Navigator.pop(dialogContext, controller.text), child: const Text('提交')),
@@ -149,7 +176,10 @@ class _NativeSitePageState extends State<NativeSitePage> {
       await AuthService.instance.init();
       final cookie = AuthService.instance.authCookie;
       final fields = <String, String>{...form.fields};
-      if (value.isNotEmpty) { fields['message'] ??= value; fields['srchtxt'] ??= value; }
+      if (value.isNotEmpty) {
+        fields['message'] ??= value;
+        fields['srchtxt'] ??= value;
+      }
       final response = await client.post(Uri.parse(form.action), headers: {
         'User-Agent': NetClient.ua,
         'Accept': 'text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8',
@@ -176,31 +206,101 @@ class _NativeSitePageState extends State<NativeSitePage> {
     } else {
       final children = <Widget>[];
       if (_bodyText.isNotEmpty) {
-        children.add(Card(child: Padding(padding: const EdgeInsets.all(16), child: Text(_bodyText, style: const TextStyle(height: 1.6)))));
+        children.add(Card(
+          child: Padding(
+            padding: const EdgeInsets.all(16),
+            child: Text(_bodyText, style: const TextStyle(height: 1.6)),
+          ),
+        ));
       }
       if (_forms.isNotEmpty) {
-        children.addAll(const [SizedBox(height: 12), Text('可用操作', style: TextStyle(fontSize: 18, fontWeight: FontWeight.w700)), SizedBox(height: 8)]);
+        children.addAll(const [
+          SizedBox(height: 12),
+          Text('可用操作', style: TextStyle(fontSize: 18, fontWeight: FontWeight.w700)),
+          SizedBox(height: 8),
+        ]);
         for (final form in _forms) {
-          children.add(Card(child: ListTile(title: Text(form.label.isEmpty ? '表单操作' : form.label), trailing: const Icon(Icons.play_arrow), onTap: () => _submit(form))));
+          children.add(Card(
+            child: ListTile(
+              title: Text(form.label.isEmpty ? '表单操作' : form.label),
+              trailing: const Icon(Icons.play_arrow),
+              onTap: () => _submit(form),
+            ),
+          ));
         }
       }
       if (_links.isNotEmpty) {
-        children.addAll(const [SizedBox(height: 12), Text('页面入口', style: TextStyle(fontSize: 18, fontWeight: FontWeight.w700)), SizedBox(height: 8)]);
+        children.addAll(const [
+          SizedBox(height: 12),
+          Text('页面入口', style: TextStyle(fontSize: 18, fontWeight: FontWeight.w700)),
+          SizedBox(height: 8),
+        ]);
         for (final link in _links) {
-          children.add(Card(child: ListTile(title: Text(link.label), trailing: const Icon(Icons.chevron_right), onTap: () => Navigator.push(context, MaterialPageRoute(builder: (_) => NativeSitePage(path: link.url, title: link.label)))));
+          children.add(Card(
+            child: ListTile(
+              title: Text(link.label),
+              trailing: const Icon(Icons.chevron_right),
+              onTap: () {
+                Navigator.push(
+                  context,
+                  MaterialPageRoute(
+                    builder: (_) => NativeSitePage(path: link.url, title: link.label),
+                  ),
+                );
+              },
+            ),
+          ));
         }
       }
-      if (children.isEmpty) children.add(const Padding(padding: EdgeInsets.all(32), child: Center(child: Text('页面暂无可显示内容'))));
-      body = RefreshIndicator(onRefresh: _load, child: ListView(padding: const EdgeInsets.fromLTRB(16, 12, 16, 32), children: children));
+      if (children.isEmpty) {
+        children.add(const Padding(
+          padding: EdgeInsets.all(32),
+          child: Center(child: Text('页面暂无可显示内容')),
+        ));
+      }
+      body = RefreshIndicator(
+        onRefresh: _load,
+        child: ListView(
+          padding: const EdgeInsets.fromLTRB(16, 12, 16, 32),
+          children: children,
+        ),
+      );
     }
-    return Scaffold(appBar: AppBar(title: Text(widget.title), actions: [IconButton(onPressed: _load, icon: const Icon(Icons.refresh))]), body: body);
+    return Scaffold(
+      appBar: AppBar(
+        title: Text(widget.title),
+        actions: [IconButton(onPressed: _load, icon: const Icon(Icons.refresh))],
+      ),
+      body: body,
+    );
   }
 
-  Widget _errorView() => Center(child: Padding(padding: const EdgeInsets.all(24), child: Column(mainAxisSize: MainAxisSize.min, children: [
-    const Icon(Icons.cloud_off, size: 48), const SizedBox(height: 12), Text(_error!, textAlign: TextAlign.center),
-    const SizedBox(height: 16), FilledButton(onPressed: _load, child: const Text('重试')),
-  ]));
+  Widget _errorView() => Center(
+        child: Padding(
+          padding: const EdgeInsets.all(24),
+          child: Column(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              const Icon(Icons.cloud_off, size: 48),
+              const SizedBox(height: 12),
+              Text(_error!, textAlign: TextAlign.center),
+              const SizedBox(height: 16),
+              FilledButton(onPressed: _load, child: const Text('重试')),
+            ],
+          ),
+        ),
+      );
 }
 
-class _LinkItem { final String label; final String url; const _LinkItem(this.label, this.url); }
-class _FormItem { final String label; final String action; final Map<String, String> fields; const _FormItem(this.label, this.action, this.fields); }
+class _LinkItem {
+  final String label;
+  final String url;
+  const _LinkItem(this.label, this.url);
+}
+
+class _FormItem {
+  final String label;
+  final String action;
+  final Map<String, String> fields;
+  const _FormItem(this.label, this.action, this.fields);
+}
