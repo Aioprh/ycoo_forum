@@ -6,7 +6,6 @@ import '../services/api_service.dart';
 import '../services/auth_service.dart';
 import 'login_page.dart';
 import 'thread_list_page.dart';
-import 'webview_page.dart';
 
 class DetailPage extends StatefulWidget {
   final int tid;
@@ -23,6 +22,7 @@ class _DetailPageState extends State<DetailPage> {
   final FocusNode _replyFocus = FocusNode();
   bool _loading = true;
   bool _sending = false;
+  bool _buying = false;
   bool _loggedIn = false;
   String? _error;
   double _bodyHeight = 0;
@@ -53,6 +53,7 @@ class _DetailPageState extends State<DetailPage> {
       final detail = await ApiService.instance.fetchThreadDetail(widget.tid);
       if (!mounted) return;
       setState(() => _detail = detail);
+      _bodyHeight = 0;
       _bodyController = _buildBodyController(detail.bodyHtml);
     } catch (e) {
       if (mounted) setState(() => _error = '$e');
@@ -62,7 +63,8 @@ class _DetailPageState extends State<DetailPage> {
   }
 
   WebViewController _buildBodyController(String bodyHtml) {
-    final doc = '''<!doctype html><html><head><meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1"><base href="https://www.ycoo.net/"><style>body{margin:0;padding:16px;font-size:16px;line-height:1.7;color:#333;word-wrap:break-word}img{max-width:100%!important;height:auto;border-radius:6px}a{color:#4e6ef2}pre,code{white-space:pre-wrap;word-break:break-all}table{width:100%;border-collapse:collapse}.post-card{background:#f7f8fa;border-radius:10px;padding:12px 14px;margin:12px 0}.post-card:first-child{margin-top:0}.post-hd{display:flex;align-items:center;flex-wrap:wrap;gap:6px}.p-floor{color:#8a919f;font-size:12px}.p-author{font-weight:600;color:#222;font-size:14px}.p-level{color:#4e6ef2;font-size:11px;background:#eef1fd;padding:1px 6px;border-radius:8px}.p-time{color:#999;font-size:12px;margin-top:4px}.post-card .p-body{margin-top:8px;font-size:15px}</style></head><body>$bodyHtml</body></html>''';
+    final safeHtml = bodyHtml.isEmpty ? '<div></div>' : bodyHtml;
+    final doc = '''<!doctype html><html><head><meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1"><base href="https://www.ycoo.net/"><style>body{margin:0;padding:16px;font-size:16px;line-height:1.7;color:#333;word-wrap:break-word}img{max-width:100%!important;height:auto;border-radius:6px}a{color:#4e6ef2}pre,code{white-space:pre-wrap;word-break:break-all}table{width:100%;border-collapse:collapse}.post-card{background:#f7f8fa;border-radius:10px;padding:12px 14px;margin:12px 0}.post-card:first-child{margin-top:0}.post-hd{display:flex;align-items:center;flex-wrap:wrap;gap:6px}.p-floor{color:#8a919f;font-size:12px}.p-author{font-weight:600;color:#222;font-size:14px}.p-level{color:#4e6ef2;font-size:11px;background:#eef1fd;padding:1px 6px;border-radius:8px}.p-time{color:#999;font-size:12px;margin-top:4px}.post-card .p-body{margin-top:8px;font-size:15px}</style></head><body>$safeHtml</body></html>''';
     return WebViewController()
       ..setJavaScriptMode(JavaScriptMode.unrestricted)
       ..setBackgroundColor(const Color(0xFFFFFFFF))
@@ -80,24 +82,33 @@ class _DetailPageState extends State<DetailPage> {
 
   Future<void> _openPurchase() async {
     final d = _detail;
-    if (d == null) return;
+    if (d == null || _buying) return;
     if (!_loggedIn) {
       await _openLogin();
       if (!_loggedIn) return;
     }
-    final url = d.purchaseUrl.isEmpty ? ApiService.detailUrl(d.tid) : d.purchaseUrl;
-    await Navigator.of(context).push(MaterialPageRoute(
-      builder: (_) => WebViewPage(url: url, title: '购买主题'),
-    ));
+
+    final priceText = d.price == null ? '当前价格以论坛页面为准' : '${d.price} ${d.currency}';
+    final confirmed = await showDialog<bool>(
+      context: context,
+      builder: (dialogContext) => AlertDialog(
+        title: const Text('购买主题'),
+        content: Text('确定购买这个付费主题吗？\n\n价格：$priceText\n\n点击“确定”后将直接使用当前论坛账号购买。'),
+        actions: [
+          TextButton(onPressed: () => Navigator.pop(dialogContext, false), child: const Text('取消')),
+          FilledButton(onPressed: () => Navigator.pop(dialogContext, true), child: const Text('确定购买')),
+        ],
+      ),
+    ) ?? false;
+    if (!confirmed || !mounted) return;
+
+    setState(() => _buying = true);
+    final result = await ApiService.instance.purchaseThread(d.tid);
     if (!mounted) return;
-    await AuthService.instance.init();
-    await AuthService.instance.checkLoggedIn();
-    setState(() => _loggedIn = AuthService.instance.isLoggedIn);
-    await _fetch();
-    if (mounted && _detail?.isPaid == true) {
-      ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(content: Text('返回后已刷新帖子；若仍显示付费，请确认原站购买已成功。')),
-      );
+    setState(() => _buying = false);
+    ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text(result.message)));
+    if (result.success) {
+      await _fetch();
     }
   }
 
@@ -118,8 +129,12 @@ class _DetailPageState extends State<DetailPage> {
       return SafeArea(top: false, child: Padding(
         padding: const EdgeInsets.fromLTRB(12, 8, 12, 8),
         child: Row(children: [
-          Expanded(child: Text(d.price == null ? '付费主题 · ${d.currency}' : '付费主题 · ${d.price} ${d.currency}', style: const TextStyle(fontWeight: FontWeight.w600))),
-          FilledButton.icon(onPressed: _openPurchase, icon: const Icon(Icons.shopping_cart_outlined), label: const Text('购买主题')),
+          Expanded(child: Text(d.price == null ? '付费主题' : '付费主题 · ${d.price} ${d.currency}', style: const TextStyle(fontWeight: FontWeight.w600))),
+          FilledButton.icon(
+            onPressed: _buying ? null : _openPurchase,
+            icon: _buying ? const SizedBox(width: 18, height: 18, child: CircularProgressIndicator(strokeWidth: 2)) : const Icon(Icons.shopping_cart_outlined),
+            label: Text(_buying ? '购买中…' : '购买主题'),
+          ),
         ]),
       ));
     }
@@ -177,10 +192,10 @@ class _DetailPageState extends State<DetailPage> {
     return ListView(padding: const EdgeInsets.only(bottom: 24), children: [
       _header(context, d),
       const Divider(),
-      if (d.isPaid && d.bodyHtml.isEmpty)
+      if (d.bodyHtml.isEmpty && d.isPaid)
         _paidNotice(context, d)
       else if (d.bodyHtml.isEmpty)
-        const Padding(padding: EdgeInsets.all(32), child: Center(child: Text('该主题可能需登录后才可见正文。', style: TextStyle(color: Colors.grey))))
+        const Padding(padding: EdgeInsets.all(32), child: Center(child: Text('该主题暂时没有可显示的正文。', style: TextStyle(color: Colors.grey))))
       else
         Padding(padding: const EdgeInsets.only(top: 8), child: SizedBox(height: _bodyHeight > 0 ? _bodyHeight : MediaQuery.of(context).size.height * 0.72, child: WebViewWidget(controller: _bodyController!))),
     ]);
@@ -192,7 +207,7 @@ class _DetailPageState extends State<DetailPage> {
       const SizedBox(height: 12),
       Text(d.price == null ? '此主题需要购买后查看' : '此主题需支付 ${d.price} ${d.currency} 后查看', textAlign: TextAlign.center, style: const TextStyle(fontSize: 16, fontWeight: FontWeight.w600)),
       const SizedBox(height: 14),
-      FilledButton.icon(onPressed: _openPurchase, icon: const Icon(Icons.shopping_cart_outlined), label: const Text('前往购买')),
+      FilledButton.icon(onPressed: _buying ? null : _openPurchase, icon: const Icon(Icons.shopping_cart_outlined), label: const Text('购买主题')),
     ]))));
   }
 
