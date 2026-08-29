@@ -26,8 +26,6 @@ class ApiService {
   Future<String> _get(String url, {Map<String, String>? query}) async {
     final client = await NetClient.instance.client;
     final parsed = Uri.parse(url);
-    // 保留 URL 中已带的参数（如 mod/view/mobile/fid/page），只补充额外参数，
-    // 避免 replace(queryParameters:) 把整段查询串清空导致未带模板参数而请求失败。
     final params = <String, String>{
       ...parsed.queryParameters,
       ...?query,
@@ -100,37 +98,18 @@ class ApiService {
       if (match == null) continue;
       final tid = int.tryParse(match.group(1)!) ?? 0;
       if (tid <= 0 || seen.contains(tid)) continue;
-
       var title = _normSpace(a.text);
       final root = _threadContainer(a);
-      if (title.length < 2 || _navigationTitle(title)) {
-        title = _normSpace(root?.querySelector('h1, h2, h3, .title, .subject, .mmlist_li_box h2 a')?.text ?? '');
-      }
+      if (title.length < 2 || _navigationTitle(title)) title = _normSpace(root?.querySelector('h1, h2, h3, .title, .subject, .mmlist_li_box h2 a')?.text ?? '');
       if (title.length < 2 || _navigationTitle(title)) continue;
-
       final rootText = _normSpace(root?.text ?? '');
       final fid = _firstInt(RegExp(r'(?:forum-|[?&]fid=)(\d+)'), root?.outerHtml ?? '') ?? 0;
       final author = _normSpace(root?.querySelector('.top_user, .author, .by, .xw1')?.text ?? '');
       final time = _normSpace(root?.querySelector('.f_d, .time, time, .kmtime')?.text ?? '');
       final board = _normSpace(root?.querySelector('.comiis_xznalist_bk a, .forumname, .from')?.text ?? '');
       final subtitle = rootText.isEmpty || rootText == title ? '' : rootText.replaceFirst(title, '').trim();
-
       seen.add(tid);
-      result.add(ThreadItem(
-        tid: tid,
-        title: title,
-        author: author,
-        avatar: _abs(root?.querySelector('img')?.attributes['src'] ?? ''),
-        fid: fid,
-        boardName: board,
-        level: _normSpace(root?.querySelector('.top_lev, .level')?.text ?? ''),
-        time: time,
-        subtitle: subtitle.length > 180 ? subtitle.substring(0, 180) : subtitle,
-        cover: _abs(root?.querySelector('img')?.attributes['src'] ?? ''),
-        likeCount: _numberAfter(rootText, ['点赞']) ?? 0,
-        replyCount: _numberAfter(rootText, ['回复', '评论']) ?? 0,
-        viewCount: _numberAfter(rootText, ['浏览', '查看']) ?? 0,
-      ));
+      result.add(ThreadItem(tid: tid, title: title, author: author, avatar: _abs(root?.querySelector('img')?.attributes['src'] ?? ''), fid: fid, boardName: board, level: _normSpace(root?.querySelector('.top_lev, .level')?.text ?? ''), time: time, subtitle: subtitle.length > 180 ? subtitle.substring(0, 180) : subtitle, cover: _abs(root?.querySelector('img')?.attributes['src'] ?? ''), likeCount: _numberAfter(rootText, ['点赞']) ?? 0, replyCount: _numberAfter(rootText, ['回复', '评论']) ?? 0, viewCount: _numberAfter(rootText, ['浏览', '查看']) ?? 0));
       if (result.length >= 50) break;
     }
     return result;
@@ -190,7 +169,10 @@ class ApiService {
 
     final paid = _parsePaidState(doc);
     final posts = _collectPosts(doc);
-    final body = posts.join();
+    final body = posts.isEmpty ? '' : '<div class="content-section">${posts.first}</div>';
+    final comments = posts.length <= 1
+        ? ''
+        : '<div class="comments-section"><div class="comments-title">评论 / 回复</div>${posts.skip(1).join()}</div>';
     final firstPost = _firstPostNode(doc);
     final myUid = AuthService.instance.uid ?? 0;
     final firstPid = _firstInt(RegExp(r'id="pid(\d+)"'), html) ?? 0;
@@ -207,6 +189,7 @@ class ApiService {
       fid: _firstInt(RegExp(r'(?:forum-|[?&]fid=)(\d+)'), boardLink?.attributes['href'] ?? '') ?? _firstInt(RegExp(r'(?:forum-|[?&]fid=)(\d+)'), firstPost?.outerHtml ?? '') ?? 0,
       boardName: boardName,
       bodyHtml: body,
+      commentsHtml: comments,
       isPaid: paid.isPaid,
       price: paid.price,
       currency: paid.currency,
@@ -228,11 +211,14 @@ class ApiService {
     final root = firstPost ?? doc.body;
     if (root != null) {
       for (final e in root.querySelectorAll('a,button,input,form')) {
-        final all = '${_normSpace(e.text)} ${e.attributes['value'] ?? ''} ${e.attributes['title'] ?? ''}';
-        if (!all.contains('购买主题') && !all.contains('本主题需向作者支付')) continue;
+        final all = '${_normSpace(e.text)} ${e.attributes['value'] ?? ''} ${e.attributes['title'] ?? ''} ${e.attributes['onclick'] ?? ''} ${e.attributes['href'] ?? ''}';
+        if (!all.contains('购买主题') && !all.contains('本主题需向作者支付') && !all.toLowerCase().contains('action=pay') && !all.toLowerCase().contains('buythread')) continue;
         final price = _firstInt(RegExp(r'(?:支付|需要)\s*(\d+)\s*星币'), all);
         final href = _abs(e.attributes['href'] ?? '');
-        if (href.isNotEmpty) return _PaidState(true, price, '星币', href);
+        if (href.isNotEmpty && !href.startsWith('javascript:')) return _PaidState(true, price, '星币', href);
+        final onclick = e.attributes['onclick'] ?? '';
+        final jsUrl = _extractUrlFromJavascript(onclick);
+        if (jsUrl.isNotEmpty) return _PaidState(true, price, '星币', jsUrl);
         final action = _abs(e.attributes['action'] ?? '');
         if (action.isNotEmpty) return _PaidState(true, price, '星币', action);
         return _PaidState(true, price, '星币', '');
@@ -291,9 +277,7 @@ class ApiService {
         }
       }
       final resultText = _normSpace(resultDoc.body?.text ?? resultHtml);
-      if (!_looksLikePurchaseSuccess(resultText, resultDoc) && !_isUnlocked(resultDoc)) {
-        return PurchaseResult(false, _purchaseFailure(resultText) ?? '购买失败，请检查星币余额或论坛提示');
-      }
+      if (!_looksLikePurchaseSuccess(resultText, resultDoc) && !_isUnlocked(resultDoc)) return PurchaseResult(false, _purchaseFailure(resultText) ?? '购买失败，请检查星币余额或论坛提示');
       final refreshed = await client.get(Uri.parse('${detailUrl(tid)}?mobile=2&_ycoo_refresh=${DateTime.now().millisecondsSinceEpoch}'), headers: headers).timeout(_timeout);
       final refreshedDoc = parser.parse(NetClient.decode(refreshed.bodyBytes));
       if (_isUnlocked(refreshedDoc) && _collectPosts(refreshedDoc).isNotEmpty) return const PurchaseResult(true, '购买成功，正文已解锁');
@@ -306,12 +290,15 @@ class ApiService {
   Future<_PurchaseTarget?> _resolvePurchaseTarget(dynamic client, dom.Document doc, int tid, Map<String, String> headers) async {
     final form = _firstPurchaseForm(doc, tid);
     if (form != null) return _PurchaseTarget.form(form);
-    for (final a in doc.querySelectorAll('a[href]')) {
-      final href = a.attributes['href'] ?? '';
-      final text = _normSpace(a.text);
-      if (!text.contains('购买主题') && !href.toLowerCase().contains('buythread') && !href.toLowerCase().contains('buytopic')) continue;
-      if (href.startsWith('javascript:') || href.isEmpty) continue;
-      return _PurchaseTarget.url(_abs(href));
+    for (final e in doc.querySelectorAll('a[href],a[onclick],button[onclick],input[onclick]')) {
+      final href = e.attributes['href'] ?? '';
+      final onclick = e.attributes['onclick'] ?? '';
+      final text = _normSpace(e.text);
+      final blob = '$text $href $onclick'.toLowerCase();
+      if (!text.contains('购买主题') && !blob.contains('action=pay') && !blob.contains('buythread') && !blob.contains('buytopic')) continue;
+      if (href.isNotEmpty && !href.startsWith('javascript:')) return _PurchaseTarget.url(_abs(href));
+      final jsUrl = _extractUrlFromJavascript(onclick);
+      if (jsUrl.isNotEmpty) return _PurchaseTarget.url(jsUrl);
     }
     return null;
   }
@@ -320,8 +307,9 @@ class ApiService {
     for (final form in doc.querySelectorAll('form')) {
       final text = _normSpace(form.text);
       final action = form.attributes['action'] ?? '';
-      final blob = '${form.innerHtml} $action $text';
-      final looksPaid = blob.contains('购买主题') || blob.toLowerCase().contains('buythread') || blob.toLowerCase().contains('buytopic') || blob.contains('星币') || blob.contains('threadid') || form.querySelector('input[name="formhash"]') != null;
+      final blob = '${form.innerHtml} $action $text'.toLowerCase();
+      // 不能只凭 formhash 判断，否则会误把回帖表单当成购买表单。
+      final looksPaid = blob.contains('购买主题') || blob.contains('buythread') || blob.contains('buytopic') || blob.contains('action=pay') || blob.contains('付费主题');
       if (!looksPaid) continue;
       final fields = <String, String>{};
       for (final input in form.querySelectorAll('input')) {
@@ -332,6 +320,19 @@ class ApiService {
       return _PurchaseForm(_abs(action.isEmpty ? detailUrl(tid) : action), fields);
     }
     return null;
+  }
+
+  static String _extractUrlFromJavascript(String js) {
+    if (js.isEmpty) return '';
+    final patterns = <RegExp>[
+      RegExp(r'''['"]((?:forum\.php|thread-[^'"]+)[^'"]*)['"]''', caseSensitive: false),
+      RegExp(r'''['"](https?://[^'"]+)['"]''', caseSensitive: false),
+    ];
+    for (final re in patterns) {
+      final m = re.firstMatch(js);
+      if (m != null) return _abs(m.group(1)!);
+    }
+    return '';
   }
 
   bool _isUnlocked(dom.Document doc) {
@@ -391,30 +392,10 @@ class ApiService {
   }
 
   static String? _firstInputValue(dom.Document doc, String name) => doc.querySelector('input[name="$name"]')?.attributes['value']?.trim();
-
   static String _normSpace(String s) => s.replaceAll(RegExp(r'[\uE000-\uF8FF\uFFFD□]'), '').replaceAll(RegExp(r'[ \t\u00A0\u3000]+'), ' ').replaceAll(RegExp(r'\n{2,}'), '\n').trim();
-
-  static int? _firstInt(RegExp re, String s) {
-    final m = re.firstMatch(s);
-    return m == null ? null : int.tryParse(m.group(1)!);
-  }
-
-  static int? _numberAfter(String text, List<String> keys) {
-    for (final key in keys) {
-      final match = RegExp('$key\\s*[:：]?\\s*(\\d+)').firstMatch(text);
-      if (match != null) return int.tryParse(match.group(1)!);
-    }
-    return null;
-  }
-
-  static String? _firstMeta(dom.Document doc, String property) {
-    for (final e in doc.querySelectorAll('meta')) {
-      final key = e.attributes['property'] ?? e.attributes['name'] ?? '';
-      if (key == property) return e.attributes['content'];
-    }
-    return null;
-  }
-
+  static int? _firstInt(RegExp re, String s) { final m = re.firstMatch(s); return m == null ? null : int.tryParse(m.group(1)!); }
+  static int? _numberAfter(String text, List<String> keys) { for (final key in keys) { final match = RegExp('$key\\s*[:：]?\\s*(\\d+)').firstMatch(text); if (match != null) return int.tryParse(match.group(1)!); } return null; }
+  static String? _firstMeta(dom.Document doc, String property) { for (final e in doc.querySelectorAll('meta')) { final key = e.attributes['property'] ?? e.attributes['name'] ?? ''; if (key == property) return e.attributes['content']; } return null; }
   static String _stripTags(String value) => parser.parseFragment(value).text ?? '';
   static bool _navigationTitle(String text) => const {'下一页','上一页','首页','尾页','更多','回复','查看','详情','登录','注册','搜索'}.contains(text);
 }
