@@ -17,7 +17,7 @@ class _ProfilePageState extends State<ProfilePage> {
   bool _ready = false;
 
   static const _loginMessage =
-      '登录后可回帖、发帖、打卡、评分等(原生会话)';
+      '登录后可回帖、发帖、打卡、评分等(网页登录)';
 
   @override
   void initState() {
@@ -82,7 +82,7 @@ class _ProfilePageState extends State<ProfilePage> {
             const ListTile(
               leading: Icon(Icons.info_outline),
               title: Text('说明'),
-              subtitle: Text('本站为「源论坛」民间移动端;发布、回帖等需先登录(原生)'),
+              subtitle: Text('本站为「源论坛」民间移动端;发布、回帖等需先登录(网页)'),
             ),
           const Divider(),
           _sectionHeader(context, '关于'),
@@ -113,7 +113,7 @@ class _ProfilePageState extends State<ProfilePage> {
     return ListTile(
       leading: const CircleAvatar(child: Icon(Icons.person)),
       title: Text(_username ?? '已登录'),
-      subtitle: const Text('已通过原生会话登录'),
+      subtitle: const Text('已通过网页登录'),
     );
   }
 

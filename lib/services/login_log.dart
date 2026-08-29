@@ -4,7 +4,7 @@ import 'package:shared_preferences/shared_preferences.dart';
 
 /// 登录诊断日志。
 ///
-/// 记录原生登录各步骤的结果(HTTP 状态、解析到的令牌、成功标记、异常等),
+/// 记录登录各步骤的结果(HTTP 状态、解析到的令牌、成功标记、异常等),
 /// 并在内存 + 本地持久化,便于登录失败后查看日志定位问题。
 class LoginLog {
   LoginLog._();
