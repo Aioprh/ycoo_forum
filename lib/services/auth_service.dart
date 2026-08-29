@@ -24,6 +24,10 @@ class AuthService {
   static const String _prefUser = 'ycoo.session.username';
   static const String _prefFlag = 'ycoo.session.loggedIn';
 
+  /// 服务端瞬时繁忙(5xx/429)时的最大重试次数与间隔。
+  static const int _maxLoginAttempts = 4;
+  static const Duration _retryDelay = Duration(seconds: 2);
+
   bool _loggedIn = false;
   String? _username;
   String? lastError;
@@ -36,7 +40,14 @@ class AuthService {
   Future<http.Client> _http() async =>
       _client ??= await NetClient.instance.client;
 
-  Map<String, String> _headers() => {'User-Agent': NetClient.ua};
+  Map<String, String> _headers() => {
+        'User-Agent': NetClient.ua,
+        // 补齐浏览器常用请求头,降低被站点 WAF/反爬按"脚本请求"识别的概率。
+        'Accept':
+            'text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8',
+        'Accept-Language': 'zh-CN,zh;q=0.9',
+        'Cache-Control': 'no-cache',
+      };
 
   /// 读取本地保存的登录态(用户名 + 标记)。
   Future<void> init() async {
@@ -80,58 +91,35 @@ class AuthService {
     LoginLog.instance.add('密码长度: ${password.length} 位');
     final client = await _http();
     try {
-      // 弱网/瞬时断连(ERR_CONNECTION_CLOSED)时自动重试;
-      // 传输层失败代表请求未提交,重试整段(取表单 + 提交)是安全的。
-      final body = await NetClient.retry(
-        () async {
-          final formUrl = Uri.parse(base + loginPath);
-          LoginLog.instance.add('GET 登录表单: $formUrl');
-          final formPage = await client
-              .get(formUrl, headers: _headers())
-              .timeout(NetClient.timeout);
-          final page = NetClient.decode(formPage.bodyBytes);
-          LoginLog.instance.add('表单响应 HTTP ${formPage.statusCode}, '
-              '大小 ${page.length} 字符');
-          final formhash = NetClient.first(
-                  RegExp(r'''name="formhash"[^>]*value=['"]?([0-9a-f]{8})'''),
-                  page) ??
-              NetClient.first(
-                  RegExp(r'''formhash\s*=\s*['"]([0-9a-f]{8})'''), page) ??
-              '';
-          final loginHash =
-              NetClient.first(RegExp(r'loginhash=([A-Za-z0-9]+)'), page) ?? '';
-          var referer = NetClient.first(
-                  RegExp(r'''name="referer"[^>]*value=['"]?([^'">]+)'''), page) ??
-              base;
-          referer = referer
-              .replaceAll('&amp;', '&')
-              .replaceAll('&quot;', '"')
-              .trim();
-          LoginLog.instance.add('解析: formhash=${formhash.isEmpty ? '(空)' : formhash}, '
-              'loginhash=${loginHash.isEmpty ? '(空)' : loginHash}');
+      // 轮询尝试:GET 表单 + POST 提交。服务端返回 5xx / 429(瞬时繁忙、
+      // 限流、WAF 兜底)时等待后重试;弱网断连由 _doLoginOnce 内部自动重试。
+      String? body;
+      var status = 0;
+      for (var attempt = 1; attempt <= _maxLoginAttempts; attempt++) {
+        if (attempt > 1) {
+          LoginLog.instance.add('等待 ${_retryDelay.inSeconds}s 后重试(第 $attempt 次)...');
+          await Future<void>.delayed(_retryDelay);
+        }
+        final r =
+            await _doLoginOnce(client, account, password, questionId, answer);
+        status = r.$1;
+        final content = r.$2;
+        if (status == 429 || status >= 500) {
+          // 站点瞬时繁忙/限流:并非账号密码错误,等下一轮用新 formhash 再试。
+          LoginLog.instance.add('登录响应 HTTP $status(瞬时繁忙/限流), '
+              '大小 ${content.length} 字符,稍后重试');
+          continue;
+        }
+        body = content;
+        break;
+      }
 
-          final uri = Uri.parse(
-              '${base}member.php?mod=logging&action=login&loginsubmit=yes'
-              '${loginHash.isEmpty ? '' : '&loginhash=$loginHash'}&mobile=2');
-          LoginLog.instance.add('POST 登录: $uri');
-          final resp = await client
-              .post(uri, headers: _headers(), body: <String, String>{
-            'formhash': formhash,
-            'referer': referer,
-            'fastloginfield': 'username',
-            'cookietime': '31104000',
-            'username': account,
-            'password': password,
-            'questionid': questionId,
-            'answer': answer,
-          }).timeout(NetClient.timeout);
-          final body = NetClient.decode(resp.bodyBytes);
-          LoginLog.instance.add('登录响应 HTTP ${resp.statusCode}, 大小 ${body.length} 字符');
-          return body;
-        },
-        onRetry: (error, attempt) =>
-            LoginLog.instance.add('传输失败,第 $attempt 次重试: $error'),
-      );
+      if (body == null) {
+        lastError = '服务器繁忙,请稍后再试';
+        LoginLog.instance.add('连续 $_maxLoginAttempts 次提交均被服务端以'
+            ' 5xx/429 拒绝,建议稍后再试');
+        return false;
+      }
 
       // Cronet 已自动跟随重定向:登录成功会带着 auth Cookie 进入已登录页。
       var ok = body.contains('action=logout') || body.contains(account.trim());
@@ -153,7 +141,7 @@ class AuthService {
       }
       lastError = _parseLoginError(body);
       LoginLog.instance.add('登录判定: 失败 -> $lastError');
-      LoginLog.instance.add('响应片段: ${_snippet(body)}');
+      LoginLog.instance.add('响应片段(HTTP $status): ${_snippet(body)}');
       return false;
     } on http.ClientException catch (e) {
       LoginLog.instance.add('ClientException: $e');
@@ -164,6 +152,71 @@ class AuthService {
       lastError = '网络请求失败,请检查网络后重试';
       return false;
     }
+  }
+
+  /// 单次"取表单 + 提交密码"的完整登录请求,返回 (HTTP 状态码, 解码正文)。
+  /// 传输层瞬时错误(ERR_CONNECTION_CLOSED / 握手被掐断)在此自动重试;
+  /// 服务端的 5xx/429 则原样返回由 [login] 轮询处理。
+  Future<(int, String)> _doLoginOnce(
+    http.Client client,
+    String account,
+    String password,
+    String questionId,
+    String answer,
+  ) async {
+    final formUrl = Uri.parse(base + loginPath);
+    LoginLog.instance.add('GET 登录表单: $formUrl');
+    final formPage = await NetClient.retry(
+      () => client
+          .get(formUrl, headers: _headers())
+          .timeout(NetClient.timeout),
+      onRetry: (e, a) => LoginLog.instance.add('取表单失败,第 $a 次重试: $e'),
+    );
+    final page = NetClient.decode(formPage.bodyBytes);
+    LoginLog.instance.add('表单响应 HTTP ${formPage.statusCode}, 大小 ${page.length} 字符');
+
+    final formhash = NetClient.first(
+            RegExp(r'''name="formhash"[^>]*value=['"]?([0-9a-f]{8})'''),
+            page) ??
+        NetClient.first(
+            RegExp(r'''formhash\s*=\s*['"]([0-9a-f]{8})'''), page) ??
+        '';
+    final loginHash =
+        NetClient.first(RegExp(r'loginhash=([A-Za-z0-9]+)'), page) ?? '';
+    var referer = NetClient.first(
+            RegExp(r'''name="referer"[^>]*value=['"]?([^'">]+)'''), page) ??
+        base;
+    referer = referer
+        .replaceAll('&amp;', '&')
+        .replaceAll('&quot;', '"')
+        .trim();
+    LoginLog.instance.add('解析: formhash=${formhash.isEmpty ? '(空)' : formhash}, '
+        'loginhash=${loginHash.isEmpty ? '(空)' : loginHash}');
+
+    // GET 与 POST 之间留一小段间隔,降低被站点当作脚本快速注入的概率。
+    await Future<void>.delayed(const Duration(milliseconds: 400));
+
+    final uri = Uri.parse(
+        '${base}member.php?mod=logging&action=login&loginsubmit=yes'
+        '${loginHash.isEmpty ? '' : '&loginhash=$loginHash'}&mobile=2');
+    LoginLog.instance.add('POST 登录: $uri');
+    final headers = _headers()
+      ..['Referer'] = referer
+      ..['Origin'] = base;
+    final resp = await NetClient.retry(
+      () => client.post(uri, headers: headers, body: <String, String>{
+        'formhash': formhash,
+        'referer': referer,
+        'fastloginfield': 'username',
+        'cookietime': '31104000',
+        'username': account,
+        'password': password,
+        'questionid': questionId,
+        'answer': answer,
+      }).timeout(NetClient.timeout),
+      onRetry: (e, a) => LoginLog.instance.add('提交登录失败,第 $a 次重试: $e'),
+    );
+    return (resp.statusCode, NetClient.decode(resp.bodyBytes));
   }
 
   /// 用同一会话再次请求首页,通过是否出现 `action=logout` 判定真实登录态。
