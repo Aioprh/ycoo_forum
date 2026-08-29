@@ -347,7 +347,7 @@ class ApiService {
     return null;
   }
 
-  static String _stripTags(String value) => parser.parseFragment(value).text;
+  static String _stripTags(String value) => parser.parseFragment(value).text ?? '';
   static bool _navigationTitle(String text) => const {'下一页','上一页','首页','尾页','更多','回复','查看','详情','登录','注册','搜索'}.contains(text);
 }
 
