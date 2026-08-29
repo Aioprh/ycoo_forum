@@ -1,0 +1,172 @@
+name: One-time detail fix
+on:
+  push:
+    branches: [main]
+permissions:
+  contents: write
+jobs:
+  fix:
+    if: github.actor != 'github-actions[bot]'
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+      - name: Patch sources
+        run: |
+          python3 <<'PY'
+          from pathlib import Path
+          import re
+
+          p = Path('lib/services/api_service.dart')
+          s = p.read_text()
+
+          new_collect = r'''  static List<String> _collectPosts(dom.Document doc) {
+    final out = <String>[];
+    final containers = doc.querySelectorAll(
+      '.comiis_postli, #postlist .plhin, #postlist .plc, #postlist > div[id^="post_"]',
+    );
+
+    String? extract(dom.Element post) {
+      // 优先使用真正的 postmessage/t_f，避免把付费提示表格当成正文。
+      final selectors = <String>[
+        '[id^="postmessage_"]',
+        '.t_f',
+        '.pcb',
+        '.comiis_postcontent',
+        '.comiis_message',
+        '.message',
+        '.postmessage',
+      ];
+      for (final selector in selectors) {
+        final node = post.querySelector(selector);
+        if (node == null) continue;
+        final html = node.innerHtml.trim();
+        final text = _normSpace(node.text);
+        if (html.isEmpty) continue;
+        if (text.contains('本主题需向作者支付') ||
+            text.contains('购买主题') && text.contains('星币')) continue;
+        return html;
+      }
+      return null;
+    }
+
+    for (final post in containers) {
+      final html = extract(post);
+      if (html == null) continue;
+      final author = _normSpace(post.querySelector('.top_user, .authi .xw1, .authi a')?.text ?? '');
+      final level = _normSpace(post.querySelector('.top_lev, .p_pop')?.text ?? '');
+      final floor = _normSpace(post.querySelector('.f_d.y, .pi .authi em, .pls .authi em')?.text ?? '')
+          .replaceAll(RegExp(r'[^0-9A-Za-z一二三四五六七八九十楼主]'), '');
+      final time = _normSpace(post.querySelector('.kmtime, .comiis_tm, .authi em')?.text ?? '');
+      final displayFloor = floor.isEmpty ? (out.isEmpty ? '楼主' : '${out.length + 1}楼') : floor;
+      out.add(
+        '<div class="post-card"><div class="post-hd"><span class="p-floor">$displayFloor</span>'
+        '${author.isEmpty ? '' : '<b class="p-author">$author</b>'}'
+        '${level.isEmpty ? '' : '<span class="p-level">$level</span>'}</div>'
+        '${time.isEmpty ? '' : '<div class="p-time">$time</div>'}'
+        '<div class="p-body">${_cleanPostHtml(html)}</div></div>',
+      );
+    }
+
+    // 某些移动版页面没有 .comiis_postli，只留下 postmessage_*。
+    if (out.isEmpty) {
+      for (final node in doc.querySelectorAll('[id^="postmessage_"], .t_f, .pcb')) {
+        final html = node.innerHtml.trim();
+        final text = _normSpace(node.text);
+        if (html.isEmpty || text.contains('本主题需向作者支付')) continue;
+        out.add('<div class="post-card"><div class="p-body">${_cleanPostHtml(html)}</div></div>');
+      }
+    }
+    return out;
+  }
+'''
+          s, n = re.subn(r'  static List<String> _collectPosts\(dom\.Document doc\) \{.*?\n  static String _cleanPostHtml', new_collect + '\n  static String _cleanPostHtml', s, count=1, flags=re.S)
+          if n != 1:
+              raise SystemExit('failed to replace _collectPosts')
+
+          p.write_text(s)
+
+          p = Path('lib/pages/detail_page.dart')
+          s = p.read_text()
+          old = '''  Future<void> _fetch() async {
+    if (mounted) {
+      setState(() {
+        _loading = true;
+        _error = null;
+      });
+    }
+    try {
+      final d = await ApiService.instance.fetchThreadDetail(widget.tid);
+      if (!mounted) return;
+      setState(() {
+        _detail = d;
+        _likeCount = d.likeCount;
+        _liked = d.likedByMe;
+        _bodyHeight = 0;
+      });
+      _bodyController = d.bodyHtml.trim().isEmpty ? null : _web(d.bodyHtml);
+      if (_loggedIn) await _loadInteractionState();
+    } catch (e) {
+      if (mounted) setState(() => _error = '$e');
+    } finally {
+      if (mounted) setState(() => _loading = false);
+    }
+  }
+'''
+          new = '''  Future<void> _fetch() async {
+    final hadDetail = _detail != null;
+    if (mounted) {
+      setState(() {
+        // 已有内容时刷新只显示 RefreshIndicator，不再把整个帖子替换成白屏。
+        _loading = !hadDetail;
+        _error = null;
+      });
+    }
+    try {
+      final d = await ApiService.instance.fetchThreadDetail(widget.tid);
+      if (!mounted) return;
+      final oldBody = _detail?.bodyHtml.trim() ?? '';
+      final newBody = d.bodyHtml.trim();
+      final bodyChanged = oldBody != newBody;
+      setState(() {
+        _detail = d;
+        _likeCount = d.likeCount;
+        _liked = d.likedByMe;
+        if (newBody.isEmpty) {
+          _bodyController = null;
+          _bodyHeight = 0;
+        } else if (bodyChanged || _bodyController == null) {
+          _bodyHeight = 0;
+        }
+      });
+      if (newBody.isNotEmpty && (bodyChanged || _bodyController == null)) {
+        _bodyController = _web(newBody);
+      }
+      if (_loggedIn) await _loadInteractionState();
+    } catch (e) {
+      if (mounted) setState(() => _error = '$e');
+    } finally {
+      if (mounted) setState(() => _loading = false);
+    }
+  }
+'''
+          if old not in s:
+              raise SystemExit('failed to find _fetch')
+          s = s.replace(old, new, 1)
+
+          # Avoid a fixed-height forum wrapper making the WebView huge.
+          s = s.replace(
+              "              final raw = await controller.runJavaScriptReturningResult(\n                'Math.max(document.body.scrollHeight,document.documentElement.scrollHeight)',\n              );",
+              "              final raw = await controller.runJavaScriptReturningResult(\n                '''(function(){\n                  document.querySelectorAll('[style]').forEach(function(e){\n                    var st=(e.getAttribute('style')||'').replace(/\\s/g,'').toLowerCase();\n                    if(st.indexOf('100vh')>=0 || st.indexOf('min-height:')>=0 || st.indexOf('height:100%')>=0) e.style.minHeight='0';\n                  });\n                  return Math.max(document.body.scrollHeight,document.documentElement.scrollHeight);\n                })()''',\n              );",
+              1,
+          )
+          p.write_text(s)
+          PY
+
+          git config user.name 'github-actions[bot]'
+          git config user.email '41898282+github-actions[bot]@users.noreply.github.com'
+          git add lib/services/api_service.dart lib/pages/detail_page.dart .github/workflows/one_time_fix_paid_post.yml
+          git rm .github/workflows/one_time_fix_paid_post.yml
+          git commit -m 'fix: render purchased post content and remove blank webview space'
+          git push origin main
