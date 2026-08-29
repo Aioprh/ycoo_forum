@@ -2,28 +2,30 @@ name: Apply native comment list migration
 
 on:
   push:
-    branches: [main]
+    branches:
+      - main
 
 permissions:
   contents: write
 
 jobs:
   migrate:
-    if: ${{ !contains(github.event.head_commit.message, '[native-comments]') }}
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
       - name: Replace comment WebView with native Flutter list
+        shell: bash
         run: |
+          set -e
           python3 - <<'PY'
-          from pathlib import Path
-          p = Path('lib/pages/detail_page.dart')
-          s = p.read_text()
-          s = s.replace("import '../services/thread_interaction_service.dart';", "import '../services/thread_interaction_service.dart';\nimport '../widgets/native_comment_list.dart';")
-          s = s.replace("      _commentsController = d.commentsHtml.trim().isEmpty ? null : _web(d.commentsHtml, true);\n", "      _commentsController = null;\n")
-          start = s.index('  Widget _commentsSection(BuildContext context) {')
-          end = s.index('\n  Widget _webCard(', start)
-          replacement = '''  Widget _commentsSection(BuildContext context) {
+from pathlib import Path
+p = Path('lib/pages/detail_page.dart')
+s = p.read_text()
+s = s.replace("import '../services/thread_interaction_service.dart';", "import '../services/thread_interaction_service.dart';\nimport '../widgets/native_comment_list.dart';")
+s = s.replace("      _commentsController = d.commentsHtml.trim().isEmpty ? null : _web(d.commentsHtml, true);\n", "      _commentsController = null;\n")
+start = s.index('  Widget _commentsSection(BuildContext context) {')
+end = s.index('\n  Widget _webCard(', start)
+replacement = '''  Widget _commentsSection(BuildContext context) {
     final s = Theme.of(context).colorScheme;
     return Container(
       margin: const EdgeInsets.fromLTRB(12, 8, 12, 12),
@@ -58,14 +60,17 @@ jobs:
     );
   }
 '''
-          s = s[:start] + replacement + s[end:]
-          p.write_text(s)
-          PY
+s = s[:start] + replacement + s[end:]
+p.write_text(s)
+PY
           rm -f .github/workflows/apply_native_comments_once.yml
       - name: Commit native comment migration
+        shell: bash
         run: |
+          set -e
           git config user.name github-actions[bot]
           git config user.email 41898282+github-actions[bot]@users.noreply.github.com
           git add lib/pages/detail_page.dart .github/workflows/apply_native_comments_once.yml
-          git diff --cached --quiet || git commit -m "feat: use native Flutter comment floors [native-comments]"
+          if git diff --cached --quiet; then exit 0; fi
+          git commit -m "feat: use native Flutter comment floors"
           git push
