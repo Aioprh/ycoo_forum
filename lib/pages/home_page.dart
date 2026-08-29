@@ -23,9 +23,14 @@ class _HomePageState extends State<HomePage> {
   int _index = 0;
 
   Future<List<ThreadItem>> _load(String view) async {
-    final primary = await ApiService.instance.fetchThreads(ApiService.guideUrl(view));
-    if (primary.isNotEmpty) return primary;
-    return SiteFallbackService.instance.fetchThreads(ApiService.guideUrl(view));
+    final url = ApiService.guideUrl(view);
+    try {
+      final primary = await ApiService.instance.fetchThreads(url);
+      if (primary.isNotEmpty) return primary;
+    } catch (_) {
+      // 站点模板/网络异常时继续走兼容解析器。
+    }
+    return SiteFallbackService.instance.fetchThreads(url);
   }
 
   @override
