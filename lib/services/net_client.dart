@@ -61,6 +61,7 @@ class NetClient {
     Future<T> Function() fn, {
     int times = 3,
     Duration delay = const Duration(milliseconds: 600),
+    void Function(Object error, int attempt)? onRetry,
   }) async {
     Object? last;
     for (var i = 0; i < times; i++) {
@@ -68,6 +69,7 @@ class NetClient {
         return await fn();
       } catch (e) {
         last = e;
+        onRetry?.call(e, i + 1);
         if (i < times - 1) await Future<void>.delayed(delay);
       }
     }
