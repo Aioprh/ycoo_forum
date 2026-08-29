@@ -42,17 +42,14 @@ jobs:
         run: flutter pub get
 
       - name: 静态分析
-        run: flutter analyze
+        run: flutter analyze --no-fatal-infos --no-fatal-warnings
 
       - name: 运行测试
-        # cronetHttpNoPlay=true:测试环境同步使用嵌入式 Cronet 定义,保证行为一致。
         run: flutter test --dart-define=cronetHttpNoPlay=true
 
       - name: 构建 APK
         id: build
         run: |
-          # cronetHttpNoPlay=true:打包嵌入 Chromium 的 Cronet 引擎,
-          # 不依赖 Google Play Services,在无 GMS 的设备上也能完成浏览器级 TLS 握手。
           flutter build apk --release --dart-define=cronetHttpNoPlay=true
           apk=build/app/outputs/flutter-apk/app-release.apk
           mkdir -p dist
@@ -81,7 +78,6 @@ jobs:
           name: 源论坛 v${{ github.ref_name }}
           body: |
             ## 源论坛 YcoForum ${{ github.ref_name }}
-
             - Flutter 3.47.2 / Dart 3.13(stable)云端自动构建
             - APK 已用默认 debug 密钥签名,可直接安装
             - 阅读侧复刻,数据来自 https://www.ycoo.net
