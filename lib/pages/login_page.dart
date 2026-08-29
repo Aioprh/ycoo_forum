@@ -1,8 +1,8 @@
 import 'package:flutter/material.dart';
+import 'package:webview_flutter/webview_flutter.dart';
 
 import '../services/auth_service.dart';
 import '../services/login_log.dart';
-import 'webview_page.dart';
 
 class LoginPage extends StatefulWidget {
   const LoginPage({super.key});
@@ -28,16 +28,8 @@ class _LoginPageState extends State<LoginPage> {
   Future<void> _login() async {
     if (!_formKey.currentState!.validate() || _loading) return;
     FocusScope.of(context).unfocus();
-    setState(() {
-      _loading = true;
-      _error = null;
-    });
-
-    final error = await AuthService.instance.loginNative(
-      _usernameController.text,
-      _passwordController.text,
-    );
-
+    setState(() { _loading = true; _error = null; });
+    final error = await AuthService.instance.loginNative(_usernameController.text, _passwordController.text);
     if (!mounted) return;
     setState(() => _loading = false);
     if (error == null) {
@@ -48,9 +40,7 @@ class _LoginPageState extends State<LoginPage> {
   }
 
   Future<void> _webFallback() async {
-    final ok = await Navigator.of(context).push<bool>(
-      MaterialPageRoute(builder: (_) => const _LegacyLoginPage()),
-    );
+    final ok = await Navigator.of(context).push<bool>(MaterialPageRoute(builder: (_) => const _LegacyLoginPage()));
     if (ok == true && mounted) Navigator.of(context).pop(true);
   }
 
@@ -71,37 +61,22 @@ class _LoginPageState extends State<LoginPage> {
                   crossAxisAlignment: CrossAxisAlignment.stretch,
                   children: [
                     Container(
-                      width: 82,
-                      height: 82,
+                      width: 82, height: 82,
                       margin: const EdgeInsets.only(bottom: 18),
-                      decoration: BoxDecoration(
-                        shape: BoxShape.circle,
-                        color: scheme.primaryContainer,
-                      ),
+                      decoration: BoxDecoration(shape: BoxShape.circle, color: scheme.primaryContainer),
                       child: Icon(Icons.forum_rounded, size: 42, color: scheme.primary),
                     ),
-                    const Text(
-                      '登录源论坛',
-                      textAlign: TextAlign.center,
-                      style: TextStyle(fontSize: 28, fontWeight: FontWeight.w800),
-                    ),
+                    const Text('登录源论坛', textAlign: TextAlign.center, style: TextStyle(fontSize: 28, fontWeight: FontWeight.w800)),
                     const SizedBox(height: 8),
-                    Text(
-                      '原生登录 · 登录后自动同步头像与个人资料',
-                      textAlign: TextAlign.center,
-                      style: TextStyle(color: Colors.grey.shade600),
-                    ),
+                    Text('原生登录 · 登录后自动同步头像与个人资料', textAlign: TextAlign.center, style: TextStyle(color: Colors.grey.shade600)),
                     const SizedBox(height: 30),
                     TextFormField(
                       controller: _usernameController,
                       textInputAction: TextInputAction.next,
                       autofillHints: const [AutofillHints.username],
                       decoration: InputDecoration(
-                        labelText: '用户名',
-                        hintText: '请输入论坛用户名',
-                        prefixIcon: const Icon(Icons.person_outline),
-                        filled: true,
-                        fillColor: scheme.surfaceContainerHighest.withOpacity(.45),
+                        labelText: '用户名', hintText: '请输入论坛用户名', prefixIcon: const Icon(Icons.person_outline),
+                        filled: true, fillColor: scheme.surfaceContainerHighest.withOpacity(.45),
                         border: OutlineInputBorder(borderRadius: BorderRadius.circular(16), borderSide: BorderSide.none),
                       ),
                       validator: (v) => v == null || v.trim().isEmpty ? '请输入用户名' : null,
@@ -114,16 +89,9 @@ class _LoginPageState extends State<LoginPage> {
                       autofillHints: const [AutofillHints.password],
                       onFieldSubmitted: (_) => _login(),
                       decoration: InputDecoration(
-                        labelText: '密码',
-                        hintText: '请输入论坛密码',
-                        prefixIcon: const Icon(Icons.lock_outline),
-                        suffixIcon: IconButton(
-                          tooltip: _obscure ? '显示密码' : '隐藏密码',
-                          icon: Icon(_obscure ? Icons.visibility_outlined : Icons.visibility_off_outlined),
-                          onPressed: () => setState(() => _obscure = !_obscure),
-                        ),
-                        filled: true,
-                        fillColor: scheme.surfaceContainerHighest.withOpacity(.45),
+                        labelText: '密码', hintText: '请输入论坛密码', prefixIcon: const Icon(Icons.lock_outline),
+                        suffixIcon: IconButton(tooltip: _obscure ? '显示密码' : '隐藏密码', icon: Icon(_obscure ? Icons.visibility_outlined : Icons.visibility_off_outlined), onPressed: () => setState(() => _obscure = !_obscure)),
+                        filled: true, fillColor: scheme.surfaceContainerHighest.withOpacity(.45),
                         border: OutlineInputBorder(borderRadius: BorderRadius.circular(16), borderSide: BorderSide.none),
                       ),
                       validator: (v) => v == null || v.isEmpty ? '请输入密码' : null,
@@ -132,18 +100,11 @@ class _LoginPageState extends State<LoginPage> {
                       const SizedBox(height: 14),
                       Container(
                         padding: const EdgeInsets.all(12),
-                        decoration: BoxDecoration(
-                          color: scheme.errorContainer,
-                          borderRadius: BorderRadius.circular(14),
-                        ),
-                        child: Row(
-                          crossAxisAlignment: CrossAxisAlignment.start,
-                          children: [
-                            Icon(Icons.info_outline, color: scheme.onErrorContainer),
-                            const SizedBox(width: 8),
-                            Expanded(child: Text(_error!, style: TextStyle(color: scheme.onErrorContainer))),
-                          ],
-                        ),
+                        decoration: BoxDecoration(color: scheme.errorContainer, borderRadius: BorderRadius.circular(14)),
+                        child: Row(crossAxisAlignment: CrossAxisAlignment.start, children: [
+                          Icon(Icons.info_outline, color: scheme.onErrorContainer), const SizedBox(width: 8),
+                          Expanded(child: Text(_error!, style: TextStyle(color: scheme.onErrorContainer))),
+                        ]),
                       ),
                     ],
                     const SizedBox(height: 22),
@@ -163,11 +124,7 @@ class _LoginPageState extends State<LoginPage> {
                       label: const Text('需要验证码？使用网页验证'),
                     ),
                     const SizedBox(height: 14),
-                    Text(
-                      '登录请求直接发送到源论坛，密码不会保存到应用配置或代码中。',
-                      textAlign: TextAlign.center,
-                      style: TextStyle(fontSize: 12, color: Colors.grey.shade600),
-                    ),
+                    Text('登录请求直接发送到源论坛，密码不会保存到应用配置或代码中。', textAlign: TextAlign.center, style: TextStyle(fontSize: 12, color: Colors.grey.shade600)),
                   ],
                 ),
               ),
@@ -227,8 +184,7 @@ class _LegacyLoginPageState extends State<_LegacyLoginPage> {
     body: Column(children: [
       Expanded(child: WebViewWidget(controller: _controller)),
       Container(
-        width: double.infinity,
-        padding: const EdgeInsets.all(8),
+        width: double.infinity, padding: const EdgeInsets.all(8),
         child: Column(mainAxisSize: MainAxisSize.min, children: [
           Text(_status, textAlign: TextAlign.center, style: Theme.of(context).textTheme.bodySmall),
           const SizedBox(height: 8),
