@@ -1,5 +1,6 @@
 import 'package:flutter/material.dart';
 
+import '../models/thread_item.dart';
 import '../services/api_service.dart';
 import '../services/site_fallback_service.dart';
 import '../widgets/thread_list_view.dart';
