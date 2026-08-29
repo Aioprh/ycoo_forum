@@ -52,8 +52,8 @@ class ApiService {
       final item = _parseThreadItem(li);
       if (item != null) items.add(item);
     }
-    if (items.isEmpty) return _parseGenericThreads(doc);
-    return items;
+    if (items.isNotEmpty) return items;
+    return _parseGenericThreads(doc);
   }
 
   ThreadItem? _parseThreadItem(dom.Element li) {
@@ -86,19 +86,60 @@ class ApiService {
   List<ThreadItem> _parseGenericThreads(dom.Document doc) {
     final result = <ThreadItem>[];
     final seen = <int>{};
-    for (final a in doc.querySelectorAll('a[href]')) {
+    final links = doc.querySelectorAll('a[href]');
+    for (final a in links) {
       final href = a.attributes['href'] ?? '';
-      final match = RegExp(r'(?:thread-|[?&]tid=)(\d+)', caseSensitive: false).firstMatch(href);
+      final match = RegExp(r'(?:thread-|[?&](?:tid|ptid)=)(\d+)', caseSensitive: false).firstMatch(href);
       if (match == null) continue;
       final tid = int.tryParse(match.group(1)!) ?? 0;
-      final title = _normSpace(a.text);
-      if (tid <= 0 || title.length < 2 || !seen.add(tid) || _navigationTitle(title)) continue;
-      final parent = _normSpace(a.parent?.text ?? '');
-      final fid = _firstInt(RegExp(r'(?:forum-|[?&]fid=)(\d+)'), a.parent?.outerHtml ?? '') ?? 0;
-      result.add(ThreadItem(tid: tid, title: title, author: '', avatar: '', fid: fid, boardName: '', level: '', time: '', subtitle: parent == title ? '' : parent.replaceFirst(title, '').trim(), cover: '', likeCount: 0, replyCount: 0, viewCount: 0));
+      if (tid <= 0 || seen.contains(tid)) continue;
+
+      var title = _normSpace(a.text);
+      final root = _threadContainer(a);
+      if (title.length < 2 || _navigationTitle(title)) {
+        title = _normSpace(root?.querySelector('h1, h2, h3, .title, .subject, .mmlist_li_box h2 a')?.text ?? '');
+      }
+      if (title.length < 2 || _navigationTitle(title)) continue;
+
+      final rootText = _normSpace(root?.text ?? '');
+      final fid = _firstInt(RegExp(r'(?:forum-|[?&]fid=)(\d+)'), root?.outerHtml ?? '') ?? 0;
+      final author = _normSpace(root?.querySelector('.top_user, .author, .by, .xw1')?.text ?? '');
+      final time = _normSpace(root?.querySelector('.f_d, .time, time, .kmtime')?.text ?? '');
+      final board = _normSpace(root?.querySelector('.comiis_xznalist_bk a, .forumname, .from')?.text ?? '');
+      final subtitle = rootText.isEmpty || rootText == title ? '' : rootText.replaceFirst(title, '').trim();
+
+      seen.add(tid);
+      result.add(ThreadItem(
+        tid: tid,
+        title: title,
+        author: author,
+        avatar: _abs(root?.querySelector('img')?.attributes['src'] ?? ''),
+        fid: fid,
+        boardName: board,
+        level: _normSpace(root?.querySelector('.top_lev, .level')?.text ?? ''),
+        time: time,
+        subtitle: subtitle.length > 180 ? subtitle.substring(0, 180) : subtitle,
+        cover: _abs(root?.querySelector('img')?.attributes['src'] ?? ''),
+        likeCount: _numberAfter(rootText, ['点赞']) ?? 0,
+        replyCount: _numberAfter(rootText, ['回复', '评论']) ?? 0,
+        viewCount: _numberAfter(rootText, ['浏览', '查看']) ?? 0,
+      ));
       if (result.length >= 50) break;
     }
     return result;
+  }
+
+  static dom.Element? _threadContainer(dom.Element e) {
+    dom.Element? p = e.parent;
+    for (var i = 0; i < 6 && p != null; i++, p = p.parent) {
+      final tag = p.localName ?? '';
+      if (tag == 'li' || tag == 'article' || tag == 'section') return p;
+      if (tag == 'div') {
+        final cls = p.classes.join(' ');
+        if (cls.contains('forumlist') || cls.contains('list') || cls.contains('thread') || cls.contains('post')) return p;
+      }
+    }
+    return e.parent;
   }
 
   static String get boardUrl => '$_base' 'forum.php?forumlist=1&mobile=2';
@@ -207,10 +248,8 @@ class ApiService {
       final source = NetClient.decode(sourceResp.bodyBytes);
       final sourceDoc = parser.parse(source);
       if (_isUnlocked(sourceDoc)) return const PurchaseResult(true, '主题已经购买，正在刷新正文');
-
       final target = await _resolvePurchaseTarget(client, sourceDoc, tid, headers);
       if (target == null) return const PurchaseResult(false, '未找到原站购买入口，请刷新帖子后重试');
-
       dom.Document resultDoc;
       String resultHtml;
       if (target.form != null) {
@@ -236,17 +275,13 @@ class ApiService {
           resultDoc = parser.parse(resultHtml);
         }
       }
-
       final resultText = _normSpace(resultDoc.body?.text ?? resultHtml);
       if (!_looksLikePurchaseSuccess(resultText, resultDoc) && !_isUnlocked(resultDoc)) {
         return PurchaseResult(false, _purchaseFailure(resultText) ?? '购买失败，请检查星币余额或论坛提示');
       }
-
       final refreshed = await client.get(Uri.parse('${detailUrl(tid)}?mobile=2&_ycoo_refresh=${DateTime.now().millisecondsSinceEpoch}'), headers: headers).timeout(_timeout);
       final refreshedDoc = parser.parse(NetClient.decode(refreshed.bodyBytes));
-      if (_isUnlocked(refreshedDoc) && _collectPosts(refreshedDoc).isNotEmpty) {
-        return const PurchaseResult(true, '购买成功，正文已解锁');
-      }
+      if (_isUnlocked(refreshedDoc) && _collectPosts(refreshedDoc).isNotEmpty) return const PurchaseResult(true, '购买成功，正文已解锁');
       return const PurchaseResult(false, '购买已返回成功，但正文刷新仍未解锁，请重新进入帖子确认状态');
     } catch (e) {
       return PurchaseResult(false, '购买请求失败：${e.toString().replaceFirst('Exception: ', '')}');
@@ -317,14 +352,12 @@ class ApiService {
       if (html.isEmpty) continue;
       final author = _normSpace(post.querySelector('.top_user, .authi .xw1, .authi a')?.text ?? '');
       final level = _normSpace(post.querySelector('.top_lev, .p_pop')?.text ?? '');
-      final floor = _normSpace(post.querySelector('.f_d.y, .pi .authi em, .pls .authi em')?.text ?? '')
-          .replaceAll(RegExp(r'[^0-9A-Za-z一二三四五六七八九十楼主]'), '');
+      final floor = _normSpace(post.querySelector('.f_d.y, .pi .authi em, .pls .authi em')?.text ?? '').replaceAll(RegExp(r'[^0-9A-Za-z一二三四五六七八九十楼主]'), '');
       final time = _normSpace(post.querySelector('.kmtime, .comiis_tm, .authi em')?.text ?? '');
       final displayFloor = floor.isEmpty ? (out.isEmpty ? '楼主' : '${out.length + 1}楼') : floor;
       out.add('<div class="post-card"><div class="post-hd"><span class="p-floor">$displayFloor</span>${author.isEmpty ? '' : '<b class="p-author">$author</b>'}${level.isEmpty ? '' : '<span class="p-level">$level</span>'}</div>${time.isEmpty ? '' : '<div class="p-time">$time</div>'}<div class="p-body">${_cleanPostHtml(html)}</div></div>');
     }
     if (out.isNotEmpty) return out;
-
     for (final selector in ['.comiis_message_table', '.t_f', '.pcb', '.postmessage', '[id^="postmessage_"]']) {
       for (final t in doc.querySelectorAll(selector)) {
         final html = t.innerHtml.trim();
@@ -337,25 +370,26 @@ class ApiService {
 
   static String _cleanPostHtml(String html) {
     var value = html;
-    value = value.replaceAll(RegExp(r'<script[\\s\\S]*?</script>', caseSensitive: false), '');
-    value = value.replaceAll(RegExp(r'<style[\\s\\S]*?</style>', caseSensitive: false), '');
+    value = value.replaceAll(RegExp(r'<script[\s\S]*?</script>', caseSensitive: false), '');
+    value = value.replaceAll(RegExp(r'<style[\s\S]*?</style>', caseSensitive: false), '');
     return value.trim();
   }
 
-  static String? _firstInputValue(dom.Document doc, String name) {
-    final input = doc.querySelector('input[name="$name"]');
-    return input?.attributes['value']?.trim();
-  }
+  static String? _firstInputValue(dom.Document doc, String name) => doc.querySelector('input[name="$name"]')?.attributes['value']?.trim();
 
-  static String _normSpace(String s) => s
-      .replaceAll(RegExp(r'[\\uE000-\\uF8FF\\uFFFD□]'), '')
-      .replaceAll(RegExp(r'[ \\t\\u00A0\\u3000]+'), ' ')
-      .replaceAll(RegExp(r'\\n{2,}'), '\\n')
-      .trim();
+  static String _normSpace(String s) => s.replaceAll(RegExp(r'[\uE000-\uF8FF\uFFFD□]'), '').replaceAll(RegExp(r'[ \t\u00A0\u3000]+'), ' ').replaceAll(RegExp(r'\n{2,}'), '\n').trim();
 
   static int? _firstInt(RegExp re, String s) {
     final m = re.firstMatch(s);
     return m == null ? null : int.tryParse(m.group(1)!);
+  }
+
+  static int? _numberAfter(String text, List<String> keys) {
+    for (final key in keys) {
+      final match = RegExp('$key\\s*[:：]?\\s*(\\d+)').firstMatch(text);
+      if (match != null) return int.tryParse(match.group(1)!);
+    }
+    return null;
   }
 
   static String? _firstMeta(dom.Document doc, String property) {
