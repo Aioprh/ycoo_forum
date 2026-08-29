@@ -35,21 +35,19 @@ class _HomePageState extends State<HomePage> {
 
   @override
   Widget build(BuildContext context) {
-    final theme = Theme.of(context);
-    final scheme = theme.colorScheme;
+    final scheme = Theme.of(context).colorScheme;
     final view = _tabs[_index].$2;
 
     return Scaffold(
       backgroundColor: const Color(0xFFF8F7FC),
       body: SafeArea(
-        child: CustomScrollView(
-          slivers: [
-            SliverToBoxAdapter(child: _buildHeader(context, scheme)),
-            SliverToBoxAdapter(child: _buildSearch(context, scheme)),
-            SliverToBoxAdapter(child: _buildSectionHeader(context, scheme)),
-            SliverToBoxAdapter(child: _buildTabs(context, scheme)),
-            SliverFillRemaining(
-              hasScrollBody: true,
+        child: Column(
+          children: [
+            _buildHeader(context, scheme),
+            _buildSearch(context, scheme),
+            _buildSectionHeader(context, scheme),
+            _buildTabs(context, scheme),
+            Expanded(
               child: ThreadListView(
                 key: ValueKey(view),
                 paginate: false,
@@ -112,7 +110,6 @@ class _HomePageState extends State<HomePage> {
       child: Material(
         color: Colors.white,
         borderRadius: BorderRadius.circular(18),
-        elevation: 0,
         child: InkWell(
           borderRadius: BorderRadius.circular(18),
           onTap: () => Navigator.of(context).push(
@@ -153,7 +150,7 @@ class _HomePageState extends State<HomePage> {
             ),
           ),
           const SizedBox(width: 9),
-          const Text('社区动态', style: TextStyle(fontSize: 18, fontWeight: FontWeight.w750)),
+          const Text('社区动态', style: TextStyle(fontSize: 18, fontWeight: FontWeight.w700)),
           const Spacer(),
           Text('实时更新', style: TextStyle(fontSize: 12, color: Colors.grey.shade500)),
         ],
