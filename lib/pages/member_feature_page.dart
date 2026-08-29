@@ -191,7 +191,7 @@ class _CreditView extends StatelessWidget {
           if (summary.records.isEmpty)
             const _InfoCard(icon: Icons.receipt_long_outlined, title: '暂无交易记录', subtitle: '当前页面没有可显示的交易明细')
           else
-            ...summary.records.map((e) => Padding(padding: const EdgeInsets.only(bottom: 8), child: _InfoCard(icon: Icons.receipt_long_outlined, title: e, subtitle: '论坛积分 / 星币信息')),
+            ...summary.records.map((e) => Padding(padding: const EdgeInsets.only(bottom: 8), child: _InfoCard(icon: Icons.receipt_long_outlined, title: e, subtitle: '论坛积分 / 星币信息'))),
         ],
       );
 }
