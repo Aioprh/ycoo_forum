@@ -43,7 +43,7 @@ class ProfileIdentityService {
         String? name;
         final uidPatterns = <RegExp>[
           RegExp(r'(?:uid=|uid%3D|uid/|uid-)' + uid.toString(), caseSensitive: false),
-          RegExp(r"(?:space|member)[^\"']*" + uid.toString(), caseSensitive: false),
+          RegExp(r'(?:space|member).*' + uid.toString(), caseSensitive: false),
         ];
         for (final a in doc.querySelectorAll('a[href]')) {
           final href = a.attributes['href'] ?? '';
@@ -162,7 +162,6 @@ class ProfileIdentityService {
       'X', 'x', '×', '登录', '注册', '退出', '退出登录', '个人主页', '资料',
       '主题', '回帖', '用户名', '昵称', '首页', '搜索', '设置',
     }.contains(v)) return false;
-    // Reject obvious mojibake/placeholders instead of displaying them as a nickname.
     if (v.contains('�') || v.contains('Ã') || v.contains('Â') || v.contains('â')) return false;
     return true;
   }
