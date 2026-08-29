@@ -4,15 +4,10 @@ import '../models/thread_item.dart';
 import '../pages/detail_page.dart';
 import 'thread_card.dart';
 
-/// 帖子列表加载器:按页码抓取一页帖子。
-/// 导读类(不翻页)可忽略 page 参数,恒返回第 1 页。
 typedef ThreadsLoader = Future<List<ThreadItem>> Function(int page);
 
-/// 通用帖子列表:下拉刷新 + 上滑分页(可禁用)。
 class ThreadListView extends StatefulWidget {
   final ThreadsLoader loader;
-
-  /// 是否支持上滑翻页(版块列表用 true,导读单页用 false)。
   final bool paginate;
   final EdgeInsets? padding;
 
@@ -51,7 +46,7 @@ class _ThreadListViewState extends State<ThreadListView> {
 
   void _onScroll() {
     if (widget.paginate &&
-        _scroll.position.pixels >= _scroll.position.maxScrollExtent - 120) {
+        _scroll.position.pixels >= _scroll.position.maxScrollExtent - 160) {
       _loadMore();
     }
   }
@@ -116,13 +111,11 @@ class _ThreadListViewState extends State<ThreadListView> {
       child: ListView.separated(
         controller: _scroll,
         physics: const AlwaysScrollableScrollPhysics(),
-        padding: widget.padding ?? const EdgeInsets.only(bottom: 12),
+        padding: widget.padding ?? const EdgeInsets.fromLTRB(14, 6, 14, 24),
         itemCount: _items.length + 1,
-        separatorBuilder: (_, _) => const Divider(height: 1),
+        separatorBuilder: (_, _) => const SizedBox(height: 10),
         itemBuilder: (context, i) {
-          if (i >= _items.length) {
-            return _footer();
-          }
+          if (i >= _items.length) return _footer();
           final item = _items[i];
           return ThreadCard(item: item, onTap: () => _openDetail(item));
         },
@@ -144,14 +137,9 @@ class _ThreadListViewState extends State<ThreadListView> {
       );
     }
     if (_error != null) {
-      return Padding(
+      return const Padding(
         padding: EdgeInsets.all(14),
-        child: Center(
-          child: GestureDetector(
-            onTap: _loadMore,
-            child: Text('加载失败,点击重试', style: TextStyle(color: Colors.grey)),
-          ),
-        ),
+        child: Center(child: Text('加载失败，点击下拉重试', style: TextStyle(color: Colors.grey))),
       );
     }
     if (_items.isEmpty) {
@@ -181,13 +169,7 @@ class _ErrorView extends StatelessWidget {
           const SizedBox(height: 4),
           Padding(
             padding: const EdgeInsets.symmetric(horizontal: 32),
-            child: Text(
-              error,
-              textAlign: TextAlign.center,
-              maxLines: 3,
-              overflow: TextOverflow.ellipsis,
-              style: TextStyle(fontSize: 12, color: Colors.grey),
-            ),
+            child: Text(error, textAlign: TextAlign.center, maxLines: 3, overflow: TextOverflow.ellipsis, style: const TextStyle(fontSize: 12, color: Colors.grey)),
           ),
           const SizedBox(height: 12),
           FilledButton(onPressed: onRetry, child: const Text('重试')),
