@@ -1,4 +1,4 @@
-/// 帖子详情:原生展示头部信息,正文 HTML 交给 WebView 渲染。
+/// 帖子详情:原生展示头部,正文 HTML 交给 WebView 渲染。
 class ThreadDetail {
   final int tid;
   final String title;
@@ -8,9 +8,15 @@ class ThreadDetail {
   final String time;
   final int fid;
   final String boardName;
-
-  /// 「comiis_message_table」正文的原文 HTML(含 <br>/<img>/<a> 等)。
   final String bodyHtml;
+
+  /// 主题是否存在站点的付费/购买限制。
+  final bool isPaid;
+  /// 解析到的购买价格;未解析到时为 null。
+  final int? price;
+  final String currency;
+  /// 原站购买页面/主题页面,用于在共享 WebView 会话中完成购买。
+  final String purchaseUrl;
 
   const ThreadDetail({
     required this.tid,
@@ -22,5 +28,9 @@ class ThreadDetail {
     required this.fid,
     required this.boardName,
     required this.bodyHtml,
+    this.isPaid = false,
+    this.price,
+    this.currency = '星币',
+    this.purchaseUrl = '',
   });
 }
