@@ -36,8 +36,8 @@ class _NativeSitePageState extends State<NativeSitePage> {
       for(final s in ['#ct','#wp','#ctm','.wp','.mn','main','article','.content','.comiis_main','.comiis_mainbox','.comiis_space','.comiis_spacecp','.comiis_profile','.comiis_setting','.comiis_userbox','.bm_c']) {
         for(final e in doc.querySelectorAll(s)) { final t=_clean(e.text); if(t.length<10) continue; var score=t.length.clamp(0,10000); if(e.querySelector('form,input,textarea,select')!=null) score+=10000; if(score>bestScore){best=e;bestScore=score;} }
       }
-      if(!mounted)return; setState(()=>{_root=best??doc.body??doc.documentElement;_loading=false;});
-    }catch(e){if(mounted)setState(()=>{_error=e.toString().replaceFirst('Exception: ','');_loading=false;});}
+      if(!mounted)return; setState(() { _root=best??doc.body??doc.documentElement; _loading=false; });
+    }catch(e){if(mounted)setState(() { _error=e.toString().replaceFirst('Exception: ',''); _loading=false; });}
   }
 
   TextEditingController _controller(String key,String value){ return _fields.putIfAbsent(key,()=>TextEditingController(text:value)); }
@@ -46,7 +46,7 @@ class _NativeSitePageState extends State<NativeSitePage> {
     final widgets=<Widget>[];
     for(final e in form.querySelectorAll('input')){
       final type=(e.attributes['type']??'text').toLowerCase(); final name=e.attributes['name']??e.attributes['id']; if(name==null||type=='hidden'||type=='submit'||type=='button'||type=='checkbox'||type=='radio') continue;
-      widgets.add(Padding(padding:const EdgeInsets.symmetric(vertical:6),child:TextField(controller:_controller(name,e.attributes['value']??''),obscureText:type=='password',keyboardType:type=='number'?TextInputType.number:TextInputType.text,decoration:InputDecoration(labelText:e.attributes['placeholder']??e.attributes['title']??name,border:const OutlineInputBorder()))));
+      widgets.add(Padding(padding:const EdgeInsets.symmetric(vertical:6),child:TextField(controller:_controller(name,e.attributes['value']??''),obscureText:type=='password',keyboardType:type=='number'?TextInputType.number:TextInputType.text,decoration:InputDecoration(labelText:e.attributes['placeholder']??e.attributes['title']??name,border:const OutlineInputBorder())));
     }
     for(final e in form.querySelectorAll('textarea')){final name=e.attributes['name']??e.attributes['id'];if(name==null)continue;widgets.add(Padding(padding:const EdgeInsets.symmetric(vertical:6),child:TextField(controller:_controller(name,_clean(e.text)),maxLines:5,decoration:InputDecoration(labelText:name,border:const OutlineInputBorder()))));}
     for(final e in form.querySelectorAll('select')){final name=e.attributes['name']??e.attributes['id'];if(name==null)continue;final opts=e.querySelectorAll('option');final initial=e.attributes['value']??(opts.isEmpty ? null : opts.first.attributes['value']);_selectValues.putIfAbsent(name,()=>initial??'');widgets.add(Padding(padding:const EdgeInsets.symmetric(vertical:6),child:DropdownButtonFormField<String>(initialValue:opts.any((o)=>(o.attributes['value']??o.text)==_selectValues[name])?_selectValues[name]:null,decoration:InputDecoration(labelText:name,border:const OutlineInputBorder()),items:opts.map((o)=>DropdownMenuItem(value:o.attributes['value']??o.text,child:Text(_clean(o.text)))).toList(),onChanged:(v){if(v!=null)_selectValues[name]=v;})));}
