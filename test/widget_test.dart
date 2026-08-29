@@ -32,6 +32,10 @@ void main() {
     // 在 binding 初始化后再覆盖,确保 HomePage/社区页的网络请求立即失败。
     HttpOverrides.global = _NoNetOverrides();
     await tester.pumpWidget(const YcoForumApp());
+    // 首页/社区页的请求会失败并进入 NetClient.retry(600ms 延时,共 3 次)。
+    // 推进 fake 时钟把这些重试计时器全部跑完,避免测试结束时
+    // "A Timer is still pending" 报错。
+    await tester.pump(const Duration(seconds: 3));
     await tester.pump();
 
     // 底部导航三大功能区
