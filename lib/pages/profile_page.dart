@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 
 import '../services/auth_service.dart';
+import '../services/checkin_service.dart';
 import '../services/member_service_v2.dart';
 import '../services/profile_identity_service.dart';
 import 'login_page.dart';
@@ -19,7 +20,7 @@ class _ProfilePageState extends State<ProfilePage> {
   int? _uid;
   String? _avatarUrl;
   bool _ready = false;
-  static const _base = 'https://www.ycoo.net/';
+  bool _signing = false;
 
   @override
   void initState() { super.initState(); _load(); }
@@ -51,6 +52,18 @@ class _ProfilePageState extends State<ProfilePage> {
     await AuthService.instance.logout();
     if (!mounted) return;
     setState(() { _username = null; _uid = null; _avatarUrl = null; _ready = true; });
+  }
+
+  Future<void> _checkIn() async {
+    if (_signing) return;
+    setState(() => _signing = true);
+    final result = await CheckinService.instance.sign();
+    if (!mounted) return;
+    setState(() => _signing = false);
+    ScaffoldMessenger.of(context).showSnackBar(SnackBar(
+      content: Text(result),
+      behavior: SnackBarBehavior.floating,
+    ));
   }
 
   void _openNativeSite(String path, String title) {
@@ -131,7 +144,7 @@ class _ProfilePageState extends State<ProfilePage> {
           _sectionHeader(context, '积分、签到与会员'),
           GridView.count(crossAxisCount: 2, shrinkWrap: true, physics: const NeverScrollableScrollPhysics(), mainAxisSpacing: 10, crossAxisSpacing: 10, childAspectRatio: 2.55, children: [
             _featureTile(icon: Icons.account_balance_wallet_outlined, title: '星币 / 积分', subtitle: '余额、积分、交易记录', onTap: () => _openNative(title: '星币 / 积分', path: 'home.php?mod=spacecp&ac=credit&mobile=2', type: MemberFeatureType.credits)),
-            _featureTile(icon: Icons.calendar_today_outlined, title: '每日签到', subtitle: '签到、连续天数、奖励', onTap: () => _openNativeSite('k_misign-sign.html', '每日签到')),
+            _featureTile(icon: Icons.calendar_today_outlined, title: '每日签到', subtitle: _signing ? '正在签到…' : '点击直接签到，自动领取今日奖励', onTap: _checkIn),
             _featureTile(icon: Icons.star_rounded, title: '繁星开通', subtitle: '会员权益与开通', onTap: () => _openNativeSite('plugin.php?id=boan_group', '繁星开通')),
             _featureTile(icon: Icons.card_giftcard_outlined, title: '道具中心', subtitle: '论坛道具', onTap: () => _openNativeSite('home.php?mod=spacecp&ac=plugin&id=thunderplugin:thunder', '道具中心')),
             _featureTile(icon: Icons.task_alt_outlined, title: '任务中心', subtitle: '任务、进度与奖励', onTap: () => _openNativeSite('home.php?mod=task&mobile=2', '任务中心')),
