@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 
 import '../models/board.dart';
 import '../services/api_service.dart';
+import '../services/site_fallback_service.dart';
 import 'thread_list_page.dart';
 
 /// 版块页:分类 → 子版块网格,点击进入帖子列表。
@@ -18,10 +19,20 @@ class _BoardPageState extends State<BoardPage> {
   @override
   void initState() {
     super.initState();
-    _future = ApiService.instance.fetchBoards();
+    _future = _loadBoards();
   }
 
-  void _reload() => setState(() => _future = ApiService.instance.fetchBoards());
+  Future<List<ForumCategory>> _loadBoards() async {
+    try {
+      final primary = await ApiService.instance.fetchBoards();
+      if (primary.isNotEmpty) return primary;
+    } catch (_) {
+      // 模板发生变化时使用稳定 fid 链接兜底。
+    }
+    return SiteFallbackService.instance.fetchBoards();
+  }
+
+  void _reload() => setState(() => _future = _loadBoards());
 
   @override
   Widget build(BuildContext context) {
@@ -50,9 +61,7 @@ class _BoardPageState extends State<BoardPage> {
             onRefresh: () async => _reload(),
             child: ListView(
               padding: const EdgeInsets.only(bottom: 16),
-              children: [
-                for (final cat in cats) _category(context, cat),
-              ],
+              children: [for (final cat in cats) _category(context, cat)],
             ),
           );
         },
@@ -121,8 +130,7 @@ class _BoardPageState extends State<BoardPage> {
                 else
                   CircleAvatar(
                     radius: 18,
-                    backgroundColor:
-                      theme.colorScheme.primary.withValues(alpha: 0.12),
+                    backgroundColor: theme.colorScheme.primary.withValues(alpha: 0.12),
                     child: Icon(Icons.forum_outlined,
                         size: 18, color: theme.colorScheme.primary),
                   ),
@@ -134,8 +142,7 @@ class _BoardPageState extends State<BoardPage> {
                   style: const TextStyle(fontSize: 12.5, fontWeight: FontWeight.w500),
                 ),
                 if (b.today.isNotEmpty)
-                  Text(b.today,
-                      style: TextStyle(fontSize: 10.5, color: Colors.grey)),
+                  Text(b.today, style: const TextStyle(fontSize: 10.5, color: Colors.grey)),
               ],
             ),
           ),
