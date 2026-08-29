@@ -1,0 +1,67 @@
+name: Apply post floor UI
+
+on:
+  push:
+    branches: [ui/post-detail-refresh]
+
+permissions:
+  contents: write
+
+jobs:
+  apply:
+    if: ${{ !contains(github.event.head_commit.message, 'chore: apply redesigned post floor UI') }}
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Patch floor card CSS
+        shell: python
+        run: |
+          from pathlib import Path
+          import re
+
+          path = Path('lib/pages/detail_page.dart')
+          text = path.read_text(encoding='utf-8')
+          old = re.search(r'  \.post-card \{.*?  \.post-card \.p-body \{.*?\n', text, re.S)
+          if not old:
+              raise SystemExit('post-card CSS block not found')
+
+          new = '''  /* ===== 楼层卡片：现代论坛风格 ===== */
+  .post-card { position:relative; background:#fff; border:1px solid #e7e9ef; border-radius:18px; padding:0; margin:13px 0; overflow:hidden; box-shadow:0 3px 14px rgba(28,36,54,.055); }
+  .post-card:first-child { margin-top:0; border-color:#dfe4ff; box-shadow:0 5px 18px rgba(83,109,254,.08); }
+  .post-card:first-child:before { content:'楼主'; position:absolute; right:14px; top:12px; padding:3px 8px; border-radius:8px; background:#edf0ff; color:#536dfe; font-size:10px; font-weight:700; letter-spacing:.3px; }
+  .post-hd { display:flex; align-items:center; gap:9px; padding:13px 14px 11px; background:linear-gradient(180deg,#fafbfe 0%,#fff 100%); border-bottom:1px solid #eef0f4; min-height:54px; }
+  .post-hd:before { content:''; width:28px; height:28px; flex:0 0 28px; border-radius:9px; background:linear-gradient(135deg,#e9edff,#f3f5ff); box-shadow:inset 0 0 0 1px #dfe4ff; }
+  .p-floor { order:-1; color:#536dfe; background:#edf0ff; border:1px solid #dfe4ff; font-size:10.5px; font-weight:700; padding:4px 7px; border-radius:8px; letter-spacing:.1px; }
+  .p-author { font-weight:700; color:#20242d; font-size:14px; max-width:48%; overflow:hidden; text-overflow:ellipsis; white-space:nowrap; }
+  .p-level { color:#596273; font-size:10.5px; background:#f0f2f5; border:1px solid #e5e7eb; padding:3px 7px; border-radius:8px; font-weight:600; }
+  .p-time { color:#969eac; font-size:11px; padding:7px 15px 0; }
+  .post-card .p-body { padding:13px 15px 16px; font-size:15.5px; line-height:1.82; color:#292e38; min-height:28px; }
+  .post-card .p-body > p:last-child { margin-bottom:0; }
+  .post-card .p-body img { box-shadow:0 2px 10px rgba(0,0,0,.06); }
+  .post-card .p-body blockquote { background:#f7f8fc; border-left-color:#9aa7ff; color:#697181; }
+  .post-card .p-body .quote, .post-card .p-body .blockcode { margin:12px 0; padding:11px 13px; border-radius:11px; background:#f6f7f9; }
+  .post-card + .post-card { margin-top:15px; }
+  @media (prefers-color-scheme:dark) {
+    html,body { background:transparent; } body { color:#e6e8ee; } a { color:#9eabff; } strong,b,h1,h2,h3,h4 { color:#f3f4f7; }
+    code { background:#292d35; color:#e9ebf0; } pre { background:#20242b; } blockquote { background:#242833; color:#aeb5c2; border-left-color:#8795ff; }
+    table { border-color:#383d47; } th,td { border-color:#383d47; } th { background:#292e36; }
+    .post-card { background:#1b1e24; border-color:#30353f; box-shadow:0 4px 16px rgba(0,0,0,.22); }
+    .post-card:first-child { border-color:#414a78; box-shadow:0 5px 18px rgba(90,108,220,.14); }
+    .post-card:first-child:before { background:#2b3150; color:#aeb8ff; }
+    .post-hd { background:linear-gradient(180deg,#22262d 0%,#1b1e24 100%); border-bottom-color:#30353f; }
+    .post-hd:before { background:linear-gradient(135deg,#2d3350,#292d3a); box-shadow:inset 0 0 0 1px #3c4468; }
+    .p-floor { background:#2b3150; border-color:#3d4772; color:#b0baff; } .p-author { color:#f0f1f4; } .p-level { background:#292e36; border-color:#3a404b; color:#b7bdc8; } .p-time { color:#858d9b; }
+    .post-card .p-body { color:#d8dbe2; } .post-card .p-body blockquote { background:#242833; color:#aeb5c2; } .post-card .p-body .quote,.post-card .p-body .blockcode { background:#242830; }
+  }
+'''
+          text = text[:old.start()] + new + text[old.end():]
+          path.write_text(text, encoding='utf-8')
+      - name: Commit and remove patch workflow
+        run: |
+          git config user.name github-actions[bot]
+          git config user.email 41898282+github-actions[bot]@users.noreply.github.com
+          git add lib/pages/detail_page.dart .github/workflows/_apply_floor_ui.yml
+          git commit -m 'feat: redesign post floor cards'
+          git rm .github/workflows/_apply_floor_ui.yml
+          git commit -m 'chore: remove one-shot floor UI patcher'
+          git push
