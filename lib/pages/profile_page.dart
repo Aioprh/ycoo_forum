@@ -5,98 +5,78 @@ import 'login_page.dart';
 import 'member_feature_page.dart';
 import 'webview_page.dart';
 
-/// 我的页：会员中心优先使用原生 Flutter 页面；仅保留没有稳定数据接口的站点功能为网页入口。
 class ProfilePage extends StatefulWidget {
   const ProfilePage({super.key});
-
   @override
   State<ProfilePage> createState() => _ProfilePageState();
 }
 
 class _ProfilePageState extends State<ProfilePage> {
   String? _username;
+  int? _uid;
   bool _ready = false;
-
   static const _base = 'https://www.ycoo.net/';
   static const _loginMessage = '登录后可回帖、发帖、打卡、评分、购买主题等';
 
   @override
-  void initState() {
-    super.initState();
-    _load();
-  }
+  void initState() { super.initState(); _load(); }
 
   Future<void> _load() async {
     await AuthService.instance.init();
     if (!mounted) return;
     setState(() {
       _username = AuthService.instance.username;
+      _uid = AuthService.instance.uid;
       _ready = true;
     });
   }
 
   Future<void> _openLogin() async {
-    final ok = await Navigator.of(context).push<bool>(
-      MaterialPageRoute(builder: (_) => const LoginPage()),
-    );
+    final ok = await Navigator.of(context).push<bool>(MaterialPageRoute(builder: (_) => const LoginPage()));
     if (ok == true) await _load();
   }
 
   Future<void> _logout() async {
     await AuthService.instance.logout();
     if (!mounted) return;
-    setState(() {
-      _username = null;
-      _ready = true;
-    });
+    setState(() { _username = null; _uid = null; _ready = true; });
   }
 
   void _openSite(String path, String title) {
-    Navigator.of(context).push(MaterialPageRoute(
-      builder: (_) => WebViewPage(url: '$_base$path', title: title),
-    ));
+    Navigator.of(context).push(MaterialPageRoute(builder: (_) => WebViewPage(url: '$_base$path', title: title)));
   }
 
   void _openNative({required String title, required String path, required MemberFeatureType type}) {
-    Navigator.of(context).push(MaterialPageRoute(
-      builder: (_) => MemberFeaturePage(title: title, path: path, type: type),
-    ));
+    Navigator.of(context).push(MaterialPageRoute(builder: (_) => MemberFeaturePage(title: title, path: path, type: type)));
   }
 
   void _openMySpace() {
-    final name = Uri.encodeQueryComponent(_username ?? '');
-    _openSite('home.php?mod=space&username=$name&mobile=2', '个人主页');
+    final url = _uid != null && _uid! > 0
+        ? '${_base}home.php?mod=space&uid=$_uid&mobile=2'
+        : '${_base}home.php?mod=space&username=${Uri.encodeQueryComponent(_username ?? '')}&mobile=2';
+    _openSite(url.replaceFirst(_base, ''), '个人主页');
   }
 
   Widget _sectionHeader(BuildContext context, String text) => Padding(
-        padding: const EdgeInsets.fromLTRB(16, 18, 16, 8),
-        child: Text(text, style: TextStyle(fontSize: 14, color: Theme.of(context).colorScheme.primary, fontWeight: FontWeight.w700)),
-      );
+    padding: const EdgeInsets.fromLTRB(16, 18, 16, 8),
+    child: Text(text, style: TextStyle(fontSize: 14, color: Theme.of(context).colorScheme.primary, fontWeight: FontWeight.w700)),
+  );
 
   Widget _featureTile({required IconData icon, required String title, required String subtitle, required VoidCallback onTap}) => Card(
-        margin: EdgeInsets.zero,
-        child: InkWell(
-          borderRadius: BorderRadius.circular(16),
-          onTap: onTap,
-          child: Padding(
-            padding: const EdgeInsets.all(14),
-            child: Row(children: [
-              CircleAvatar(
-                radius: 22,
-                backgroundColor: Theme.of(context).colorScheme.primaryContainer,
-                child: Icon(icon),
-              ),
-              const SizedBox(width: 12),
-              Expanded(child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
-                Text(title, style: const TextStyle(fontSize: 15, fontWeight: FontWeight.w600)),
-                const SizedBox(height: 3),
-                Text(subtitle, style: TextStyle(fontSize: 12, color: Colors.grey.shade600)),
-              ])),
-              const Icon(Icons.chevron_right),
-            ]),
-          ),
-        ),
-      );
+    margin: EdgeInsets.zero,
+    child: InkWell(
+      borderRadius: BorderRadius.circular(16), onTap: onTap,
+      child: Padding(padding: const EdgeInsets.all(14), child: Row(children: [
+        CircleAvatar(radius: 22, backgroundColor: Theme.of(context).colorScheme.primaryContainer, child: Icon(icon)),
+        const SizedBox(width: 12),
+        Expanded(child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
+          Text(title, style: const TextStyle(fontSize: 15, fontWeight: FontWeight.w600)),
+          const SizedBox(height: 3), Text(subtitle, style: TextStyle(fontSize: 12, color: Colors.grey.shade600)),
+        ])),
+        const Icon(Icons.chevron_right),
+      ]),),
+    ),
+  );
 
   @override
   Widget build(BuildContext context) {
@@ -107,61 +87,37 @@ class _ProfilePageState extends State<ProfilePage> {
         padding: const EdgeInsets.fromLTRB(12, 4, 12, 24),
         children: [
           _sectionHeader(context, '帐号'),
-          Card(
-            margin: EdgeInsets.zero,
-            child: InkWell(
-              borderRadius: BorderRadius.circular(16),
-              onTap: loggedIn ? _openMySpace : (_ready ? _openLogin : null),
-              child: Padding(
-                padding: const EdgeInsets.all(16),
-                child: Row(children: [
-                  CircleAvatar(radius: 28, child: Icon(loggedIn ? Icons.person : Icons.login, size: 30)),
-                  const SizedBox(width: 14),
-                  Expanded(child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
-                    Text(loggedIn ? _username! : '登录 / 注册', style: const TextStyle(fontSize: 18, fontWeight: FontWeight.w700)),
-                    const SizedBox(height: 4),
-                    Text(loggedIn ? '个人主页 · 资料 · 主题 · 回帖' : _loginMessage),
-                  ])),
-                  const Icon(Icons.chevron_right),
-                ]),
-              ),
-            ),
-          ),
+          Card(margin: EdgeInsets.zero, child: InkWell(
+            borderRadius: BorderRadius.circular(16), onTap: loggedIn ? _openMySpace : (_ready ? _openLogin : null),
+            child: Padding(padding: const EdgeInsets.all(16), child: Row(children: [
+              CircleAvatar(radius: 28, child: Icon(loggedIn ? Icons.person : Icons.login, size: 30)),
+              const SizedBox(width: 14),
+              Expanded(child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
+                Text(loggedIn ? _username! : '登录 / 注册', style: const TextStyle(fontSize: 18, fontWeight: FontWeight.w700)),
+                const SizedBox(height: 4), Text(loggedIn ? '个人主页 · 资料 · 主题 · 回帖' : _loginMessage),
+              ])),
+              const Icon(Icons.chevron_right),
+            ])),
+          )),
           if (loggedIn) ...[
             _sectionHeader(context, '我的社区'),
-            GridView.count(
-              crossAxisCount: 2,
-              shrinkWrap: true,
-              physics: const NeverScrollableScrollPhysics(),
-              mainAxisSpacing: 10,
-              crossAxisSpacing: 10,
-              childAspectRatio: 2.55,
-              children: [
-                _featureTile(icon: Icons.article_outlined, title: '我的主题', subtitle: '原生帖子列表', onTap: () => _openNative(title: '我的主题', path: 'home.php?mod=space&do=thread&view=me&mobile=2', type: MemberFeatureType.threads)),
-                _featureTile(icon: Icons.forum_outlined, title: '我的回帖', subtitle: '原生回复列表', onTap: () => _openNative(title: '我的回帖', path: 'home.php?mod=space&do=thread&view=me&type=reply&mobile=2', type: MemberFeatureType.replies)),
-                _featureTile(icon: Icons.bookmark_border, title: '我的收藏', subtitle: '原生收藏列表', onTap: () => _openNative(title: '我的收藏', path: 'home.php?mod=space&do=favorite&view=me&mobile=2', type: MemberFeatureType.favorites)),
-                _featureTile(icon: Icons.notifications_none, title: '通知', subtitle: '原生通知列表', onTap: () => _openNative(title: '通知', path: 'home.php?mod=space&do=notice&mobile=2', type: MemberFeatureType.notices)),
-                _featureTile(icon: Icons.mail_outline, title: '消息', subtitle: '站内私信', onTap: () => _openSite('home.php?mod=space&do=pm&mobile=2', '消息')),
-                _featureTile(icon: Icons.people_outline, title: '好友 / 关注', subtitle: '好友、关注与粉丝', onTap: () => _openSite('home.php?mod=space&do=friend&mobile=2', '好友 / 关注')),
-              ],
-            ),
+            GridView.count(crossAxisCount: 2, shrinkWrap: true, physics: const NeverScrollableScrollPhysics(), mainAxisSpacing: 10, crossAxisSpacing: 10, childAspectRatio: 2.55, children: [
+              _featureTile(icon: Icons.article_outlined, title: '我的主题', subtitle: '原生帖子列表', onTap: () => _openNative(title: '我的主题', path: 'home.php?mod=space&do=thread&view=me&mobile=2', type: MemberFeatureType.threads)),
+              _featureTile(icon: Icons.forum_outlined, title: '我的回帖', subtitle: '原生回复列表', onTap: () => _openNative(title: '我的回帖', path: 'home.php?mod=space&do=thread&view=me&type=reply&mobile=2', type: MemberFeatureType.replies)),
+              _featureTile(icon: Icons.bookmark_border, title: '我的收藏', subtitle: '原生收藏列表', onTap: () => _openNative(title: '我的收藏', path: 'home.php?mod=space&do=favorite&view=me&mobile=2', type: MemberFeatureType.favorites)),
+              _featureTile(icon: Icons.notifications_none, title: '通知', subtitle: '原生通知列表', onTap: () => _openNative(title: '通知', path: 'home.php?mod=space&do=notice&mobile=2', type: MemberFeatureType.notices)),
+              _featureTile(icon: Icons.mail_outline, title: '消息', subtitle: '站内私信', onTap: () => _openSite('home.php?mod=space&do=pm&mobile=2', '消息')),
+              _featureTile(icon: Icons.people_outline, title: '好友 / 关注', subtitle: '好友、关注与粉丝', onTap: () => _openSite('home.php?mod=space&do=friend&mobile=2', '好友 / 关注')),
+            ]),
             _sectionHeader(context, '积分与活动'),
-            GridView.count(
-              crossAxisCount: 2,
-              shrinkWrap: true,
-              physics: const NeverScrollableScrollPhysics(),
-              mainAxisSpacing: 10,
-              crossAxisSpacing: 10,
-              childAspectRatio: 2.55,
-              children: [
-                _featureTile(icon: Icons.account_balance_wallet_outlined, title: '星币 / 积分', subtitle: '原生余额与交易信息', onTap: () => _openNative(title: '星币 / 积分', path: 'home.php?mod=spacecp&ac=credit&mobile=2', type: MemberFeatureType.credits)),
-                _featureTile(icon: Icons.calendar_today_outlined, title: '每日签到', subtitle: '签到、连续天数、奖励', onTap: () => _openSite('k_misign-sign.html', '每日签到')),
-                _featureTile(icon: Icons.casino_outlined, title: '幸运抽奖', subtitle: '参与站点抽奖活动', onTap: () => _openSite('plugin.php?id=viewui_lottery', '幸运抽奖')),
-                _featureTile(icon: Icons.agriculture_outlined, title: '明日农场', subtitle: '站点农场活动', onTap: () => _openSite('plugin.php?id=jnfarm', '明日农场')),
-                _featureTile(icon: Icons.confirmation_number_outlined, title: '邀请码', subtitle: '购买或管理邀请码', onTap: () => _openSite('plugin.php?frame=yes&id=boan_buycode&mobile=2', '邀请码')),
-                _featureTile(icon: Icons.star_outline, title: '繁星达人', subtitle: '达人与会员榜单', onTap: () => _openSite('plugin.php?frame=yes&id=boan_group', '繁星达人')),
-              ],
-            ),
+            GridView.count(crossAxisCount: 2, shrinkWrap: true, physics: const NeverScrollableScrollPhysics(), mainAxisSpacing: 10, crossAxisSpacing: 10, childAspectRatio: 2.55, children: [
+              _featureTile(icon: Icons.account_balance_wallet_outlined, title: '星币 / 积分', subtitle: '原生余额与交易信息', onTap: () => _openNative(title: '星币 / 积分', path: 'home.php?mod=spacecp&ac=credit&mobile=2', type: MemberFeatureType.credits)),
+              _featureTile(icon: Icons.calendar_today_outlined, title: '每日签到', subtitle: '签到、连续天数、奖励', onTap: () => _openSite('k_misign-sign.html', '每日签到')),
+              _featureTile(icon: Icons.casino_outlined, title: '幸运抽奖', subtitle: '参与站点抽奖活动', onTap: () => _openSite('plugin.php?id=viewui_lottery', '幸运抽奖')),
+              _featureTile(icon: Icons.agriculture_outlined, title: '明日农场', subtitle: '站点农场活动', onTap: () => _openSite('plugin.php?id=jnfarm', '明日农场')),
+              _featureTile(icon: Icons.confirmation_number_outlined, title: '邀请码', subtitle: '购买或管理邀请码', onTap: () => _openSite('plugin.php?frame=yes&id=boan_buycode&mobile=2', '邀请码')),
+              _featureTile(icon: Icons.star_outline, title: '繁星达人', subtitle: '达人与会员榜单', onTap: () => _openSite('plugin.php?frame=yes&id=boan_group', '繁星达人')),
+            ]),
             _sectionHeader(context, '会员服务'),
             _featureTile(icon: Icons.add_card, title: '源币充值', subtitle: '充值星币 / 查看充值服务', onTap: () => _openSite('home.php?ac=plugin&id=boan_buycredit:buycredit&mod=spacecp&op=credit', '源币充值')),
             const SizedBox(height: 10),
