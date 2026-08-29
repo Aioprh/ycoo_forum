@@ -45,12 +45,15 @@ jobs:
         run: flutter analyze
 
       - name: 运行测试
-        run: flutter test
+        # cronetHttpNoPlay=true:测试环境同步使用嵌入式 Cronet 定义,保证行为一致。
+        run: flutter test --dart-define=cronetHttpNoPlay=true
 
       - name: 构建 APK
         id: build
         run: |
-          flutter build apk --release
+          # cronetHttpNoPlay=true:打包嵌入 Chromium 的 Cronet 引擎,
+          # 不依赖 Google Play Services,在无 GMS 的设备上也能完成浏览器级 TLS 握手。
+          flutter build apk --release --dart-define=cronetHttpNoPlay=true
           apk=build/app/outputs/flutter-apk/app-release.apk
           mkdir -p dist
           cp "$apk" dist/ycooforum.apk

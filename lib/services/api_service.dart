@@ -1,12 +1,10 @@
-import 'dart:convert';
-
-import 'package:http/http.dart' as http;
 import 'package:html/dom.dart' as dom;
 import 'package:html/parser.dart' as parser;
 
 import '../models/board.dart';
 import '../models/thread_detail.dart';
 import '../models/thread_item.dart';
+import 'net_client.dart';
 
 /// 源论坛(https://www.ycoo.net)移动端数据抓取与解析。
 /// 站点为 Discuz!X + comiis 手机模板,本层只做「阅读侧」的只读抓取。
@@ -15,8 +13,6 @@ class ApiService {
   static final ApiService instance = ApiService._();
 
   static const String _base = 'https://www.ycoo.net/';
-  static const String _defaultUa =
-      'Mozilla/5.0 (Linux; Android 10) YcoForum/1.0';
 
   static const Duration _timeout = Duration(seconds: 20);
 
@@ -28,18 +24,15 @@ class ApiService {
   }
 
   Future<String> _get(String url, {Map<String, String>? query}) async {
+    final client = await NetClient.instance.client;
     final uri = Uri.parse(url).replace(queryParameters: query);
-    final resp = await http
-        .get(uri, headers: {'User-Agent': _defaultUa})
+    final resp = await client
+        .get(uri, headers: {'User-Agent': NetClient.ua})
         .timeout(_timeout);
     if (resp.statusCode != 200) {
       throw Exception('请求失败 HTTP ${resp.statusCode}');
     }
-    return _decode(resp.bodyBytes);
-  }
-
-  String _decode(List<int> bodyBytes) {
-    return utf8.decode(bodyBytes, allowMalformed: true);
+    return NetClient.decode(resp.bodyBytes);
   }
 
   // ------------------------------------------------------------------

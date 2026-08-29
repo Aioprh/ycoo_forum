@@ -1,15 +1,16 @@
 import 'dart:async';
-import 'dart:convert';
-import 'dart:io';
 
+import 'package:http/http.dart' as http;
 import 'package:shared_preferences/shared_preferences.dart';
 
-/// 原生登录 / 会话服务。
+import 'net_client.dart';
+
+/// 原生登录 / 会话服务(基于 Cronet 浏览器内核)。
 ///
-/// 用一个保持 Cookie 的 [HttpClient] 与 Discuz!X 站点交互:
-/// 先 GET 登录页取 `formhash` 与 `loginhash`,再 POST 登录接口;
-/// 登录成功会下发 `<cookiepre>auth` Cookie,据此判断并持久化会话。
-/// 登录态保存在 SharedPreferences,冷启动后自动恢复。
+/// 会话 Cookie 与重定向由 Cronet 自动维护(Discuz 登录后下发的 `auth` Cookie
+/// 保存在共享引擎内),因此登录成功后无需再手动携带 Cookie 即可回帖。
+/// 登录态的用户名与标记额外持久化到本地,用于界面展示;真实会话由 Cronet
+/// 在引擎生命周期内维持,冷启动后可调用 [checkLoggedIn] 联网核验。
 class AuthService {
   AuthService._();
   static final AuthService instance = AuthService._();
@@ -19,65 +20,53 @@ class AuthService {
       'member.php?mod=logging&action=login&mobile=2';
   static const String logoutPath =
       'member.php?mod=logging&action=logout&mobile=2';
-  static const String _ua =
-      'Mozilla/5.0 (Linux; Android 10) YcoForum/1.0';
-  static const String _prefKey = 'ycoo.session.cookies.v1';
+  static const String _prefUser = 'ycoo.session.username';
+  static const String _prefFlag = 'ycoo.session.loggedIn';
 
-  final HttpClient _io = HttpClient()..autoUncompress = true;
-
-  final Map<String, String> _cookies = {};
-  String _cookiepre = 'YPSa_2132_';
-  bool _ready = false;
   bool _loggedIn = false;
-
-  /// 最近一次登录失败的具体原因(中文),供界面展示并避免笼统的"密码错误"。
+  String? _username;
   String? lastError;
 
-  /// 会话中是否持有 auth Cookie(视为已登录)。
+  http.Client? _client;
+
   bool get isLoggedIn => _loggedIn;
+  String? get username => _username;
 
-  /// 已登录用户名(来自会话 Cookie,可能为空)。
-  String? get username => _cookies['${_cookiepre}username'];
+  Future<http.Client> _http() async =>
+      _client ??= await NetClient.instance.client;
 
-  /// 组装当前会话的 Cookie 请求头,供其它需登录的请求复用。
-  String get sessionCookie => _cookieHeader();
+  Map<String, String> _headers() => {'User-Agent': NetClient.ua};
 
-  /// Cookie 前缀,如 `YPSa_2132_`,供拼接 auth/username 等键。
-  String get cookiepre => _cookiepre;
-
-  /// 加载本地保存的会话。可重复调用;失败时降级为未登录。
+  /// 读取本地保存的登录态(用户名 + 标记)。
   Future<void> init() async {
-    if (_ready) return;
     try {
       final sp = await SharedPreferences.getInstance();
-      final raw = sp.getString(_prefKey);
-      if (raw != null && raw.isNotEmpty) {
-        final m = jsonDecode(raw) as Map<String, dynamic>;
-        _cookies.clear();
-        m.forEach((k, v) {
-          if (v is String && v.isNotEmpty) _cookies[k] = v;
-        });
-        // 根据保存的 `xxxusername` 键反推 cookie 前缀。
-        String? cp;
-        for (final k in _cookies.keys) {
-          if (k.endsWith('username')) {
-            cp = k.substring(0, k.length - 'username'.length);
-            break;
-          }
-        }
-        if (cp != null && cp.isNotEmpty) _cookiepre = cp;
-        _loggedIn = _hasAuth();
-      }
-    } catch (_) {
-      _cookies.clear();
-      _loggedIn = false;
-    }
-    _ready = true;
+      _username = sp.getString(_prefUser);
+      _loggedIn = sp.getBool(_prefFlag) ?? false;
+    } catch (_) {}
   }
 
-  /// 原生登录。成功返回 true,并持久化会话;失败返回 false。
-  ///
-  /// 失败时不抛出异常,而是把具体原因(中文)写入 [lastError],由界面展示。
+  /// 联网核验当前会话是否仍为登录态,并据此修正本地状态。
+  Future<bool> checkLoggedIn() async {
+    try {
+      final client = await _http();
+      final resp = await client
+          .get(Uri.parse('${base}forum.php?mobile=2'), headers: _headers())
+          .timeout(NetClient.timeout);
+      final body = NetClient.decode(resp.bodyBytes);
+      final ok = body.contains('action=logout');
+      if (_loggedIn != ok) {
+        _loggedIn = ok;
+        if (!ok) _username = null;
+        await _save();
+      }
+      return _loggedIn;
+    } catch (_) {
+      return _loggedIn;
+    }
+  }
+
+  /// 原生登录。成功返回 true 并持久化会话;失败返回 false,原因写入 [lastError]。
   Future<bool> login(
     String account,
     String password, {
@@ -85,230 +74,113 @@ class AuthService {
     String answer = '',
   }) async {
     lastError = null;
-    await init();
-
-    final String page;
+    final client = await _http();
     try {
-      page = await _request('GET', loginPath);
+      final formPage = await client
+          .get(Uri.parse(base + loginPath), headers: _headers())
+          .timeout(NetClient.timeout);
+      final page = NetClient.decode(formPage.bodyBytes);
+      final formhash = NetClient.first(
+              RegExp(r'''name="formhash"[^>]*value=['"]?([0-9a-f]{8})'''),
+              page) ??
+          NetClient.first(
+              RegExp(r'''formhash\s*=\s*['"]([0-9a-f]{8})'''), page) ??
+          '';
+      final loginHash =
+          NetClient.first(RegExp(r'loginhash=([A-Za-z0-9]+)'), page) ?? '';
+      var referer = NetClient.first(
+              RegExp(r'''name="referer"[^>]*value=['"]?([^'">]+)'''), page) ??
+          base;
+      referer = referer
+          .replaceAll('&amp;', '&')
+          .replaceAll('&quot;', '"')
+          .trim();
+
+      final uri = Uri.parse(
+          '${base}member.php?mod=logging&action=login&loginsubmit=yes'
+          '${loginHash.isEmpty ? '' : '&loginhash=$loginHash'}&mobile=2');
+      final resp = await client
+          .post(uri, headers: _headers(), body: <String, String>{
+        'formhash': formhash,
+        'referer': referer,
+        'fastloginfield': 'username',
+        'cookietime': '31104000',
+        'username': account,
+        'password': password,
+        'questionid': questionId,
+        'answer': answer,
+      }).timeout(NetClient.timeout);
+      final body = NetClient.decode(resp.bodyBytes);
+
+      // Cronet 已自动跟随重定向:登录成功会带着 auth Cookie 进入已登录页。
+      final ok = body.contains('action=logout') || body.contains(account.trim());
+      if (ok) {
+        _loggedIn = true;
+        _username = account.trim();
+        await _save();
+        return true;
+      }
+      lastError = _parseLoginError(body);
+      return false;
     } catch (e) {
-      lastError = _friendlyNetwork(e);
+      lastError = '网络请求失败,请检查网络后重试';
       return false;
     }
-    if (page.isEmpty) {
-      lastError = '登录页加载失败,请稍后重试';
-      return false;
-    }
-
-    final formhash =
-        _first(RegExp(r'''name="formhash"[^>]*value=['"]?([0-9a-f]{8})'''),
-            page) ??
-        _first(RegExp(r'''formhash\s*=\s*['"]?([0-9a-f]{8})'''), page) ??
-        '';
-    final loginhash =
-        _first(RegExp(r'loginhash=([A-Za-z0-9]+)'), page) ?? '';
-    final cookiepre = _first(RegExp(r'''cookiepre\s*=\s*['"]([^'"]+)'''), page);
-    if (cookiepre != null && cookiepre.isNotEmpty) _cookiepre = cookiepre;
-
-    var referer = _first(
-            RegExp(r'''name="referer"[^>]*value=['"]?([^'">]+)'''), page) ??
-        base;
-    referer = referer
-        .replaceAll('&amp;', '&')
-        .replaceAll('&quot;', '"')
-        .trim();
-
-    final suffix = StringBuffer('member.php?mod=logging&action=login'
-        '&loginsubmit=yes');
-    if (loginhash.isNotEmpty) suffix.write('&loginhash=$loginhash');
-    suffix.write('&mobile=2');
-
-    // 该移动端模板以明文提交密码(mobile 登录),无需 md5。
-    final String postBody;
-    try {
-      postBody = await _request(
-        'POST',
-        suffix.toString(),
-        form: {
-          'formhash': formhash,
-          'referer': referer,
-          'fastloginfield': 'username',
-          'cookietime': '31104000',
-          'username': account,
-          'password': password,
-          'questionid': questionId,
-          'answer': answer,
-        },
-      );
-    } catch (e) {
-      lastError = _friendlyNetwork(e);
-      return false;
-    }
-
-    _loggedIn = _hasAuth();
-    if (_loggedIn) {
-      if (account.isNotEmpty) _cookies['${_cookiepre}username'] = account;
-      await _save();
-      return true;
-    }
-    // 登录未成功:解析服务端真实提示,避免笼统的"用户名或密码错误"。
-    lastError = _parseLoginError(postBody);
-    return false;
   }
 
-  /// 原生回帖。成功返回 null;失败返回提示文本(中文)。
-  ///
-  /// 先带会话抓取详情页取得 `formhash`/`noticeauthor`,再 POST 到
-  /// Discuz 移动端回帖接口。成功时会收到一个含 `pid=` 的 3xx 重定向。
-  Future<String?> reply(int tid, int fid, String message) async {
-    final text = message.trim();
-    if (text.isEmpty) return '回帖内容不能为空';
-    String page;
-    try {
-      page = await _request('GET', 'thread-$tid-1-1.html',
-          timeout: const Duration(seconds: 15));
-    } catch (e) {
-      return '获取回帖表单失败:$e';
-    }
-    final formhash = _first(
-          RegExp(r'''name="formhash"[^>]*value=["\x27]?([0-9a-f]{8})'''),
-          page) ??
-        '';
-    final noticeauthor = _first(
-            RegExp(r'''name="noticeauthor"[^>]*value=["\x27]?([^" \x27>]*)'''),
-            page) ??
-        '';
-    if (formhash.isEmpty) {
-      return '未取得回帖令牌(formhash),可能版本页或需刷新';
-    }
-    final url = Uri.parse(
-        '${base}forum.php?mod=post&action=reply').replace(queryParameters: {
-      'fid': '$fid',
-      'tid': '$tid',
-      'extra': 'page%3D1',
-      'replysubmit': 'yes',
-      'mobile': '2',
-    });
-    final location = await _postReply(url.toString(), {
-      'formhash': formhash,
-      'noticeauthor': noticeauthor,
-      'message': text,
-      'replysubmit': '回复',
-      'listextra': 'page%3D1',
-    });
-    if (location != null && location.contains('pid=')) return null; // 成功
-    if (location != null) return '提交后未确认成功,请稍后在网页端查看';
-    return '回帖失败,请重试';
-  }
-
-  /// 登出:尽力请求站点登出,并清空本地会话。
+  /// 登出:尽力请求站点登出,并清空本地登录态。
   Future<void> logout() async {
-    if (_ready == false) return;
     try {
-      await _request('GET', logoutPath, timeout: const Duration(seconds: 8));
+      final client = await _http();
+      await client
+          .get(Uri.parse(base + logoutPath), headers: _headers())
+          .timeout(const Duration(seconds: 8));
     } catch (_) {
       // 忽略网络失败,本地仍然登出。
     }
-    _cookies.clear();
     _loggedIn = false;
-    _ready = true;
+    _username = null;
     await _save();
   }
 
-  // ------------------------------------------------------------------
-  // Cookie 化的 HTTP 请求(不自动跟随重定向,便于抓取 set-cookie)
-  // ------------------------------------------------------------------
+  /// 原生回帖。成功返回 null;失败返回提示文本(中文)。
+  Future<String?> reply(int tid, int fid, String message) async {
+    final text = message.trim();
+    if (text.isEmpty) return '回帖内容不能为空';
+    final client = await _http();
+    try {
+      final pageResp = await client
+          .get(Uri.parse('${base}thread-$tid-1-1.html'), headers: _headers())
+          .timeout(const Duration(seconds: 15));
+      final page = NetClient.decode(pageResp.bodyBytes);
+      final formhash = NetClient.first(
+              RegExp(r'''name="formhash"[^>]*value="([0-9a-f]{8})"'''), page) ??
+          '';
+      final noticeauthor = NetClient.first(
+              RegExp(r'''name="noticeauthor"[^>]*value="([^"]*)"'''), page) ??
+          '';
+      if (formhash.isEmpty) return '未取得回帖令牌(formhash)';
 
-  Future<String> _request(
-    String method,
-    String path, {
-    Map<String, String>? form,
-    Duration timeout = const Duration(seconds: 20),
-  }) async {
-    var url = Uri.parse(base + path);
-    for (var hop = 0; hop < 8; hop++) {
-      final req = await _io.openUrl(method, url);
-      // 请求级关闭自动重定向,便于逐跳抓取 set-cookie(登录 auth Cookie)。
-      req.followRedirects = false;
-      req.headers.set(HttpHeaders.userAgentHeader, _ua);
-      final ch = _cookieHeader();
-      if (ch.isNotEmpty) req.headers.set(HttpHeaders.cookieHeader, ch);
-      if (method == 'POST' && form != null) {
-        req.headers.set(HttpHeaders.contentTypeHeader,
-            'application/x-www-form-urlencoded; charset=utf-8');
-        req.write(_encodeForm(form));
-      }
-      final resp = await req.close().timeout(timeout);
-      final setCookies = resp.headers[HttpHeaders.setCookieHeader];
-      if (setCookies != null) {
-        for (final c in setCookies) {
-          _feed(c);
-        }
-      }
-      final status = resp.statusCode;
-      final location = resp.headers.value(HttpHeaders.locationHeader);
-      final body = await _readBody(resp);
-      if (status >= 300 && status < 400 && location != null &&
-          location.isNotEmpty) {
-        // 遵循浏览器行为:POST 提交后的 3xx 重定向改走 GET,不再重复提交表单。
-        if (method == 'POST') {
-          method = 'GET';
-          form = null;
-        }
-        url = url.resolve(location);
-        continue;
-      }
-      return body;
+      // 与浏览器一致:extra 需为 URL 编码后的 `page%3D1`,故拼原始字符串。
+      final url = '${base}forum.php?mod=post&action=reply&fid=$fid&tid=$tid'
+          '&extra=page%3D1&replysubmit=yes&mobile=2';
+      final resp = await client
+          .post(Uri.parse(url), headers: _headers(), body: <String, String>{
+        'formhash': formhash,
+        'noticeauthor': noticeauthor,
+        'message': text,
+        'replysubmit': '回复',
+        'listextra': 'page%3D1',
+      }).timeout(NetClient.timeout);
+      final body = NetClient.decode(resp.bodyBytes);
+      if (body.contains(text)) return null; // 已跳回帖子且出现本条回帖 → 成功
+      if (body.contains('登录')) return '请先登录后回帖';
+      return '回帖失败,请重试';
+    } catch (e) {
+      return '回帖请求失败,请稍后重试';
     }
-    throw const HttpException('too many redirects');
   }
 
-  Future<String> _readBody(HttpClientResponse resp) async {
-    // autoUncompress 已开启,响应体为解压后的字节流,直接按 utf-8 拼接。
-    return utf8.decoder.bind(resp).join();
-  }
-
-  /// 带会话 POST 回帖表单,返回响应的 3xx `location`(未成功返回 null)。
-  Future<String?> _postReply(String url, Map<String, String> form) async {
-    final req = await _io.openUrl('POST', Uri.parse(url));
-    req.followRedirects = false;
-    req.headers.set(HttpHeaders.userAgentHeader, _ua);
-    final ch = _cookieHeader();
-    if (ch.isNotEmpty) req.headers.set(HttpHeaders.cookieHeader, ch);
-    req.headers.set(HttpHeaders.contentTypeHeader,
-        'application/x-www-form-urlencoded; charset=utf-8');
-    req.write(_encodeForm(form));
-    final resp = await req.close().timeout(const Duration(seconds: 20));
-    final setCookies = resp.headers[HttpHeaders.setCookieHeader];
-    if (setCookies != null) {
-      for (final c in setCookies) {
-        _feed(c);
-      }
-    }
-    final status = resp.statusCode;
-    final location = resp.headers.value(HttpHeaders.locationHeader);
-    if (status >= 300 && status < 400 && location != null &&
-        location.isNotEmpty) {
-      return location;
-    }
-    // 200(错误/需验证码)等情况返回 null,由调用方判定失败。
-    return null;
-  }
-
-  /// 把网络/握手/超时异常转成友好的中文提示。
-  static String _friendlyNetwork(Object e) {
-    if (e is HandshakeException) {
-      return '与服务器握手失败,请检查网络后重试';
-    }
-    if (e is SocketException) {
-      return '网络异常(连接被断开),请检查网络后重试';
-    }
-    if (e is TimeoutException) {
-      return '请求超时,请稍后重试';
-    }
-    return '网络请求失败,请稍后重试';
-  }
-
-  /// 解析 Discuz 登录失败响应里的真实原因,避免笼统的"密码错误"。
   static String _parseLoginError(String body) {
     if (body.contains('密码错误次数过多') || body.contains('次数过多')) {
       return '该账号触发登录保护,请15分钟后重试';
@@ -320,105 +192,19 @@ class AuthService {
     if (body.contains('来路不正确') || body.contains('无效')) {
       return '登录请求已过期,请重试';
     }
-    if (body.contains('密码错误') || body.contains('用户名')) {
+    if (body.contains('密码错误') || body.contains('用户名不存在')) {
       return '用户名或密码错误';
     }
     return '登录失败,请稍后重试';
   }
 
-  String _encodeForm(Map<String, String> fields) {
-    final parts = <String>[];
-    fields.forEach((k, v) {
-      parts.add('${Uri.encodeQueryComponent(k)}='
-          '${Uri.encodeQueryComponent(v)}');
-    });
-    return parts.join('&');
-  }
-
-  String _cookieHeader() {
-    if (_cookies.isEmpty) return '';
-    return _cookies.entries
-        .where((e) => e.value.isNotEmpty)
-        .map((e) => '${e.key}=${e.value}')
-        .join('; ');
-  }
-
-  bool _hasAuth() => _cookies.containsKey('${_cookiepre}auth');
-
-  void _feed(String header) {
-    final segs = header.split(';');
-    if (segs.isEmpty) return;
-    final first = segs.first.trim();
-    final eq = first.indexOf('=');
-    if (eq <= 0) return;
-    final name = first.substring(0, eq).trim();
-    var value = first.substring(eq + 1).trim();
-
-    int? maxAge;
-    String? expires;
-    for (final s in segs.skip(1)) {
-      final t = s.trim();
-      final lower = t.toLowerCase();
-      if (lower.startsWith('max-age=')) {
-        maxAge = int.tryParse(lower.substring('max-age='.length));
-      } else if (lower.startsWith('expires=')) {
-        expires = t.substring('expires='.length).trim();
-      }
-    }
-
-    var expired = false;
-    if (value.toLowerCase() == 'deleted') {
-      expired = true;
-    } else if (maxAge != null) {
-      expired = maxAge <= 0;
-    } else if (expires != null) {
-      expired = _isPastDate(expires);
-    }
-
-    if (expired || value.isEmpty) {
-      _cookies.remove(name);
-    } else {
-      _cookies[name] = value;
-    }
-  }
-
-  bool _isPastDate(String v) {
-    final cleaned = v.replaceFirst(' GMT', 'Z').replaceFirst(' GMT+0800', 'Z');
-    final parsed = DateTime.tryParse(cleaned);
-    if (parsed == null) {
-      final m = RegExp(
-              r'^\w+, (\d+)-(\w+)-(\d{4}) (\d{2}):(\d{2}):(\d{2})')
-          .firstMatch(v);
-      if (m == null) return false;
-      final months = {
-        'Jan': 1, 'Feb': 2, 'Mar': 3, 'Apr': 4, 'May': 5, 'Jun': 6,
-        'Jul': 7, 'Aug': 8, 'Sep': 9, 'Oct': 10, 'Nov': 11, 'Dec': 12,
-      };
-      final month = months[m.group(2)];
-      if (month == null) return false;
-      return DateTime.utc(
-        int.parse(m.group(3)!),
-        month,
-        int.parse(m.group(1)!),
-        int.parse(m.group(4)!),
-        int.parse(m.group(5)!),
-        int.parse(m.group(6)!),
-      ).isBefore(DateTime.now().toUtc());
-    }
-    return parsed.isBefore(DateTime.now());
-  }
-
   Future<void> _save() async {
     try {
       final sp = await SharedPreferences.getInstance();
-      await sp.setString(_prefKey, jsonEncode(_cookies));
+      await sp.setString(_prefUser, _username ?? '');
+      await sp.setBool(_prefFlag, _loggedIn);
     } catch (_) {
-      // 持久化失败不影响内存登录态。
+      // 持久化失败不影响内存状态。
     }
-  }
-
-  static String? _first(RegExp re, String s) {
-    final m = re.firstMatch(s);
-    return m?.group(1);
   }
 }
