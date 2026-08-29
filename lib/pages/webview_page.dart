@@ -3,8 +3,7 @@ import 'package:webview_flutter/webview_flutter.dart';
 
 import '../services/api_service.dart';
 
-/// 应用内 WebView 容器:带返回栏、加载进度、出错提示与后退能力。
-/// 普通 URL 使用 WebView；ycoo-native-purchase://tid 则完全走原生购买请求。
+/// 应用内 WebView 容器:普通 URL 使用 WebView；购买主题入口走原生 HTTP。
 class WebViewPage extends StatefulWidget {
   final String url;
   final String title;
@@ -21,7 +20,9 @@ class _WebViewPageState extends State<WebViewPage> {
   bool _error = false;
   String? _nativeMessage;
 
-  bool get _nativePurchase => widget.url.startsWith('ycoo-native-purchase://');
+  bool get _nativePurchase =>
+      widget.url.startsWith('ycoo-native-purchase://') ||
+      (widget.title == '购买主题' && widget.url.contains('ycoo.net/thread-'));
 
   @override
   void initState() {
@@ -58,14 +59,20 @@ class _WebViewPageState extends State<WebViewPage> {
   }
 
   Future<void> _runNativePurchase() async {
-    final tidText = widget.url.substring('ycoo-native-purchase://'.length).split('?').first;
-    final tid = int.tryParse(tidText);
-    if (tid == null || tid <= 0) {
+    int? tid;
+    if (widget.url.startsWith('ycoo-native-purchase://')) {
+      final raw = widget.url.substring('ycoo-native-purchase://'.length).split('?').first;
+      tid = int.tryParse(raw);
+    } else {
+      final m = RegExp(r'thread-(\d+)').firstMatch(widget.url);
+      tid = m == null ? null : int.tryParse(m.group(1)!);
+    }
+    if (tid == null || tid! <= 0) {
       if (mounted) setState(() { _loading = false; _error = true; _nativeMessage = '无效的主题 ID'; });
       return;
     }
     if (mounted) setState(() { _loading = true; _nativeMessage = '正在读取购买信息…'; });
-    final result = await ApiService.instance.purchaseThread(tid);
+    final result = await ApiService.instance.purchaseThread(tid!);
     if (!mounted) return;
     setState(() { _loading = false; _nativeMessage = result.message; _error = !result.success; });
     if (result.success) {
