@@ -1,7 +1,6 @@
 import 'dart:convert';
 import 'dart:io';
 
-import 'package:crypto/crypto.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 
 /// 原生登录 / 会话服务。
@@ -101,12 +100,12 @@ class AuthService {
         .replaceAll('&quot;', '"')
         .trim();
 
-    final md5Password = md5.convert(utf8.encode(password)).toString();
     final suffix = StringBuffer('member.php?mod=logging&action=login'
         '&loginsubmit=yes');
     if (loginhash.isNotEmpty) suffix.write('&loginhash=$loginhash');
     suffix.write('&mobile=2');
 
+    // 该移动端模板以明文提交密码(mobile 登录),无需 md5。
     await _request(
       'POST',
       suffix.toString(),
@@ -116,7 +115,7 @@ class AuthService {
         'fastloginfield': 'username',
         'cookietime': '31104000',
         'username': account,
-        'password': md5Password,
+        'password': password,
         'questionid': questionId,
         'answer': answer,
       },
@@ -128,6 +127,51 @@ class AuthService {
       await _save();
     }
     return _loggedIn;
+  }
+
+  /// 原生回帖。成功返回 null;失败返回提示文本(中文)。
+  ///
+  /// 先带会话抓取详情页取得 `formhash`/`noticeauthor`,再 POST 到
+  /// Discuz 移动端回帖接口。成功时会收到一个含 `pid=` 的 3xx 重定向。
+  Future<String?> reply(int tid, int fid, String message) async {
+    final text = message.trim();
+    if (text.isEmpty) return '回帖内容不能为空';
+    String page;
+    try {
+      page = await _request('GET', 'thread-$tid-1-1.html',
+          timeout: const Duration(seconds: 15));
+    } catch (e) {
+      return '获取回帖表单失败:$e';
+    }
+    final formhash = _first(
+          RegExp(r'''name="formhash"[^>]*value=["\x27]?([0-9a-f]{8})'''),
+          page) ??
+        '';
+    final noticeauthor = _first(
+            RegExp(r'''name="noticeauthor"[^>]*value=["\x27]?([^" \x27>]*)'''),
+            page) ??
+        '';
+    if (formhash.isEmpty) {
+      return '未取得回帖令牌(formhash),可能版本页或需刷新';
+    }
+    final url = Uri.parse(
+        '${base}forum.php?mod=post&action=reply').replace(queryParameters: {
+      'fid': '$fid',
+      'tid': '$tid',
+      'extra': 'page%3D1',
+      'replysubmit': 'yes',
+      'mobile': '2',
+    });
+    final location = await _postReply(url.toString(), {
+      'formhash': formhash,
+      'noticeauthor': noticeauthor,
+      'message': text,
+      'replysubmit': '回复',
+      'listextra': 'page%3D1',
+    });
+    if (location != null && location.contains('pid=')) return null; // 成功
+    if (location != null) return '提交后未确认成功,请稍后在网页端查看';
+    return '回帖失败,请重试';
   }
 
   /// 登出:尽力请求站点登出,并清空本地会话。
@@ -195,6 +239,33 @@ class AuthService {
   Future<String> _readBody(HttpClientResponse resp) async {
     // autoUncompress 已开启,响应体为解压后的字节流,直接按 utf-8 拼接。
     return utf8.decoder.bind(resp).join();
+  }
+
+  /// 带会话 POST 回帖表单,返回响应的 3xx `location`(未成功返回 null)。
+  Future<String?> _postReply(String url, Map<String, String> form) async {
+    final req = await _io.openUrl('POST', Uri.parse(url));
+    req.followRedirects = false;
+    req.headers.set(HttpHeaders.userAgentHeader, _ua);
+    final ch = _cookieHeader();
+    if (ch.isNotEmpty) req.headers.set(HttpHeaders.cookieHeader, ch);
+    req.headers.set(HttpHeaders.contentTypeHeader,
+        'application/x-www-form-urlencoded; charset=utf-8');
+    req.write(_encodeForm(form));
+    final resp = await req.close().timeout(const Duration(seconds: 20));
+    final setCookies = resp.headers[HttpHeaders.setCookieHeader];
+    if (setCookies != null) {
+      for (final c in setCookies) {
+        _feed(c);
+      }
+    }
+    final status = resp.statusCode;
+    final location = resp.headers.value(HttpHeaders.locationHeader);
+    if (status >= 300 && status < 400 && location != null &&
+        location.isNotEmpty) {
+      return location;
+    }
+    // 200(错误/需验证码)等情况返回 null,由调用方判定失败。
+    return null;
   }
 
   String _encodeForm(Map<String, String> fields) {

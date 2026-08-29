@@ -3,6 +3,8 @@ import 'package:webview_flutter/webview_flutter.dart';
 
 import '../models/thread_detail.dart';
 import '../services/api_service.dart';
+import '../services/auth_service.dart';
+import 'login_page.dart';
 import 'thread_list_page.dart';
 
 /// 帖子详情页:原生头部(标题/作者/版块/时间)+ 正文 HTML(WebView 渲染)。
@@ -19,13 +21,29 @@ class DetailPage extends StatefulWidget {
 class _DetailPageState extends State<DetailPage> {
   ThreadDetail? _detail;
   WebViewController? _bodyController;
+  final TextEditingController _replyCtrl = TextEditingController();
+  final FocusNode _replyFocus = FocusNode();
   bool _loading = true;
+  bool _sending = false;
+  bool _loggedIn = false;
   String? _error;
 
   @override
   void initState() {
     super.initState();
+    AuthService.instance.init().then((_) {
+      if (mounted) {
+        setState(() => _loggedIn = AuthService.instance.isLoggedIn);
+      }
+    });
     _fetch();
+  }
+
+  @override
+  void dispose() {
+    _replyCtrl.dispose();
+    _replyFocus.dispose();
+    super.dispose();
   }
 
   Future<void> _fetch() async {
@@ -79,7 +97,108 @@ $bodyHtml
     return Scaffold(
       appBar: AppBar(title: Text(widget.title, maxLines: 1, overflow: TextOverflow.ellipsis)),
       body: _buildBody(context),
+      bottomNavigationBar: _buildComposer(context),
     );
+  }
+
+  Widget _buildComposer(BuildContext context) {
+    final theme = Theme.of(context);
+    if (_detail == null) return const SizedBox.shrink();
+    if (!_loggedIn) {
+      return SafeArea(
+        top: false,
+        child: Padding(
+          padding: const EdgeInsets.fromLTRB(16, 8, 16, 8),
+          child: OutlinedButton.icon(
+            onPressed: _openLogin,
+            icon: const Icon(Icons.login, size: 18),
+            label: const Text('登录后回帖'),
+            style: OutlinedButton.styleFrom(
+              minimumSize: const Size.fromHeight(46),
+            ),
+          ),
+        ),
+      );
+    }
+    return SafeArea(
+      top: false,
+      child: Container(
+        padding: const EdgeInsets.fromLTRB(12, 8, 12, 8),
+        decoration: BoxDecoration(
+          color: theme.colorScheme.surface,
+          border: Border(
+            top: BorderSide(
+              color: theme.colorScheme.outlineVariant.withValues(alpha: 0.4),
+            ),
+          ),
+        ),
+        child: Row(
+          children: [
+            Expanded(
+              child: TextField(
+                controller: _replyCtrl,
+                focusNode: _replyFocus,
+                minLines: 1,
+                maxLines: 4,
+                textInputAction: TextInputAction.send,
+                onSubmitted: (_) => _sendReply(),
+                decoration: const InputDecoration(
+                  hintText: '说点什么吧……',
+                  isDense: true,
+                  border: OutlineInputBorder(
+                    borderRadius: BorderRadius.all(Radius.circular(20)),
+                  ),
+                  contentPadding:
+                      EdgeInsets.symmetric(horizontal: 14, vertical: 9),
+                ),
+              ),
+            ),
+            const SizedBox(width: 8),
+            IconButton(
+              onPressed: _sending ? null : _sendReply,
+              icon: _sending
+                  ? const SizedBox(
+                      width: 18,
+                      height: 18,
+                      child: CircularProgressIndicator(strokeWidth: 2),
+                    )
+                  : const Icon(Icons.send),
+              color: theme.colorScheme.primary,
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+
+  Future<void> _openLogin() async {
+    final ok = await Navigator.of(context).push<bool>(
+      MaterialPageRoute(builder: (_) => const LoginPage()),
+    );
+    if (ok == true && mounted) {
+      setState(() => _loggedIn = true);
+    }
+  }
+
+  Future<void> _sendReply() async {
+    final text = _replyCtrl.text;
+    if (text.trim().isEmpty) return;
+    final d = _detail;
+    if (d == null) return;
+    setState(() => _sending = true);
+    final err = await AuthService.instance.reply(d.tid, d.fid, text);
+    if (!mounted) return;
+    setState(() => _sending = false);
+    final messenger = ScaffoldMessenger.of(context);
+    if (err == null) {
+      _replyCtrl.clear();
+      _replyFocus.unfocus();
+      messenger.showSnackBar(
+        const SnackBar(content: Text('回帖成功'), duration: Duration(seconds: 2)),
+      );
+    } else {
+      messenger.showSnackBar(SnackBar(content: Text(err)));
+    }
   }
 
   Widget _buildBody(BuildContext context) {
