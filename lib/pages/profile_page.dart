@@ -15,6 +15,7 @@ class ProfilePage extends StatefulWidget {
 class _ProfilePageState extends State<ProfilePage> {
   String? _username;
   int? _uid;
+  String? _avatarUrl;
   bool _ready = false;
   static const _base = 'https://www.ycoo.net/';
   static const _loginMessage = '登录后可回帖、发帖、打卡、评分、购买主题等';
@@ -24,10 +25,14 @@ class _ProfilePageState extends State<ProfilePage> {
 
   Future<void> _load() async {
     await AuthService.instance.init();
+    if (AuthService.instance.isLoggedIn) {
+      await AuthService.instance.checkLoggedIn();
+    }
     if (!mounted) return;
     setState(() {
       _username = AuthService.instance.username;
       _uid = AuthService.instance.uid;
+      _avatarUrl = AuthService.instance.avatarUrl;
       _ready = true;
     });
   }
@@ -40,7 +45,7 @@ class _ProfilePageState extends State<ProfilePage> {
   Future<void> _logout() async {
     await AuthService.instance.logout();
     if (!mounted) return;
-    setState(() { _username = null; _uid = null; _ready = true; });
+    setState(() { _username = null; _uid = null; _avatarUrl = null; _ready = true; });
   }
 
   void _openSite(String path, String title) {
@@ -79,9 +84,21 @@ class _ProfilePageState extends State<ProfilePage> {
     ),
   );
 
+  Widget _avatar(bool loggedIn) {
+    if (!loggedIn || _avatarUrl == null || _avatarUrl!.isEmpty) {
+      return CircleAvatar(radius: 30, child: Icon(loggedIn ? Icons.person : Icons.login, size: 32));
+    }
+    return CircleAvatar(
+      radius: 30,
+      backgroundImage: NetworkImage(_avatarUrl!),
+      onBackgroundImageError: (_, __) {},
+      child: null,
+    );
+  }
+
   @override
   Widget build(BuildContext context) {
-    final loggedIn = _username != null && _username!.isNotEmpty;
+    final loggedIn = _username != null && _username!.isNotEmpty && AuthService.instance.isLoggedIn;
     return Scaffold(
       appBar: AppBar(title: const Text('我的')),
       body: ListView(
@@ -91,11 +108,14 @@ class _ProfilePageState extends State<ProfilePage> {
           Card(margin: EdgeInsets.zero, child: InkWell(
             borderRadius: BorderRadius.circular(16), onTap: loggedIn ? _openMySpace : (_ready ? _openLogin : null),
             child: Padding(padding: const EdgeInsets.all(16), child: Row(children: [
-              CircleAvatar(radius: 28, child: Icon(loggedIn ? Icons.person : Icons.login, size: 30)),
+              _avatar(loggedIn),
               const SizedBox(width: 14),
               Expanded(child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
                 Text(loggedIn ? _username! : '登录 / 注册', style: const TextStyle(fontSize: 18, fontWeight: FontWeight.w700)),
-                const SizedBox(height: 4), Text(loggedIn ? '个人主页 · 资料 · 主题 · 回帖' : _loginMessage),
+                const SizedBox(height: 4),
+                Text(loggedIn
+                    ? (_uid != null && _uid! > 0 ? 'UID: $_uid · 个人主页 · 资料 · 主题 · 回帖' : '个人主页 · 资料 · 主题 · 回帖')
+                    : _loginMessage),
               ])),
               const Icon(Icons.chevron_right),
             ])),
