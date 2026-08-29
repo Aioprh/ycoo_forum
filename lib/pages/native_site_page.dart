@@ -5,7 +5,7 @@ import 'package:html/parser.dart' as parser;
 import '../services/auth_service.dart';
 import '../services/net_client.dart';
 
-/// 原生站点页面：只显示正文区域，并清理 Discuz 图标字体产生的方框字符。
+/// 原生站点页面：只展示真正的内容区域，过滤 Discuz 全局导航和图标字体乱码。
 class NativeSitePage extends StatefulWidget {
   final String path;
   final String title;
@@ -20,6 +20,7 @@ class _NativeSitePageState extends State<NativeSitePage> {
     'script','style','noscript','template','iframe','header','nav','footer','aside',
     '.header','.footer','.sidebar','.sidebox','.nav','.navbar','.menu',
     '.comiis_head','.comiis_nav','.comiis_menu','.comiis_footer',
+    '.comiis_left_Touch','.comiis_bottom','.comiis_header',
   ];
 
   bool _loading = true;
@@ -40,9 +41,9 @@ class _NativeSitePageState extends State<NativeSitePage> {
   }
 
   String _cleanText(String value) => value
-      .replaceAll(RegExp(r'[\uE000-\uF8FF\uFFFD]'), '')
-      .replaceAll('□', '')
-      .replaceAll(RegExp(r'\s+'), ' ')
+      .replaceAll(RegExp(r'[\uE000-\uF8FF\uFFFD□]'), '')
+      .replaceAll(RegExp(r'[ \t\u00A0\u3000]+'), ' ')
+      .replaceAll(RegExp(r'\n{2,}'), '\n')
       .trim();
 
   bool _hasReadableText(String value) => RegExp(r'[A-Za-z0-9\u3400-\u9FFF]').hasMatch(value);
@@ -55,38 +56,49 @@ class _NativeSitePageState extends State<NativeSitePage> {
   }
 
   dom.Element _findContentRoot(dom.Element body) {
-    final candidates = <dom.Element>[body];
-    const selectors = <String>[
-      '#wp','#ct','.wp','.mn','.comiis_main','.comiis_mainbox','.comiis_mobbox',
-      '.comiis_width','.comiis_forum_box','.comiis_postbox','main','article','.content',
-    ];
-    for (final selector in selectors) {
-      candidates.addAll(body.querySelectorAll(selector));
-    }
-    dom.Element best = body;
-    var bestScore = 0;
-    for (final candidate in candidates) {
-      final text = _cleanText(candidate.text);
-      if (!_hasReadableText(text)) continue;
-      var score = text.length;
-      if (candidate.querySelector('form') != null) score += 500;
-      if (candidate.querySelector('input,textarea,select') != null) score += 300;
-      if (candidate.querySelector('p,article,table') != null) score += 100;
-      if (score > bestScore) {
-        best = candidate;
-        bestScore = score;
+    // Discuz 的空间/资料页通常存在表单；优先从表单向上找真正的内容容器，
+    // 避免把整站导航、底部导航和页面入口一起当成正文。
+    final form = body.querySelector('form');
+    if (form != null) {
+      dom.Element? p = form;
+      for (var i = 0; i < 6 && p != null; i++, p = p.parent) {
+        if (p == body) break;
+        final id = p.attributes['id'] ?? '';
+        final classes = p.classes;
+        if (id == 'ct' || id == 'wp' || classes.any((c) => RegExp(r'(main|content|space|profile|spacecp|setting|mn)', caseSensitive: false).hasMatch(c))) {
+          final text = _cleanText(p.text);
+          if (text.length >= 20) return p;
+        }
+      }
+      if (form.parent != null && form.parent != body) {
+        final text = _cleanText(form.parent!.text);
+        if (text.length >= 20 && text.length < 20000) return form.parent!;
       }
     }
-    return best;
+
+    const selectors = <String>[
+      '#ct','#wp','#ctm','.wp','.mn','main','article','.content',
+      '.comiis_main','.comiis_mainbox','.comiis_mobbox','.comiis_width',
+      '.comiis_forum_box','.comiis_postbox','.comiis_space','.comiis_spacecp',
+      '.comiis_profile','.comiis_setting','.comiis_userbox','.bm','.bm_c',
+    ];
+    dom.Element? best;
+    var bestScore = -1;
+    for (final selector in selectors) {
+      for (final candidate in body.querySelectorAll(selector)) {
+        final text = _cleanText(candidate.text);
+        if (!_hasReadableText(text) || text.length < 20) continue;
+        var score = 10000 - text.length.clamp(0, 9000);
+        if (candidate.querySelector('form,input,textarea,select') != null) score += 5000;
+        if (candidate.querySelector('table,article,p') != null) score += 500;
+        if (score > bestScore) { best = candidate; bestScore = score; }
+      }
+    }
+    return best ?? body;
   }
 
   Future<void> _load() async {
-    if (mounted) {
-      setState(() {
-        _loading = true;
-        _error = null;
-      });
-    }
+    if (mounted) setState(() { _loading = true; _error = null; });
     try {
       final client = await NetClient.instance.client;
       await AuthService.instance.init();
@@ -97,6 +109,7 @@ class _NativeSitePageState extends State<NativeSitePage> {
         'Accept': 'text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8',
         'Accept-Language': 'zh-CN,zh;q=0.9',
         'Cache-Control': 'no-cache, no-store',
+        'Pragma': 'no-cache',
         if (cookie != null && cookie.isNotEmpty) 'Cookie': cookie,
       })).timeout(const Duration(seconds: 20));
       if (response.statusCode != 200) throw Exception('HTTP ${response.statusCode}');
@@ -115,7 +128,7 @@ class _NativeSitePageState extends State<NativeSitePage> {
         if (!url.startsWith(_base) || const {'首页','登录','注册','退出登录','退出','返回','更多'}.contains(label)) continue;
         if (!seen.add('$label|$url')) continue;
         links.add(_LinkItem(label, url));
-        if (links.length >= 60) break;
+        if (links.length >= 40) break;
       }
 
       final forms = <_FormItem>[];
@@ -128,11 +141,7 @@ class _NativeSitePageState extends State<NativeSitePage> {
         }
         final label = _cleanText(form.text);
         if (label.isEmpty && fields.isEmpty) continue;
-        forms.add(_FormItem(
-          label.length > 240 ? label.substring(0, 240) : label,
-          _abs(form.attributes['action'] ?? widget.path),
-          fields,
-        ));
+        forms.add(_FormItem(label.length > 240 ? label.substring(0, 240) : label, _abs(form.attributes['action'] ?? widget.path), fields));
         if (forms.length >= 12) break;
       }
 
@@ -145,10 +154,7 @@ class _NativeSitePageState extends State<NativeSitePage> {
       });
     } catch (e) {
       if (!mounted) return;
-      setState(() {
-        _error = e.toString().replaceFirst('Exception: ', '');
-        _loading = false;
-      });
+      setState(() { _error = e.toString().replaceFirst('Exception: ', ''); _loading = false; });
     }
   }
 
@@ -158,11 +164,7 @@ class _NativeSitePageState extends State<NativeSitePage> {
       context: context,
       builder: (dialogContext) => AlertDialog(
         title: Text(form.label.isEmpty ? '提交操作' : form.label, maxLines: 3, overflow: TextOverflow.ellipsis),
-        content: TextField(
-          controller: controller,
-          autofocus: true,
-          decoration: const InputDecoration(labelText: '输入内容（可选）'),
-        ),
+        content: TextField(controller: controller, autofocus: true, decoration: const InputDecoration(labelText: '输入内容（可选）')),
         actions: [
           TextButton(onPressed: () => Navigator.pop(dialogContext), child: const Text('取消')),
           FilledButton(onPressed: () => Navigator.pop(dialogContext, controller.text), child: const Text('提交')),
@@ -183,13 +185,16 @@ class _NativeSitePageState extends State<NativeSitePage> {
       final response = await client.post(Uri.parse(form.action), headers: {
         'User-Agent': NetClient.ua,
         'Accept': 'text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8',
-        'Content-Type': 'application/x-www-form-urlencoded',
+        'Content-Type': 'application/x-www-form-urlencoded; charset=UTF-8',
+        'Referer': _abs(widget.path),
         if (cookie != null && cookie.isNotEmpty) 'Cookie': cookie,
       }, body: fields).timeout(const Duration(seconds: 20));
       if (response.statusCode >= 200 && response.statusCode < 400) {
         if (!mounted) return;
         ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('操作已提交')));
         await _load();
+      } else if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text('提交失败 HTTP ${response.statusCode}')));
       }
     } catch (e) {
       if (mounted) ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text('提交失败：$e')));
@@ -206,101 +211,43 @@ class _NativeSitePageState extends State<NativeSitePage> {
     } else {
       final children = <Widget>[];
       if (_bodyText.isNotEmpty) {
-        children.add(Card(
-          child: Padding(
-            padding: const EdgeInsets.all(16),
-            child: Text(_bodyText, style: const TextStyle(height: 1.6)),
-          ),
-        ));
+        children.add(Card(child: Padding(padding: const EdgeInsets.all(16), child: Text(_bodyText, style: const TextStyle(height: 1.6)))));
       }
       if (_forms.isNotEmpty) {
-        children.addAll(const [
-          SizedBox(height: 12),
-          Text('可用操作', style: TextStyle(fontSize: 18, fontWeight: FontWeight.w700)),
-          SizedBox(height: 8),
-        ]);
+        children.addAll(const [SizedBox(height: 12), Text('可用操作', style: TextStyle(fontSize: 18, fontWeight: FontWeight.w700)), SizedBox(height: 8)]);
         for (final form in _forms) {
-          children.add(Card(
-            child: ListTile(
-              title: Text(form.label.isEmpty ? '表单操作' : form.label),
-              trailing: const Icon(Icons.play_arrow),
-              onTap: () => _submit(form),
-            ),
-          ));
+          children.add(Card(child: ListTile(title: Text(form.label.isEmpty ? '表单操作' : form.label), trailing: const Icon(Icons.play_arrow), onTap: () => _submit(form))));
         }
       }
       if (_links.isNotEmpty) {
-        children.addAll(const [
-          SizedBox(height: 12),
-          Text('页面入口', style: TextStyle(fontSize: 18, fontWeight: FontWeight.w700)),
-          SizedBox(height: 8),
-        ]);
+        children.addAll(const [SizedBox(height: 12), Text('页面入口', style: TextStyle(fontSize: 18, fontWeight: FontWeight.w700)), SizedBox(height: 8)]);
         for (final link in _links) {
-          children.add(Card(
-            child: ListTile(
-              title: Text(link.label),
-              trailing: const Icon(Icons.chevron_right),
-              onTap: () {
-                Navigator.push(
-                  context,
-                  MaterialPageRoute(
-                    builder: (_) => NativeSitePage(path: link.url, title: link.label),
-                  ),
-                );
-              },
-            ),
-          ));
+          children.add(Card(child: ListTile(
+            title: Text(link.label), trailing: const Icon(Icons.chevron_right),
+            onTap: () => Navigator.push(context, MaterialPageRoute(builder: (_) => NativeSitePage(path: link.url, title: link.label))),
+          )));
         }
       }
-      if (children.isEmpty) {
-        children.add(const Padding(
-          padding: EdgeInsets.all(32),
-          child: Center(child: Text('页面暂无可显示内容')),
-        ));
-      }
-      body = RefreshIndicator(
-        onRefresh: _load,
-        child: ListView(
-          padding: const EdgeInsets.fromLTRB(16, 12, 16, 32),
-          children: children,
-        ),
-      );
+      if (children.isEmpty) children.add(const Padding(padding: EdgeInsets.all(32), child: Center(child: Text('页面暂无可显示内容'))));
+      body = RefreshIndicator(onRefresh: _load, child: ListView(padding: const EdgeInsets.fromLTRB(16, 12, 16, 32), children: children));
     }
     return Scaffold(
-      appBar: AppBar(
-        title: Text(widget.title),
-        actions: [IconButton(onPressed: _load, icon: const Icon(Icons.refresh))],
-      ),
+      appBar: AppBar(title: Text(widget.title), actions: [IconButton(onPressed: _load, icon: const Icon(Icons.refresh))]),
       body: body,
     );
   }
 
-  Widget _errorView() => Center(
-        child: Padding(
-          padding: const EdgeInsets.all(24),
-          child: Column(
-            mainAxisSize: MainAxisSize.min,
-            children: [
-              const Icon(Icons.cloud_off, size: 48),
-              const SizedBox(height: 12),
-              Text(_error!, textAlign: TextAlign.center),
-              const SizedBox(height: 16),
-              FilledButton(onPressed: _load, child: const Text('重试')),
-            ],
-          ),
-        ),
-      );
+  Widget _errorView() => Center(child: Padding(
+    padding: const EdgeInsets.all(24),
+    child: Column(mainAxisSize: MainAxisSize.min, children: [
+      const Icon(Icons.cloud_off, size: 48),
+      const SizedBox(height: 12),
+      Text(_error!, textAlign: TextAlign.center),
+      const SizedBox(height: 16),
+      FilledButton(onPressed: _load, child: const Text('重试')),
+    ]),
+  ));
 }
 
-class _LinkItem {
-  final String label;
-  final String url;
-  const _LinkItem(this.label, this.url);
-}
-
-class _FormItem {
-  final String label;
-  final String action;
-  final Map<String, String> fields;
-  const _FormItem(this.label, this.action, this.fields);
-}
+class _LinkItem { final String label; final String url; const _LinkItem(this.label, this.url); }
+class _FormItem { final String label; final String action; final Map<String, String> fields; const _FormItem(this.label, this.action, this.fields); }
