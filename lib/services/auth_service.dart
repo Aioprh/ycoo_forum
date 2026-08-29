@@ -23,9 +23,7 @@ class AuthService {
       'Mozilla/5.0 (Linux; Android 10) YcoForum/1.0';
   static const String _prefKey = 'ycoo.session.cookies.v1';
 
-  final HttpClient _io = HttpClient()
-    ..followRedirects = false
-    ..autoUncompress = true;
+  final HttpClient _io = HttpClient()..autoUncompress = true;
 
   final Map<String, String> _cookies = {};
   String _cookiepre = 'YPSa_2132_';
@@ -159,6 +157,9 @@ class AuthService {
     var url = Uri.parse(base + path);
     for (var hop = 0; hop < 8; hop++) {
       final req = await _io.openUrl(method, url);
+      // 请求级关闭自动重定向,便于逐跳抓取 set-cookie(登录 auth Cookie)。
+      req.followRedirects = false;
+      req.headers.set(HttpHeaders.userAgentHeader, _ua);
       final ch = _cookieHeader();
       if (ch.isNotEmpty) req.headers.set(HttpHeaders.cookieHeader, ch);
       if (method == 'POST' && form != null) {
@@ -174,7 +175,7 @@ class AuthService {
         }
       }
       final status = resp.statusCode;
-      final location = resp.headers[HttpHeaders.locationHeader];
+      final location = resp.headers.value(HttpHeaders.locationHeader);
       final body = await _readBody(resp);
       if (status >= 300 && status < 400 && location != null &&
           location.isNotEmpty) {
@@ -192,11 +193,8 @@ class AuthService {
   }
 
   Future<String> _readBody(HttpClientResponse resp) async {
-    final buf = BytesBuilder(copy: false);
-    await for (final chunk in resp) {
-      buf.add(chunk);
-    }
-    return utf8.decode(buf.toBytes(), allowMalformed: true);
+    // autoUncompress 已开启,响应体为解压后的字节流,直接按 utf-8 拼接。
+    return utf8.decoder.bind(resp).join();
   }
 
   String _encodeForm(Map<String, String> fields) {
