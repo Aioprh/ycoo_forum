@@ -8,7 +8,7 @@ import 'net_client.dart';
 
 /// 登录 / 会话服务。
 ///
-/// 默认使用原生 HTTP 登录；WebView 仍作为需要额外验证码/验证时的兜底。
+/// 使用原生 HTTP 登录；需要验证码/安全验证时再进入网页验证。
 class AuthService {
   AuthService._();
   static final AuthService instance = AuthService._();
@@ -37,12 +37,13 @@ class AuthService {
 
   Future<http.Client> _http() async => _client ??= await NetClient.instance.client;
 
-  Map<String, String> _headers() {
+  Map<String, String> _headers({String? referer}) {
     final h = <String, String>{
       'User-Agent': NetClient.ua,
       'Accept': 'text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8',
       'Accept-Language': 'zh-CN,zh;q=0.9',
       'Cache-Control': 'no-cache',
+      if (referer != null) 'Referer': referer,
     };
     if (_cookie != null && _cookie!.isNotEmpty) h['Cookie'] = _cookie!;
     return h;
@@ -59,6 +60,44 @@ class AuthService {
     } catch (_) {}
   }
 
+  /// 从 input 标签中提取隐藏字段。
+  ///
+  /// Discuz 不保证 name/value 属性的先后顺序；旧实现只匹配
+  /// `name=formhash ... value=...`，当站点输出成 `value=... name=formhash`
+  /// 时就会误报“缺少 formhash”。这里同时兼容两种顺序、单/双引号和换行。
+  String? _hiddenValue(String html, String name) {
+    final escaped = RegExp.escape(name);
+    final inputRe = RegExp(r'<input\b[^>]*>', caseSensitive: false);
+    final nameFirst = RegExp(
+      'name\\s*=\\s*[\"\\\']$escaped[\"\\\'][^>]*value\\s*=\\s*[\"\\\']([^\"\\\']+)[\"\\\']',
+      caseSensitive: false,
+    );
+    final valueFirst = RegExp(
+      'value\\s*=\\s*[\"\\\']([^\"\\\']+)[\"\\\'][^>]*name\\s*=\\s*[\"\\\']$escaped[\"\\\']',
+      caseSensitive: false,
+    );
+    for (final m in inputRe.allMatches(html)) {
+      final tag = m.group(0)!;
+      final a = nameFirst.firstMatch(tag)?.group(1);
+      if (a != null && a.trim().isNotEmpty) return a.trim();
+      final b = valueFirst.firstMatch(tag)?.group(1);
+      if (b != null && b.trim().isNotEmpty) return b.trim();
+    }
+    return null;
+  }
+
+  String? _loginHash(String html) {
+    final patterns = <RegExp>[
+      RegExp(r'''loginhash\s*=\s*([A-Za-z0-9_-]+)''', caseSensitive: false),
+      RegExp(r'''[?&]loginhash(?:=|%3D)([A-Za-z0-9_-]+)''', caseSensitive: false),
+    ];
+    for (final re in patterns) {
+      final v = NetClient.first(re, html);
+      if (v != null && v.isNotEmpty) return v;
+    }
+    return null;
+  }
+
   /// 原生登录 Discuz。正常账号密码登录不依赖 WebView。
   /// 返回 null 表示成功；返回文本表示失败原因。
   Future<String?> loginNative(String username, String password) async {
@@ -68,34 +107,34 @@ class AuthService {
 
     try {
       final client = await _http();
+
+      // 先拿登录页，让 Cronet 建立站点 Cookie 会话，并取得最新 formhash。
+      final loginUri = Uri.parse(base + loginPath);
       final loginPage = await client
-          .get(Uri.parse(base + loginPath), headers: _headers())
+          .get(loginUri, headers: _headers(referer: base))
           .timeout(NetClient.timeout);
       final page = NetClient.decode(loginPage.bodyBytes);
-      final formhash = NetClient.first(
-            RegExp(r'''name=["']formhash["'][^>]*value=["']([^"']+)["']'''),
-            page,
-          ) ??
-          '';
-      if (formhash.isEmpty) return '登录页面缺少 formhash，请稍后重试';
+      final formhash = _hiddenValue(page, 'formhash');
+      if (formhash == null || formhash.isEmpty) {
+        LoginLog.instance.add('原生登录失败: login page 未找到 formhash, http=${loginPage.statusCode}, bytes=${loginPage.bodyBytes.length}');
+        if (_needsVerification(page)) return '网站要求验证码或安全验证，请使用网页验证完成登录';
+        return '登录页面暂时无法取得登录令牌，请刷新后重试';
+      }
 
-      final loginHash = NetClient.first(
-            RegExp(r'''loginhash=([A-Za-z0-9]+)'''),
-            page,
-          ) ??
-          '';
+      final loginHash = _loginHash(page);
       final endpoint = Uri.parse(
         '${base}member.php?mod=logging&action=login&loginsubmit=yes'
-        '${loginHash.isEmpty ? '' : '&loginhash=$loginHash'}&inajax=1',
+        '${loginHash == null ? '' : '&loginhash=${Uri.encodeQueryComponent(loginHash)}'}&inajax=1',
       );
 
       final response = await client
           .post(
             endpoint,
             headers: <String, String>{
-              ..._headers(),
-              'Content-Type': 'application/x-www-form-urlencoded',
-              'Referer': base + loginPath,
+              ..._headers(referer: loginUri.toString()),
+              'Content-Type': 'application/x-www-form-urlencoded; charset=UTF-8',
+              'Origin': base,
+              'X-Requested-With': 'XMLHttpRequest',
             },
             body: <String, String>{
               'formhash': formhash,
@@ -113,10 +152,11 @@ class AuthService {
       final body = NetClient.decode(response.bodyBytes);
       final setCookie = response.headers['set-cookie'];
       if (setCookie != null && setCookie.isNotEmpty) {
-        _cookie = _cookieFromSetCookie(setCookie);
+        final parsed = _cookieFromSetCookie(setCookie);
+        if (parsed.isNotEmpty) _cookie = _mergeCookies(_cookie, parsed);
       }
 
-      if (_looksLikeSuccess(body)) {
+      if (_looksLikeSuccess(body) || await _verifySession(client)) {
         _loggedIn = true;
         _username = user;
         await _save();
@@ -143,7 +183,9 @@ class AuthService {
   }
 
   bool _looksLikeSuccess(String body) {
-    return body.contains('succeed') ||
+    final lower = body.toLowerCase();
+    return lower.contains('succeed') ||
+        lower.contains('login_succeed') ||
         body.contains('登录成功') ||
         body.contains('欢迎您回来') ||
         body.contains('现在将转入') ||
@@ -152,11 +194,25 @@ class AuthService {
   }
 
   bool _needsVerification(String body) {
+    final lower = body.toLowerCase();
     return body.contains('seccode') ||
         body.contains('验证码') ||
         body.contains('安全验证') ||
-        body.contains('verifycode') ||
-        body.contains('验证问答');
+        lower.contains('verifycode') ||
+        body.contains('验证问答') ||
+        body.contains('seccodeverify');
+  }
+
+  Future<bool> _verifySession(http.Client client) async {
+    try {
+      final resp = await client
+          .get(Uri.parse('${base}forum.php?mobile=2'), headers: _headers(referer: base))
+          .timeout(const Duration(seconds: 10));
+      final body = NetClient.decode(resp.bodyBytes);
+      return body.contains('action=logout') || body.contains('退出登录') || body.contains('退出');
+    } catch (_) {
+      return false;
+    }
   }
 
   String _cookieFromSetCookie(String raw) {
@@ -166,6 +222,16 @@ class AuthService {
         .where((v) => v.contains('='))
         .toList();
     return values.join('; ');
+  }
+
+  String _mergeCookies(String? oldCookie, String newCookie) {
+    final map = <String, String>{};
+    for (final part in [...?oldCookie?.split(';'), ...newCookie.split(';')]) {
+      final p = part.trim();
+      final i = p.indexOf('=');
+      if (i > 0) map[p.substring(0, i)] = p.substring(i + 1);
+    }
+    return map.entries.map((e) => '${e.key}=${e.value}').join('; ');
   }
 
   /// 从已登录页面补齐真实用户名、UID、头像。
@@ -284,11 +350,11 @@ class AuthService {
     try {
       final pageResp = await client.get(Uri.parse('${base}thread-$tid-1-1.html'), headers: _headers()).timeout(const Duration(seconds: 15));
       final page = NetClient.decode(pageResp.bodyBytes);
-      final formhash = NetClient.first(RegExp(r'''name="formhash"[^>]*value="([0-9a-f]{8})"'''), page) ?? '';
-      final noticeauthor = NetClient.first(RegExp(r'''name="noticeauthor"[^>]*value="([^"]*)"'''), page) ?? '';
+      final formhash = _hiddenValue(page, 'formhash') ?? '';
+      final noticeauthor = _hiddenValue(page, 'noticeauthor') ?? '';
       if (formhash.isEmpty) return '未取得回帖令牌(formhash)';
       final url = '${base}forum.php?mod=post&action=reply&fid=$fid&tid=$tid&extra=page%3D1&replysubmit=yes&mobile=2';
-      final resp = await client.post(Uri.parse(url), headers: _headers(), body: <String, String>{
+      final resp = await client.post(Uri.parse(url), headers: _headers(referer: '${base}thread-$tid-1-1.html'), body: <String, String>{
         'formhash': formhash,
         'noticeauthor': noticeauthor,
         'message': text,
