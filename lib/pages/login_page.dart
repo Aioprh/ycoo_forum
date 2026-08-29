@@ -52,7 +52,7 @@ class _LoginPageState extends State<LoginPage> {
   Future<void> _checkLogin() async {
     if (_resolved) return;
     final cookies = await WebViewCookieManager()
-        .getCookies(domain: 'www.ycoo.net');
+        .getCookies(domain: Uri.parse(AuthService.base));
     // 每个 WebViewCookie 含 name/value,拼成 "k=v; k2=v2" 的 Cookie 串。
     final cookieStr = cookies
         .where((c) => c.value.isNotEmpty)
