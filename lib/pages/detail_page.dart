@@ -21,14 +21,17 @@ class DetailPage extends StatefulWidget {
 class _DetailPageState extends State<DetailPage> {
   ThreadDetail? _detail;
   WebViewController? _bodyController;
+  WebViewController? _commentsController;
   final TextEditingController _replyCtrl = TextEditingController();
   final FocusNode _replyFocus = FocusNode();
   bool _loading = true;
   bool _sending = false;
   bool _buying = false;
   bool _loggedIn = false;
+  bool _commentsExpanded = true;
   String? _error;
   double _bodyHeight = 0;
+  double _commentsHeight = 0;
   int _likeCount = 0;
   bool _liked = false;
   bool _favorited = false;
@@ -68,10 +71,12 @@ class _DetailPageState extends State<DetailPage> {
         _detail = detail;
         _likeCount = detail.likeCount;
         _liked = detail.likedByMe;
+        _bodyHeight = 0;
+        _commentsHeight = 0;
       });
-      _bodyHeight = 0;
-      _bodyController = _buildBodyController(detail.bodyHtml);
-      if (_loggedIn) _loadInteractionState();
+      _bodyController = detail.bodyHtml.isEmpty ? null : _buildWebController(detail.bodyHtml, false);
+      _commentsController = detail.commentsHtml.isEmpty ? null : _buildWebController(detail.commentsHtml, true);
+      if (_loggedIn) await _loadInteractionState();
     } catch (e) {
       if (mounted) setState(() => _error = '$e');
     } finally {
@@ -90,13 +95,11 @@ class _DetailPageState extends State<DetailPage> {
         _liked = state.likedByMe;
         _favorited = state.favorited;
       });
-    } catch (_) {
-      // 互动状态同步失败不阻塞正文展示。
-    }
+    } catch (_) {}
   }
 
-  WebViewController _buildBodyController(String bodyHtml) {
-    final safeHtml = bodyHtml.isEmpty ? '<div></div>' : bodyHtml;
+  WebViewController _buildWebController(String html, bool comments) {
+    final safeHtml = html.isEmpty ? '<div></div>' : html;
     final doc = '''<!doctype html>
 <html>
 <head>
@@ -107,9 +110,9 @@ class _DetailPageState extends State<DetailPage> {
   * { box-sizing: border-box; }
   html, body { margin: 0; padding: 0; background: transparent; }
   body {
-    padding: 6px 16px 18px;
-    font-size: 16px;
-    line-height: 1.82;
+    padding: ${comments ? '0 2px 12px' : '4px 2px 18px'};
+    font-size: ${comments ? '14px' : '16px'};
+    line-height: ${comments ? '1.72' : '1.82'};
     color: #242833;
     word-wrap: break-word;
     overflow-wrap: anywhere;
@@ -120,8 +123,19 @@ class _DetailPageState extends State<DetailPage> {
   h1 { font-size: 23px; } h2 { font-size: 20px; } h3 { font-size: 18px; }
   a { color: #536dfe; text-decoration: none; }
   strong, b { color: #171a21; }
-  img { max-width: 100% !important; height: auto !important; border-radius: 12px; display: block; margin: 12px auto; }
-  video, iframe { max-width: 100% !important; border-radius: 12px; }
+  img {
+    display: block !important;
+    width: auto !important;
+    max-width: 100% !important;
+    height: auto !important;
+    max-height: 72vh !important;
+    object-fit: contain !important;
+    border-radius: 12px;
+    margin: 12px auto !important;
+  }
+  table { max-width: 100% !important; width: 100% !important; overflow: hidden; }
+  td, th { max-width: 100% !important; overflow-wrap: anywhere; }
+  video, iframe { display: block; max-width: 100% !important; height: auto !important; border-radius: 12px; }
   pre, code { white-space: pre-wrap; word-break: break-word; }
   code { background: #f1f3f6; padding: 2px 5px; border-radius: 5px; font-size: .92em; }
   pre { background: #f4f5f7; padding: 12px 14px; border-radius: 10px; overflow: hidden; }
@@ -129,43 +143,58 @@ class _DetailPageState extends State<DetailPage> {
   ul, ol { padding-left: 24px; }
   li { margin: 5px 0; }
   hr { border: 0; border-top: 1px solid #e7e9ee; margin: 20px 0; }
-  table { width: 100%; border-collapse: separate; border-spacing: 0; margin: 14px 0; overflow: hidden; border: 1px solid #e3e6ec; border-radius: 10px; }
-  th, td { padding: 8px 10px; border-right: 1px solid #e3e6ec; border-bottom: 1px solid #e3e6ec; text-align: left; }
-  th { background: #f5f6f8; font-weight: 650; }
-  tr:last-child td { border-bottom: 0; }
-  th:last-child, td:last-child { border-right: 0; }
-  .post-card { background: #f7f8fa; border: 1px solid #eceef2; border-radius: 14px; padding: 13px 14px; margin: 12px 0; }
+  .content-section { width: 100%; }
+  .comments-section { width: 100%; }
+  .comments-title { display:none; }
+  .post-card {
+    background: #f7f8fa;
+    border: 1px solid #eceef2;
+    border-radius: 16px;
+    padding: ${comments ? '13px 14px' : '15px 16px'};
+    margin: 0 0 10px;
+  }
   .post-card:first-child { margin-top: 0; }
   .post-hd { display: flex; align-items: center; flex-wrap: wrap; gap: 6px; }
-  .p-floor { color: #9299a7; font-size: 12px; }
-  .p-author { font-weight: 650; color: #222630; font-size: 14px; }
+  .p-floor { color: #7f8796; font-size: 12px; font-weight: 600; }
+  .p-author { font-weight: 700; color: #222630; font-size: 14px; }
   .p-level { color: #536dfe; font-size: 11px; background: #edf0ff; padding: 2px 7px; border-radius: 9px; }
   .p-time { color: #9aa0ab; font-size: 12px; margin-top: 4px; }
-  .post-card .p-body { margin-top: 9px; font-size: 15px; line-height: 1.75; }
+  .post-card .p-body { margin-top: 9px; font-size: ${comments ? '14px' : '15.5px'}; line-height: ${comments ? '1.72' : '1.78'}; }
 </style>
 </head>
 <body>$safeHtml</body>
 </html>''';
 
-    return WebViewController()
+    late final WebViewController controller;
+    controller = WebViewController()
       ..setJavaScriptMode(JavaScriptMode.unrestricted)
       ..setBackgroundColor(Colors.transparent)
       ..setNavigationDelegate(
-        NavigationDelegate(onPageFinished: (_) => _fitWebViewHeight()),
+        NavigationDelegate(
+          onPageFinished: (_) async {
+            try {
+              await controller.runJavaScript('''
+                document.querySelectorAll('img').forEach(function(img) {
+                  img.style.width = 'auto';
+                  img.style.maxWidth = '100%';
+                  img.style.height = 'auto';
+                  img.style.maxHeight = '72vh';
+                  img.style.objectFit = 'contain';
+                });
+                setTimeout(function(){ window.scrollTo(0,0); }, 80);
+              ''');
+              final raw = await controller.runJavaScriptReturningResult(
+                'Math.max(document.body.scrollHeight, document.documentElement.scrollHeight)',
+              );
+              final h = double.tryParse(raw.toString().replaceAll('"', '')) ?? 0;
+              if (!mounted || h <= 0) return;
+              setState(() => comments ? _commentsHeight = h + 8 : _bodyHeight = h + 8);
+            } catch (_) {}
+          },
+        ),
       )
       ..loadHtmlString(doc, baseUrl: 'https://www.ycoo.net/');
-  }
-
-  Future<void> _fitWebViewHeight() async {
-    try {
-      final raw = await _bodyController!
-          .runJavaScriptReturningResult('document.documentElement.scrollHeight')
-          .then((v) => v.toString());
-      final h = double.tryParse(raw.replaceAll(RegExp(r'"'), '')) ?? 0;
-      if (h > 0 && mounted && h != _bodyHeight) {
-        setState(() => _bodyHeight = h + 8);
-      }
-    } catch (_) {}
+    return controller;
   }
 
   Future<void> _openPurchase() async {
@@ -175,28 +204,99 @@ class _DetailPageState extends State<DetailPage> {
       await _openLogin();
       if (!_loggedIn) return;
     }
-
     final priceText = d.price == null ? '当前价格以论坛页面为准' : '${d.price} ${d.currency}';
     final confirmed = await showDialog<bool>(
           context: context,
           builder: (dialogContext) => AlertDialog(
             title: const Text('购买主题'),
-            content: Text('确定购买这个付费主题吗？\n\n价格：$priceText\n\n点击“确定购买”后将使用当前论坛账号完成购买。'),
+            content: Text('确定购买这个付费主题吗？\n\n价格：$priceText\n\n购买后会重新读取论坛页面确认正文是否解锁。'),
             actions: [
               TextButton(onPressed: () => Navigator.pop(dialogContext, false), child: const Text('取消')),
               FilledButton(onPressed: () => Navigator.pop(dialogContext, true), child: const Text('确定购买')),
             ],
           ),
-        ) ??
-        false;
+        ) ?? false;
     if (!confirmed || !mounted) return;
-
     setState(() => _buying = true);
     final result = await ApiService.instance.purchaseThread(d.tid);
     if (!mounted) return;
     setState(() => _buying = false);
     ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text(result.message)));
     if (result.success) await _fetch();
+  }
+
+  Future<void> _openLogin() async {
+    final ok = await Navigator.of(context).push<bool>(MaterialPageRoute(builder: (_) => const LoginPage()));
+    if (ok == true && mounted) {
+      await AuthService.instance.init();
+      await AuthService.instance.checkLoggedIn();
+      setState(() => _loggedIn = AuthService.instance.isLoggedIn);
+      await _fetch();
+    }
+  }
+
+  Future<void> _sendReply() async {
+    final text = _replyCtrl.text.trim();
+    final d = _detail;
+    if (text.isEmpty || d == null || _sending) return;
+    setState(() => _sending = true);
+    final err = await AuthService.instance.reply(d.tid, d.fid, text);
+    if (!mounted) return;
+    setState(() => _sending = false);
+    if (err == null) {
+      _replyCtrl.clear();
+      _replyFocus.unfocus();
+      ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('回帖成功')));
+      await _fetch();
+    } else {
+      ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text(err)));
+    }
+  }
+
+  Future<void> _toggleLike(ThreadDetail d) async {
+    if (!_loggedIn) {
+      await _openLogin();
+      if (!_loggedIn) return;
+    }
+    if (_interacting || d.firstPid <= 0) return;
+    setState(() => _interacting = true);
+    final err = await ThreadInteractionService.instance.toggleLike(
+      tid: d.tid,
+      pid: d.firstPid,
+      like: !_liked,
+    );
+    if (!mounted) return;
+    if (err == null) {
+      setState(() {
+        _liked = !_liked;
+        _likeCount += _liked ? 1 : -1;
+        if (_likeCount < 0) _likeCount = 0;
+        _interacting = false;
+      });
+    } else {
+      setState(() => _interacting = false);
+      ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text(err)));
+    }
+  }
+
+  Future<void> _toggleFavorite(ThreadDetail d) async {
+    if (!_loggedIn) {
+      await _openLogin();
+      if (!_loggedIn) return;
+    }
+    if (_interacting) return;
+    setState(() => _interacting = true);
+    final err = await ThreadInteractionService.instance.toggleFavorite(tid: d.tid, favorite: !_favorited);
+    if (!mounted) return;
+    if (err == null) {
+      setState(() {
+        _favorited = !_favorited;
+        _interacting = false;
+      });
+    } else {
+      setState(() => _interacting = false);
+      ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text(err)));
+    }
   }
 
   @override
@@ -212,262 +312,6 @@ class _DetailPageState extends State<DetailPage> {
       body: _buildBody(context),
       bottomNavigationBar: _buildComposer(context),
     );
-  }
-
-  Widget _buildComposer(BuildContext context) {
-    final theme = Theme.of(context);
-    final d = _detail;
-    if (d == null) return const SizedBox.shrink();
-
-    if (d.isPaid) {
-      return SafeArea(
-        top: false,
-        child: Container(
-          padding: const EdgeInsets.fromLTRB(16, 10, 16, 10),
-          decoration: BoxDecoration(
-            color: theme.colorScheme.surface,
-            border: Border(top: BorderSide(color: theme.colorScheme.outlineVariant.withValues(alpha: .45))),
-          ),
-          child: Row(
-            children: [
-              Expanded(
-                child: Column(
-                  crossAxisAlignment: CrossAxisAlignment.start,
-                  mainAxisSize: MainAxisSize.min,
-                  children: [
-                    Text('付费主题', style: theme.textTheme.labelMedium?.copyWith(color: theme.colorScheme.onSurfaceVariant)),
-                    const SizedBox(height: 2),
-                    Text(d.price == null ? '购买后查看完整内容' : '${d.price} ${d.currency}', style: theme.textTheme.titleSmall?.copyWith(fontWeight: FontWeight.w700)),
-                  ],
-                ),
-              ),
-              FilledButton.icon(
-                onPressed: _buying ? null : _openPurchase,
-                icon: _buying ? const SizedBox(width: 18, height: 18, child: CircularProgressIndicator(strokeWidth: 2)) : const Icon(Icons.shopping_bag_outlined, size: 19),
-                label: Text(_buying ? '购买中…' : '购买主题'),
-              ),
-            ],
-          ),
-        ),
-      );
-    }
-
-    if (!_loggedIn) {
-      return SafeArea(
-        top: false,
-        child: Container(
-          padding: const EdgeInsets.fromLTRB(16, 9, 16, 9),
-          decoration: BoxDecoration(
-            color: theme.colorScheme.surface,
-            border: Border(top: BorderSide(color: theme.colorScheme.outlineVariant.withValues(alpha: .45))),
-          ),
-          child: OutlinedButton.icon(
-            onPressed: _openLogin,
-            icon: const Icon(Icons.login_rounded, size: 18),
-            label: const Text('登录后参与讨论'),
-            style: OutlinedButton.styleFrom(minimumSize: const Size.fromHeight(46)),
-          ),
-        ),
-      );
-    }
-
-    return SafeArea(
-      top: false,
-      child: Container(
-        padding: const EdgeInsets.fromLTRB(12, 8, 12, 8),
-        decoration: BoxDecoration(
-          color: theme.colorScheme.surface,
-          border: Border(top: BorderSide(color: theme.colorScheme.outlineVariant.withValues(alpha: .45))),
-        ),
-        child: Row(
-          crossAxisAlignment: CrossAxisAlignment.end,
-          children: [
-            Expanded(
-              child: TextField(
-                controller: _replyCtrl,
-                focusNode: _replyFocus,
-                minLines: 1,
-                maxLines: 4,
-                textInputAction: TextInputAction.send,
-                onSubmitted: (_) => _sendReply(),
-                decoration: InputDecoration(
-                  hintText: '友善地说点什么…',
-                  isDense: true,
-                  filled: true,
-                  fillColor: theme.colorScheme.surfaceContainerHighest.withValues(alpha: .55),
-                  border: OutlineInputBorder(borderRadius: BorderRadius.circular(22), borderSide: BorderSide.none),
-                  enabledBorder: OutlineInputBorder(borderRadius: BorderRadius.circular(22), borderSide: BorderSide.none),
-                  focusedBorder: OutlineInputBorder(borderRadius: BorderRadius.circular(22), borderSide: BorderSide(color: theme.colorScheme.primary.withValues(alpha: .5))),
-                  contentPadding: const EdgeInsets.symmetric(horizontal: 16, vertical: 10),
-                ),
-              ),
-            ),
-            const SizedBox(width: 6),
-            Material(
-              color: theme.colorScheme.primary,
-              shape: const CircleBorder(),
-              child: IconButton(
-                tooltip: '发送',
-                onPressed: _sending ? null : _sendReply,
-                icon: _sending ? const SizedBox(width: 18, height: 18, child: CircularProgressIndicator(strokeWidth: 2, color: Colors.white)) : const Icon(Icons.arrow_upward_rounded, color: Colors.white),
-              ),
-            ),
-          ],
-        ),
-      ),
-    );
-  }
-
-  Future<void> _openLogin() async {
-    final ok = await Navigator.of(context).push<bool>(MaterialPageRoute(builder: (_) => const LoginPage()));
-    if (ok == true && mounted) {
-      await AuthService.instance.init();
-      await AuthService.instance.checkLoggedIn();
-      setState(() => _loggedIn = AuthService.instance.isLoggedIn);
-      await _fetch();
-    }
-  }
-
-  Future<void> _sendReply() async {
-    final text = _replyCtrl.text;
-    if (text.trim().isEmpty) return;
-    final d = _detail;
-    if (d == null) return;
-    setState(() => _sending = true);
-    final err = await AuthService.instance.reply(d.tid, d.fid, text);
-    if (!mounted) return;
-    setState(() => _sending = false);
-    final messenger = ScaffoldMessenger.of(context);
-    if (err == null) {
-      _replyCtrl.clear();
-      _replyFocus.unfocus();
-      messenger.showSnackBar(const SnackBar(content: Text('回帖成功'), duration: Duration(seconds: 2)));
-      await _fetch();
-    } else {
-      messenger.showSnackBar(SnackBar(content: Text(err)));
-    }
-  }
-
-  Widget _actions(BuildContext context, ThreadDetail d) {
-    final scheme = Theme.of(context).colorScheme;
-    return Padding(
-      padding: const EdgeInsets.fromLTRB(16, 4, 16, 10),
-      child: Container(
-        padding: const EdgeInsets.all(5),
-        decoration: BoxDecoration(
-          color: scheme.surfaceContainerHighest.withValues(alpha: .55),
-          borderRadius: BorderRadius.circular(17),
-        ),
-        child: Row(
-          children: [
-            _actionButton(
-              context,
-              icon: _liked ? Icons.favorite_rounded : Icons.favorite_border_rounded,
-              label: _liked ? '已点赞' : '点赞',
-              count: _likeCount,
-              active: _liked,
-              onTap: () => _toggleLike(d),
-            ),
-            const SizedBox(width: 4),
-            _actionButton(
-              context,
-              icon: _favorited ? Icons.star_rounded : Icons.star_border_rounded,
-              label: _favorited ? '已收藏' : '收藏',
-              active: _favorited,
-              onTap: () => _toggleFavorite(d),
-            ),
-            const SizedBox(width: 4),
-            _actionButton(
-              context,
-              icon: Icons.reply_rounded,
-              label: '回复',
-              onTap: () => _replyFocus.requestFocus(),
-            ),
-          ],
-        ),
-      ),
-    );
-  }
-
-  Widget _actionButton(
-    BuildContext context, {
-    required IconData icon,
-    required String label,
-    int? count,
-    bool active = false,
-    required VoidCallback onTap,
-  }) {
-    final scheme = Theme.of(context).colorScheme;
-    return Expanded(
-      child: Material(
-        color: active ? scheme.primary.withValues(alpha: .12) : Colors.transparent,
-        borderRadius: BorderRadius.circular(13),
-        child: InkWell(
-          borderRadius: BorderRadius.circular(13),
-          onTap: onTap,
-          child: Padding(
-            padding: const EdgeInsets.symmetric(vertical: 9),
-            child: Row(
-              mainAxisAlignment: MainAxisAlignment.center,
-              children: [
-                Icon(icon, size: 19, color: active ? scheme.primary : scheme.onSurfaceVariant),
-                const SizedBox(width: 5),
-                Text(label, style: TextStyle(fontSize: 13, fontWeight: active ? FontWeight.w600 : FontWeight.w500, color: active ? scheme.primary : scheme.onSurfaceVariant)),
-                if (count != null && count > 0) ...[
-                  const SizedBox(width: 3),
-                  Text('$count', style: TextStyle(fontSize: 12, color: active ? scheme.primary : scheme.onSurfaceVariant)),
-                ],
-              ],
-            ),
-          ),
-        ),
-      ),
-    );
-  }
-
-  Future<void> _toggleLike(ThreadDetail d) async {
-    if (!_loggedIn) {
-      await _openLogin();
-      if (!_loggedIn) return;
-    }
-    if (_interacting || _sending) return;
-    if (d.firstPid <= 0) {
-      ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('暂无法定位首楼，请刷新后重试')));
-      return;
-    }
-    setState(() => _interacting = true);
-    final err = await ThreadInteractionService.instance.toggleLike(tid: d.tid, pid: d.firstPid, like: !_liked);
-    if (!mounted) return;
-    setState(() => _interacting = false);
-    if (err == null) {
-      setState(() {
-        _liked = !_liked;
-        if (_liked) {
-          _likeCount++;
-        } else if (_likeCount > 0) {
-          _likeCount--;
-        }
-      });
-    } else {
-      ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text(err)));
-    }
-  }
-
-  Future<void> _toggleFavorite(ThreadDetail d) async {
-    if (!_loggedIn) {
-      await _openLogin();
-      if (!_loggedIn) return;
-    }
-    if (_interacting || _sending) return;
-    setState(() => _interacting = true);
-    final err = await ThreadInteractionService.instance.toggleFavorite(tid: d.tid, favorite: !_favorited);
-    if (!mounted) return;
-    setState(() => _interacting = false);
-    if (err == null) {
-      setState(() => _favorited = !_favorited);
-    } else {
-      ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text(err)));
-    }
   }
 
   Widget _buildBody(BuildContext context) {
@@ -489,7 +333,6 @@ class _DetailPageState extends State<DetailPage> {
         ),
       );
     }
-
     final d = _detail!;
     return RefreshIndicator(
       onRefresh: _fetch,
@@ -499,12 +342,10 @@ class _DetailPageState extends State<DetailPage> {
         children: [
           _header(context, d),
           _actions(context, d),
-          if (d.bodyHtml.isEmpty && d.isPaid)
-            _paidNotice(context, d)
-          else if (d.bodyHtml.isEmpty)
-            _emptyBody(context)
-          else
-            _bodyCard(context),
+          if (d.bodyHtml.isEmpty && d.isPaid) _paidNotice(context, d)
+          else if (d.bodyHtml.isEmpty) _emptyBody(context)
+          else _bodyCard(context),
+          if (d.commentsHtml.isNotEmpty) _commentsCard(context, d),
         ],
       ),
     );
@@ -513,27 +354,24 @@ class _DetailPageState extends State<DetailPage> {
   Widget _bodyCard(BuildContext context) {
     final scheme = Theme.of(context).colorScheme;
     return Container(
-      margin: const EdgeInsets.fromLTRB(12, 0, 12, 4),
+      margin: const EdgeInsets.fromLTRB(12, 0, 12, 12),
+      padding: const EdgeInsets.only(top: 10),
       decoration: BoxDecoration(
         color: scheme.surface,
         borderRadius: BorderRadius.circular(20),
         border: Border.all(color: scheme.outlineVariant.withValues(alpha: .45)),
       ),
-      child: Padding(
-        padding: const EdgeInsets.only(top: 10),
-        child: SizedBox(
-          height: _bodyHeight > 0 ? _bodyHeight : MediaQuery.of(context).size.height * .72,
-          child: WebViewWidget(controller: _bodyController!),
-        ),
+      child: SizedBox(
+        height: _bodyHeight > 0 ? _bodyHeight : 240,
+        child: WebViewWidget(controller: _bodyController!),
       ),
     );
   }
 
-  Widget _emptyBody(BuildContext context) {
+  Widget _commentsCard(BuildContext context, ThreadDetail d) {
     final scheme = Theme.of(context).colorScheme;
     return Container(
-      margin: const EdgeInsets.fromLTRB(12, 0, 12, 4),
-      padding: const EdgeInsets.symmetric(vertical: 44, horizontal: 24),
+      margin: const EdgeInsets.fromLTRB(12, 0, 12, 12),
       decoration: BoxDecoration(
         color: scheme.surface,
         borderRadius: BorderRadius.circular(20),
@@ -541,9 +379,29 @@ class _DetailPageState extends State<DetailPage> {
       ),
       child: Column(
         children: [
-          Icon(Icons.article_outlined, size: 40, color: scheme.outline),
-          const SizedBox(height: 10),
-          Text('该主题暂时没有可显示的正文。', style: TextStyle(color: scheme.onSurfaceVariant)),
+          InkWell(
+            borderRadius: const BorderRadius.vertical(top: Radius.circular(20)),
+            onTap: () => setState(() => _commentsExpanded = !_commentsExpanded),
+            child: Padding(
+              padding: const EdgeInsets.fromLTRB(16, 14, 12, 14),
+              child: Row(
+                children: [
+                  Container(width: 4, height: 20, decoration: BoxDecoration(color: scheme.primary, borderRadius: BorderRadius.circular(4))),
+                  const SizedBox(width: 9),
+                  const Expanded(child: Text('评论 / 回复', style: TextStyle(fontSize: 16, fontWeight: FontWeight.w800))),
+                  Icon(_commentsExpanded ? Icons.keyboard_arrow_up_rounded : Icons.keyboard_arrow_down_rounded),
+                ],
+              ),
+            ),
+          ),
+          if (_commentsExpanded)
+            Padding(
+              padding: const EdgeInsets.fromLTRB(10, 0, 10, 8),
+              child: SizedBox(
+                height: _commentsHeight > 0 ? _commentsHeight : 180,
+                child: WebViewWidget(controller: _commentsController!),
+              ),
+            ),
         ],
       ),
     );
@@ -552,7 +410,7 @@ class _DetailPageState extends State<DetailPage> {
   Widget _paidNotice(BuildContext context, ThreadDetail d) {
     final scheme = Theme.of(context).colorScheme;
     return Container(
-      margin: const EdgeInsets.fromLTRB(12, 0, 12, 4),
+      margin: const EdgeInsets.fromLTRB(12, 0, 12, 12),
       padding: const EdgeInsets.all(24),
       decoration: BoxDecoration(
         gradient: LinearGradient(colors: [scheme.primaryContainer, scheme.surface]),
@@ -568,15 +426,28 @@ class _DetailPageState extends State<DetailPage> {
             child: Icon(Icons.lock_rounded, size: 30, color: scheme.primary),
           ),
           const SizedBox(height: 14),
-          Text('这是一个付费主题', style: Theme.of(context).textTheme.titleMedium?.copyWith(fontWeight: FontWeight.w700)),
-          const SizedBox(height: 5),
+          const Text('这是一个付费主题', style: TextStyle(fontSize: 17, fontWeight: FontWeight.w800)),
+          const SizedBox(height: 6),
           Text(d.price == null ? '购买后即可查看完整内容' : '支付 ${d.price} ${d.currency} 后查看完整内容', textAlign: TextAlign.center, style: TextStyle(color: scheme.onSurfaceVariant)),
           const SizedBox(height: 17),
-          FilledButton.icon(onPressed: _buying ? null : _openPurchase, icon: const Icon(Icons.shopping_bag_outlined), label: const Text('购买主题')),
+          FilledButton.icon(onPressed: _buying ? null : _openPurchase, icon: const Icon(Icons.shopping_bag_outlined), label: Text(_buying ? '购买中…' : '购买主题')),
         ],
       ),
     );
   }
+
+  Widget _emptyBody(BuildContext context) => Container(
+        margin: const EdgeInsets.fromLTRB(12, 0, 12, 12),
+        padding: const EdgeInsets.symmetric(vertical: 44, horizontal: 24),
+        decoration: BoxDecoration(
+          color: Theme.of(context).colorScheme.surface,
+          borderRadius: BorderRadius.circular(20),
+          border: Border.all(color: Theme.of(context).colorScheme.outlineVariant.withValues(alpha: .45)),
+        ),
+        child: const Column(
+          children: [Icon(Icons.article_outlined, size: 40), SizedBox(height: 10), Text('该主题暂时没有可显示的正文。')],
+        ),
+      );
 
   Widget _header(BuildContext context, ThreadDetail d) {
     final scheme = Theme.of(context).colorScheme;
@@ -587,25 +458,21 @@ class _DetailPageState extends State<DetailPage> {
         color: scheme.surface,
         borderRadius: BorderRadius.circular(22),
         border: Border.all(color: scheme.outlineVariant.withValues(alpha: .45)),
-        boxShadow: [BoxShadow(color: Colors.black.withValues(alpha: .025), blurRadius: 14, offset: const Offset(0, 5))],
       ),
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
           if (d.boardName.isNotEmpty)
-            Align(
-              alignment: Alignment.centerLeft,
-              child: GestureDetector(
-                onTap: d.fid == 0 ? null : () => Navigator.of(context).push(MaterialPageRoute(builder: (_) => BoardThreadListPage(filter: d.boardName, fid: d.fid))),
-                child: Container(
-                  padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 5),
-                  decoration: BoxDecoration(color: scheme.primary.withValues(alpha: .10), borderRadius: BorderRadius.circular(10)),
-                  child: Row(mainAxisSize: MainAxisSize.min, children: [Icon(Icons.forum_outlined, size: 14, color: scheme.primary), const SizedBox(width: 5), Text(d.boardName, style: TextStyle(fontSize: 12, fontWeight: FontWeight.w600, color: scheme.primary))]),
-                ),
+            GestureDetector(
+              onTap: d.fid == 0 ? null : () => Navigator.of(context).push(MaterialPageRoute(builder: (_) => BoardThreadListPage(filter: d.boardName, fid: d.fid))),
+              child: Container(
+                padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 5),
+                decoration: BoxDecoration(color: scheme.primary.withValues(alpha: .10), borderRadius: BorderRadius.circular(10)),
+                child: Row(mainAxisSize: MainAxisSize.min, children: [Icon(Icons.forum_outlined, size: 14, color: scheme.primary), const SizedBox(width: 5), Text(d.boardName, style: TextStyle(fontSize: 12, fontWeight: FontWeight.w600, color: scheme.primary))]),
               ),
             ),
           const SizedBox(height: 12),
-          Text(d.title, style: Theme.of(context).textTheme.headlineSmall?.copyWith(fontSize: 21, height: 1.3, fontWeight: FontWeight.w800, letterSpacing: -.2)),
+          Text(d.title, style: Theme.of(context).textTheme.headlineSmall?.copyWith(fontSize: 21, height: 1.3, fontWeight: FontWeight.w800)),
           const SizedBox(height: 16),
           Row(
             children: [
@@ -620,32 +487,65 @@ class _DetailPageState extends State<DetailPage> {
                 child: Column(
                   crossAxisAlignment: CrossAxisAlignment.start,
                   children: [
-                    Row(
-                      children: [
-                        Flexible(child: Text(d.author, maxLines: 1, overflow: TextOverflow.ellipsis, style: const TextStyle(fontSize: 14, fontWeight: FontWeight.w700))),
-                        if (d.level.isNotEmpty) ...[
-                          const SizedBox(width: 7),
-                          Container(padding: const EdgeInsets.symmetric(horizontal: 7, vertical: 2), decoration: BoxDecoration(color: scheme.secondaryContainer, borderRadius: BorderRadius.circular(8)), child: Text(d.level, style: TextStyle(fontSize: 10.5, fontWeight: FontWeight.w600, color: scheme.onSecondaryContainer))),
-                        ],
-                      ],
-                    ),
-                    if (d.time.isNotEmpty) ...[
-                      const SizedBox(height: 2),
-                      Text(d.time, maxLines: 1, overflow: TextOverflow.ellipsis, style: TextStyle(fontSize: 11.5, color: scheme.onSurfaceVariant)),
-                    ],
+                    Row(children: [Flexible(child: Text(d.author, maxLines: 1, overflow: TextOverflow.ellipsis, style: const TextStyle(fontSize: 14, fontWeight: FontWeight.w700))), if (d.level.isNotEmpty) ...[const SizedBox(width: 7), Container(padding: const EdgeInsets.symmetric(horizontal: 7, vertical: 2), decoration: BoxDecoration(color: scheme.secondaryContainer, borderRadius: BorderRadius.circular(8)), child: Text(d.level, style: TextStyle(fontSize: 10.5, fontWeight: FontWeight.w600, color: scheme.onSecondaryContainer)))]]),
+                    if (d.time.isNotEmpty) ...[const SizedBox(height: 2), Text(d.time, maxLines: 1, overflow: TextOverflow.ellipsis, style: TextStyle(fontSize: 11.5, color: scheme.onSurfaceVariant))],
                   ],
                 ),
               ),
-              if (d.isPaid)
-                Container(
-                  padding: const EdgeInsets.symmetric(horizontal: 9, vertical: 5),
-                  decoration: BoxDecoration(color: scheme.tertiaryContainer, borderRadius: BorderRadius.circular(10)),
-                  child: Row(mainAxisSize: MainAxisSize.min, children: [Icon(Icons.workspace_premium_outlined, size: 14, color: scheme.onTertiaryContainer), const SizedBox(width: 4), Text('付费', style: TextStyle(fontSize: 11, fontWeight: FontWeight.w700, color: scheme.onTertiaryContainer))]),
-                ),
+              if (d.isPaid) Container(padding: const EdgeInsets.symmetric(horizontal: 9, vertical: 5), decoration: BoxDecoration(color: scheme.tertiaryContainer, borderRadius: BorderRadius.circular(10)), child: Text('付费', style: TextStyle(fontSize: 11, fontWeight: FontWeight.w700, color: scheme.onTertiaryContainer))),
             ],
           ),
         ],
       ),
     );
+  }
+
+  Widget _actions(BuildContext context, ThreadDetail d) {
+    final scheme = Theme.of(context).colorScheme;
+    return Padding(
+      padding: const EdgeInsets.fromLTRB(16, 4, 16, 10),
+      child: Container(
+        padding: const EdgeInsets.all(5),
+        decoration: BoxDecoration(color: scheme.surfaceContainerHighest.withValues(alpha: .55), borderRadius: BorderRadius.circular(17)),
+        child: Row(children: [
+          _actionButton(context, icon: _liked ? Icons.favorite_rounded : Icons.favorite_border_rounded, label: _liked ? '已点赞' : '点赞', count: _likeCount, active: _liked, onTap: () => _toggleLike(d)),
+          const SizedBox(width: 4),
+          _actionButton(context, icon: _favorited ? Icons.star_rounded : Icons.star_border_rounded, label: _favorited ? '已收藏' : '收藏', active: _favorited, onTap: () => _toggleFavorite(d)),
+          const SizedBox(width: 4),
+          _actionButton(context, icon: Icons.reply_rounded, label: '回复', onTap: () => _replyFocus.requestFocus()),
+        ]),
+      ),
+    );
+  }
+
+  Widget _actionButton(BuildContext context, {required IconData icon, required String label, int? count, bool active = false, required VoidCallback onTap}) {
+    final scheme = Theme.of(context).colorScheme;
+    return Expanded(
+      child: Material(
+        color: active ? scheme.primary.withValues(alpha: .12) : Colors.transparent,
+        borderRadius: BorderRadius.circular(13),
+        child: InkWell(
+          borderRadius: BorderRadius.circular(13),
+          onTap: onTap,
+          child: Padding(
+            padding: const EdgeInsets.symmetric(vertical: 9),
+            child: Row(mainAxisAlignment: MainAxisAlignment.center, children: [Icon(icon, size: 19, color: active ? scheme.primary : scheme.onSurfaceVariant), const SizedBox(width: 5), Text(label, style: TextStyle(fontSize: 13, fontWeight: active ? FontWeight.w600 : FontWeight.w500, color: active ? scheme.primary : scheme.onSurfaceVariant)), if (count != null && count > 0) ...[const SizedBox(width: 3), Text('$count', style: TextStyle(fontSize: 12, color: active ? scheme.primary : scheme.onSurfaceVariant))]]),
+          ),
+        ),
+      ),
+    );
+  }
+
+  Widget _buildComposer(BuildContext context) {
+    final theme = Theme.of(context);
+    final d = _detail;
+    if (d == null) return const SizedBox.shrink();
+    if (d.isPaid && d.bodyHtml.isEmpty) {
+      return SafeArea(top: false, child: Container(padding: const EdgeInsets.fromLTRB(16, 10, 16, 10), decoration: BoxDecoration(color: theme.colorScheme.surface, border: Border(top: BorderSide(color: theme.colorScheme.outlineVariant.withValues(alpha: .45)))), child: Row(children: [Expanded(child: Column(crossAxisAlignment: CrossAxisAlignment.start, mainAxisSize: MainAxisSize.min, children: [Text('付费主题', style: theme.textTheme.labelMedium?.copyWith(color: theme.colorScheme.onSurfaceVariant)), const SizedBox(height: 2), Text(d.price == null ? '购买后查看完整内容' : '${d.price} ${d.currency}', style: theme.textTheme.titleSmall?.copyWith(fontWeight: FontWeight.w700))]),), FilledButton.icon(onPressed: _buying ? null : _openPurchase, icon: _buying ? const SizedBox(width: 18, height: 18, child: CircularProgressIndicator(strokeWidth: 2)) : const Icon(Icons.shopping_bag_outlined, size: 19), label: Text(_buying ? '购买中…' : '购买主题'))])));
+    }
+    if (!_loggedIn) {
+      return SafeArea(top: false, child: Container(padding: const EdgeInsets.fromLTRB(16, 9, 16, 9), decoration: BoxDecoration(color: theme.colorScheme.surface, border: Border(top: BorderSide(color: theme.colorScheme.outlineVariant.withValues(alpha: .45)))), child: OutlinedButton.icon(onPressed: _openLogin, icon: const Icon(Icons.login_rounded, size: 18), label: const Text('登录后参与讨论'), style: OutlinedButton.styleFrom(minimumSize: const Size.fromHeight(46)))));
+    }
+    return SafeArea(top: false, child: Container(padding: const EdgeInsets.fromLTRB(12, 8, 12, 8), decoration: BoxDecoration(color: theme.colorScheme.surface, border: Border(top: BorderSide(color: theme.colorScheme.outlineVariant.withValues(alpha: .45)))), child: Row(crossAxisAlignment: CrossAxisAlignment.end, children: [Expanded(child: TextField(controller: _replyCtrl, focusNode: _replyFocus, minLines: 1, maxLines: 4, textInputAction: TextInputAction.send, onSubmitted: (_) => _sendReply(), decoration: InputDecoration(hintText: '友善地说点什么…', isDense: true, filled: true, fillColor: theme.colorScheme.surfaceContainerHighest.withValues(alpha: .55), border: OutlineInputBorder(borderRadius: BorderRadius.circular(22), borderSide: BorderSide.none), enabledBorder: OutlineInputBorder(borderRadius: BorderRadius.circular(22), borderSide: BorderSide.none), focusedBorder: OutlineInputBorder(borderRadius: BorderRadius.circular(22), borderSide: BorderSide(color: theme.colorScheme.primary.withValues(alpha: .5))), contentPadding: const EdgeInsets.symmetric(horizontal: 16, vertical: 10)))), const SizedBox(width: 6), Material(color: theme.colorScheme.primary, shape: const CircleBorder(), child: IconButton(tooltip: '发送', onPressed: _sending ? null : _sendReply, icon: _sending ? const SizedBox(width: 18, height: 18, child: CircularProgressIndicator(strokeWidth: 2, color: Colors.white)) : const Icon(Icons.arrow_upward_rounded, color: Colors.white))) ])));
   }
 }
