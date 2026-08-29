@@ -26,8 +26,9 @@ class SiteFallbackService {
     };
     final cookie = AuthService.instance.authCookie;
     if (cookie != null && cookie.isNotEmpty) headers['Cookie'] = cookie;
-    final uri = Uri.parse(url).replace(queryParameters: {
-      ...Uri.parse(url).queryParameters,
+    final parsed = Uri.parse(url);
+    final uri = parsed.replace(queryParameters: {
+      ...parsed.queryParameters,
       '_ycoo_fallback': DateTime.now().millisecondsSinceEpoch.toString(),
     });
     final response = await NetClient.retry(() => client.get(uri, headers: headers));
@@ -38,7 +39,23 @@ class SiteFallbackService {
   }
 
   Future<List<ThreadItem>> fetchThreads(String url) async {
-    final doc = parser.parse(await _get(url));
+    // ycoo 的 mobile=2 导读页偶尔返回精简模板，先解析当前页面；
+    // 如果没有任何 thread 链接，再自动尝试同一地址的标准模板。
+    var result = _parseThreads(parser.parse(await _get(url)));
+    if (result.isNotEmpty) return result;
+
+    final uri = Uri.parse(url);
+    if (uri.queryParameters.containsKey('mobile')) {
+      final desktop = uri.replace(queryParameters: {
+        ...uri.queryParameters,
+        'mobile': null,
+      });
+      result = _parseThreads(parser.parse(await _get(desktop.toString())));
+    }
+    return result;
+  }
+
+  List<ThreadItem> _parseThreads(dom.Document doc) {
     final result = <ThreadItem>[];
     final seen = <int>{};
 
