@@ -51,25 +51,18 @@ class _LoginPageState extends State<LoginPage> {
   /// 在每页加载完成后检查是否已登录(通过是否存在 auth Cookie 判定)。
   Future<void> _checkLogin() async {
     if (_resolved) return;
-    final List<String> cookies = await WebViewCookieManager()
-        .getCookies('https://www.ycoo.net/');
-    // 每个元素可能是 "k=v" 或 "k=v; k2=v2",统一拆开。
-    final parts = <String>[];
-    for (final raw in cookies) {
-      parts.addAll(raw.split(';'));
-    }
-    final cookieStr = parts
-        .map((c) => c.trim())
-        .where((c) => c.isNotEmpty)
+    final cookies = await WebViewCookieManager()
+        .getCookies(domain: 'www.ycoo.net');
+    // 每个 WebViewCookie 含 name/value,拼成 "k=v; k2=v2" 的 Cookie 串。
+    final cookieStr = cookies
+        .where((c) => c.value.isNotEmpty)
+        .map((c) => '${c.name}=${c.value}')
         .join('; ');
-    final authed = parts.any((c) {
-      final i = c.indexOf('=');
-      final name = (i < 0 ? c : c.substring(0, i)).trim().toLowerCase();
-      return name.endsWith('auth');
-    });
+    final authed =
+        cookies.any((c) => c.name.toLowerCase().endsWith('auth'));
     if (!authed) {
       LoginLog.instance.add('WebView 页面完成,但尚无 auth Cookie(未登录),'
-          ' Cookie 项=${parts.where((c) => c.trim().isNotEmpty).length}');
+          ' Cookie 项=${cookies.length}');
       return;
     }
     _resolved = true;
@@ -92,8 +85,8 @@ class _LoginPageState extends State<LoginPage> {
           return u;
         })()
       """);
-      final p = r; // runJavaScriptReturningResult 返回动态值(JSON 解析结果)
-      var s = p == null ? '' : p.toString().trim();
+      // runJavaScriptReturningResult 在当前 webview_flutter 返回非空动态值。
+      var s = r.toString().trim();
       if (s == 'null') s = '';
       // 返回值常是带引号的 JSON 字符串。
       return s.replaceAll(RegExp(r'^"|"$'), '').trim();
