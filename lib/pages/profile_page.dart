@@ -4,7 +4,8 @@ import '../services/auth_service.dart';
 import 'login_page.dart';
 import 'webview_page.dart';
 
-/// 我的页:登录态 / 站点信息 / 关于。
+/// 我的页：把源论坛会员中心常用功能集中到原生 UI，
+/// 对暂时没有稳定公开接口的站点功能保留站点页面作为执行入口。
 class ProfilePage extends StatefulWidget {
   const ProfilePage({super.key});
 
@@ -16,8 +17,8 @@ class _ProfilePageState extends State<ProfilePage> {
   String? _username;
   bool _ready = false;
 
-  static const _loginMessage =
-      '登录后可回帖、发帖、打卡、评分等(网页登录)';
+  static const _base = 'https://www.ycoo.net/';
+  static const _loginMessage = '登录后可回帖、发帖、打卡、评分、购买主题等';
 
   @override
   void initState() {
@@ -38,9 +39,7 @@ class _ProfilePageState extends State<ProfilePage> {
     final ok = await Navigator.of(context).push<bool>(
       MaterialPageRoute(builder: (_) => const LoginPage()),
     );
-    if (ok == true) {
-      await _load();
-    }
+    if (ok == true) await _load();
   }
 
   Future<void> _logout() async {
@@ -52,87 +51,262 @@ class _ProfilePageState extends State<ProfilePage> {
     });
   }
 
+  void _openSite(String path, String title) {
+    Navigator.of(context).push(MaterialPageRoute(
+      builder: (_) => WebViewPage(url: '$_base$path', title: title),
+    ));
+  }
+
+  void _openMySpace() {
+    final name = Uri.encodeQueryComponent(_username ?? '');
+    _openSite('home.php?mod=space&username=$name&mobile=2', '个人主页');
+  }
+
+  Widget _sectionHeader(BuildContext context, String text) {
+    return Padding(
+      padding: const EdgeInsets.fromLTRB(16, 18, 16, 8),
+      child: Text(
+        text,
+        style: TextStyle(
+          fontSize: 14,
+          color: Theme.of(context).colorScheme.primary,
+          fontWeight: FontWeight.w700,
+        ),
+      ),
+    );
+  }
+
+  Widget _featureTile({
+    required IconData icon,
+    required String title,
+    required String subtitle,
+    required VoidCallback onTap,
+  }) {
+    return Card(
+      margin: EdgeInsets.zero,
+      child: InkWell(
+        borderRadius: BorderRadius.circular(16),
+        onTap: onTap,
+        child: Padding(
+          padding: const EdgeInsets.all(14),
+          child: Row(
+            children: [
+              CircleAvatar(
+                radius: 22,
+                backgroundColor: Theme.of(context)
+                    .colorScheme
+                    .primaryContainer,
+                child: Icon(icon),
+              ),
+              const SizedBox(width: 12),
+              Expanded(
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Text(title, style: const TextStyle(fontSize: 15, fontWeight: FontWeight.w600)),
+                    const SizedBox(height: 3),
+                    Text(subtitle, style: TextStyle(fontSize: 12, color: Colors.grey.shade600)),
+                  ],
+                ),
+              ),
+              const Icon(Icons.chevron_right),
+            ],
+          ),
+        ),
+      ),
+    );
+  }
+
   @override
   Widget build(BuildContext context) {
-    final loggedIn = _username != null;
+    final loggedIn = _username != null && _username!.isNotEmpty;
+
     return Scaffold(
       appBar: AppBar(title: const Text('我的')),
       body: ListView(
-        padding: const EdgeInsets.all(12),
+        padding: const EdgeInsets.fromLTRB(12, 4, 12, 24),
         children: [
           _sectionHeader(context, '帐号'),
-          if (loggedIn)
-            _buildAccountTile()
-          else
-            ListTile(
-              leading: const Icon(Icons.login),
-              title: const Text('登录 / 注册'),
-              subtitle: const Text(_loginMessage),
-              trailing: const Icon(Icons.chevron_right),
-              onTap: _ready ? _openLogin : null,
+          Card(
+            margin: EdgeInsets.zero,
+            child: InkWell(
+              borderRadius: BorderRadius.circular(16),
+              onTap: loggedIn ? _openMySpace : (_ready ? _openLogin : null),
+              child: Padding(
+                padding: const EdgeInsets.all(16),
+                child: Row(
+                  children: [
+                    CircleAvatar(
+                      radius: 28,
+                      child: Icon(loggedIn ? Icons.person : Icons.login, size: 30),
+                    ),
+                    const SizedBox(width: 14),
+                    Expanded(
+                      child: Column(
+                        crossAxisAlignment: CrossAxisAlignment.start,
+                        children: [
+                          Text(
+                            loggedIn ? _username! : '登录 / 注册',
+                            style: const TextStyle(fontSize: 18, fontWeight: FontWeight.w700),
+                          ),
+                          const SizedBox(height: 4),
+                          Text(loggedIn ? '打开个人主页 · 资料 · 主题 · 回帖' : _loginMessage),
+                        ],
+                      ),
+                    ),
+                    const Icon(Icons.chevron_right),
+                  ],
+                ),
+              ),
             ),
-          if (loggedIn)
+          ),
+          if (loggedIn) ...[
+            _sectionHeader(context, '我的社区'),
+            GridView.count(
+              crossAxisCount: 2,
+              shrinkWrap: true,
+              physics: const NeverScrollableScrollPhysics(),
+              mainAxisSpacing: 10,
+              crossAxisSpacing: 10,
+              childAspectRatio: 2.55,
+              children: [
+                _featureTile(
+                  icon: Icons.article_outlined,
+                  title: '我的主题',
+                  subtitle: '查看我发布的帖子',
+                  onTap: () => _openSite('home.php?mod=space&do=thread&view=me&mobile=2', '我的主题'),
+                ),
+                _featureTile(
+                  icon: Icons.forum_outlined,
+                  title: '我的回帖',
+                  subtitle: '查看我的回复',
+                  onTap: () => _openSite('home.php?mod=space&do=thread&view=me&from=space&mobile=2', '我的帖子'),
+                ),
+                _featureTile(
+                  icon: Icons.bookmark_border,
+                  title: '我的收藏',
+                  subtitle: '收藏的主题与版块',
+                  onTap: () => _openSite('home.php?mod=space&do=favorite&view=me&mobile=2', '我的收藏'),
+                ),
+                _featureTile(
+                  icon: Icons.notifications_none,
+                  title: '通知',
+                  subtitle: '回复、提醒、系统通知',
+                  onTap: () => _openSite('home.php?mod=space&do=notice&mobile=2', '通知'),
+                ),
+                _featureTile(
+                  icon: Icons.mail_outline,
+                  title: '消息',
+                  subtitle: '站内私信',
+                  onTap: () => _openSite('home.php?mod=space&do=pm&mobile=2', '消息'),
+                ),
+                _featureTile(
+                  icon: Icons.people_outline,
+                  title: '好友 / 关注',
+                  subtitle: '好友、关注与粉丝',
+                  onTap: () => _openSite('home.php?mod=space&do=friend&mobile=2', '好友 / 关注'),
+                ),
+              ],
+            ),
+            _sectionHeader(context, '积分与活动'),
+            GridView.count(
+              crossAxisCount: 2,
+              shrinkWrap: true,
+              physics: const NeverScrollableScrollPhysics(),
+              mainAxisSpacing: 10,
+              crossAxisSpacing: 10,
+              childAspectRatio: 2.55,
+              children: [
+                _featureTile(
+                  icon: Icons.account_balance_wallet_outlined,
+                  title: '星币 / 积分',
+                  subtitle: '余额、积分与交易记录',
+                  onTap: () => _openSite('home.php?mod=spacecp&ac=credit&mobile=2', '星币 / 积分'),
+                ),
+                _featureTile(
+                  icon: Icons.calendar_today_outlined,
+                  title: '每日签到',
+                  subtitle: '签到、连续天数、奖励',
+                  onTap: () => _openSite('k_misign-sign.html', '每日签到'),
+                ),
+                _featureTile(
+                  icon: Icons.casino_outlined,
+                  title: '幸运抽奖',
+                  subtitle: '参与站点抽奖活动',
+                  onTap: () => _openSite('plugin.php?id=luckypoint:luckypoint&mobile=2', '幸运抽奖'),
+                ),
+                _featureTile(
+                  icon: Icons.agriculture_outlined,
+                  title: '明日农场',
+                  subtitle: '站点农场活动',
+                  onTap: () => _openSite('plugin.php?id=tom_mfarm:tom_mfarm&mobile=2', '明日农场'),
+                ),
+                _featureTile(
+                  icon: Icons.confirmation_number_outlined,
+                  title: '邀请码',
+                  subtitle: '购买或管理邀请码',
+                  onTap: () => _openSite('plugin.php?id=invitecode&mobile=2', '邀请码'),
+                ),
+                _featureTile(
+                  icon: Icons.star_outline,
+                  title: '繁星达人',
+                  subtitle: '达人与会员榜单',
+                  onTap: () => _openSite('plugin.php?id=tom_tstar&mobile=2', '繁星达人'),
+                ),
+              ],
+            ),
+            _sectionHeader(context, '会员服务'),
+            _featureTile(
+              icon: Icons.add_card,
+              title: '源币充值',
+              subtitle: '充值星币 / 查看充值服务',
+              onTap: () => _openSite('forum.php?mod=guide&view=newthread&mobile=2', '源币充值'),
+            ),
+            const SizedBox(height: 10),
+            _featureTile(
+              icon: Icons.manage_accounts_outlined,
+              title: '帐号设置',
+              subtitle: '头像、密码、个人资料等',
+              onTap: () => _openSite('home.php?mod=spacecp&ac=profile&mobile=2', '帐号设置'),
+            ),
+            const SizedBox(height: 10),
             ListTile(
+              contentPadding: const EdgeInsets.symmetric(horizontal: 14),
               leading: const Icon(Icons.logout),
               title: const Text('退出登录'),
               trailing: const Icon(Icons.chevron_right),
               onTap: _logout,
-            )
-          else
-            const ListTile(
-              leading: Icon(Icons.info_outline),
-              title: Text('说明'),
-              subtitle: Text('本站为「源论坛」民间移动端;发布、回帖等需先登录(网页)'),
             ),
-          const Divider(),
+          ] else ...[
+            _sectionHeader(context, '登录后可用'),
+            const Card(
+              margin: EdgeInsets.zero,
+              child: Padding(
+                padding: EdgeInsets.all(16),
+                child: Text('登录后可使用个人主页、我的主题、回帖、收藏、通知、消息、签到、星币、邀请码等会员功能。'),
+              ),
+            ),
+          ],
           _sectionHeader(context, '关于'),
-          const ListTile(
-            leading: Icon(Icons.apps),
-            title: Text('源论坛'),
-            subtitle: Text('YcoForum · 非官方客户端'),
+          ListTile(
+            leading: const Icon(Icons.apps),
+            title: const Text('源论坛'),
+            subtitle: const Text('YcoForum · 非官方客户端'),
           ),
           ListTile(
             leading: const Icon(Icons.public),
             title: const Text('电脑版官网'),
             subtitle: const Text('https://www.ycoo.net'),
             trailing: const Icon(Icons.chevron_right),
-            onTap: () =>
-                _openWeb(context, 'https://www.ycoo.net', '源论坛'),
+            onTap: () => _openSite('', '源论坛'),
           ),
-          ListTile(
-            leading: const Icon(Icons.android),
-            title: const Text('版本'),
-            subtitle: const Text('1.0.0'),
+          const ListTile(
+            leading: Icon(Icons.android),
+            title: Text('版本'),
+            subtitle: Text('1.0.0'),
           ),
         ],
       ),
     );
-  }
-
-  Widget _buildAccountTile() {
-    return ListTile(
-      leading: const CircleAvatar(child: Icon(Icons.person)),
-      title: Text(_username ?? '已登录'),
-      subtitle: const Text('已通过网页登录'),
-    );
-  }
-
-  Widget _sectionHeader(BuildContext context, String text) {
-    return Padding(
-      padding: const EdgeInsets.fromLTRB(12, 12, 12, 4),
-      child: Text(
-        text,
-        style: TextStyle(
-          fontSize: 13,
-          color: Theme.of(context).colorScheme.primary,
-          fontWeight: FontWeight.w600,
-        ),
-      ),
-    );
-  }
-
-  void _openWeb(BuildContext context, String url, String title) {
-    Navigator.of(context).push(MaterialPageRoute(
-        builder: (_) => WebViewPage(url: url, title: title)));
   }
 }
