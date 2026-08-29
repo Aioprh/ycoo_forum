@@ -358,28 +358,59 @@ class ApiService {
 
   static List<String> _collectPosts(dom.Document doc) {
     final out = <String>[];
-    final postNodes = doc.querySelectorAll('.comiis_postli, #postlist .plhin, #postlist .plc, #postlist > div[id^="post_"], div[id^="postmessage_"]');
-    for (final post in postNodes) {
-      dom.Element? content = post.querySelector('.comiis_message_table');
-      content ??= post.querySelector('.t_f, .pcb, .comiis_postcontent, .comiis_message, .message, .postmessage, [id^="postmessage_"]');
-      if (content == null && post.localName == 'div' && (post.id.startsWith('postmessage_') || post.id.startsWith('post_'))) content = post;
-      if (content == null) continue;
-      final html = content.innerHtml.trim();
-      if (html.isEmpty) continue;
+    final containers = doc.querySelectorAll(
+      '.comiis_postli, #postlist .plhin, #postlist .plc, #postlist > div[id^="post_"]',
+    );
+
+    String? extract(dom.Element post) {
+      final selectors = <String>[
+        '[id^="postmessage_"]',
+        '.t_f',
+        '.pcb',
+        '.comiis_postcontent',
+        '.comiis_message',
+        '.message',
+        '.postmessage',
+      ];
+      for (final selector in selectors) {
+        final node = post.querySelector(selector);
+        if (node == null) continue;
+        final html = node.innerHtml.trim();
+        final text = _normSpace(node.text);
+        if (html.isEmpty) continue;
+        if (text.contains('本主题需向作者支付') ||
+            (text.contains('购买主题') && text.contains('星币'))) continue;
+        return html;
+      }
+      return null;
+    }
+
+    for (final post in containers) {
+      final html = extract(post);
+      if (html == null) continue;
       final author = _normSpace(post.querySelector('.top_user, .authi .xw1, .authi a')?.text ?? '');
       final level = _normSpace(post.querySelector('.top_lev, .p_pop')?.text ?? '');
-      final floor = _normSpace(post.querySelector('.f_d.y, .pi .authi em, .pls .authi em')?.text ?? '').replaceAll(RegExp(r'[^0-9A-Za-z一二三四五六七八九十楼主]'), '');
+      final floor = _normSpace(post.querySelector('.f_d.y, .pi .authi em, .pls .authi em')?.text ?? '')
+          .replaceAll(RegExp(r'[^0-9A-Za-z一二三四五六七八九十楼主]'), '');
       final time = _normSpace(post.querySelector('.kmtime, .comiis_tm, .authi em')?.text ?? '');
       final displayFloor = floor.isEmpty ? (out.isEmpty ? '楼主' : '${out.length + 1}楼') : floor;
-      out.add('<div class="post-card"><div class="post-hd"><span class="p-floor">$displayFloor</span>${author.isEmpty ? '' : '<b class="p-author">$author</b>'}${level.isEmpty ? '' : '<span class="p-level">$level</span>'}</div>${time.isEmpty ? '' : '<div class="p-time">$time</div>'}<div class="p-body">${_cleanPostHtml(html)}</div></div>');
+      out.add(
+        '<div class="post-card"><div class="post-hd"><span class="p-floor">$displayFloor</span>'
+        '${author.isEmpty ? '' : '<b class="p-author">$author</b>'}'
+        '${level.isEmpty ? '' : '<span class="p-level">$level</span>'}</div>'
+        '${time.isEmpty ? '' : '<div class="p-time">$time</div>'}'
+        '<div class="p-body">${_cleanPostHtml(html)}</div></div>',
+      );
     }
-    if (out.isNotEmpty) return out;
-    for (final selector in ['.comiis_message_table', '.t_f', '.pcb', '.postmessage', '[id^="postmessage_"]']) {
-      for (final t in doc.querySelectorAll(selector)) {
-        final html = t.innerHtml.trim();
-        if (html.isNotEmpty) out.add('<div class="post-card"><div class="p-body">${_cleanPostHtml(html)}</div></div>');
+
+    if (out.isEmpty) {
+      for (final node in doc.querySelectorAll('[id^="postmessage_"], .t_f, .pcb')) {
+        final html = node.innerHtml.trim();
+        final text = _normSpace(node.text);
+        if (html.isEmpty || text.contains('本主题需向作者支付') ||
+            (text.contains('购买主题') && text.contains('星币'))) continue;
+        out.add('<div class="post-card"><div class="p-body">${_cleanPostHtml(html)}</div></div>');
       }
-      if (out.isNotEmpty) return out;
     }
     return out;
   }

@@ -60,22 +60,33 @@ class _DetailPageState extends State<DetailPage> {
   }
 
   Future<void> _fetch() async {
+    final hadDetail = _detail != null;
     if (mounted) {
       setState(() {
-        _loading = true;
+        _loading = !hadDetail;
         _error = null;
       });
     }
     try {
       final d = await ApiService.instance.fetchThreadDetail(widget.tid);
       if (!mounted) return;
+      final oldBody = _detail?.bodyHtml.trim() ?? '';
+      final newBody = d.bodyHtml.trim();
+      final bodyChanged = oldBody != newBody;
       setState(() {
         _detail = d;
         _likeCount = d.likeCount;
         _liked = d.likedByMe;
-        _bodyHeight = 0;
+        if (newBody.isEmpty) {
+          _bodyController = null;
+          _bodyHeight = 0;
+        } else if (bodyChanged || _bodyController == null) {
+          _bodyHeight = 0;
+        }
       });
-      _bodyController = d.bodyHtml.trim().isEmpty ? null : _web(d.bodyHtml);
+      if (newBody.isNotEmpty && (bodyChanged || _bodyController == null)) {
+        _bodyController = _web(newBody);
+      }
       if (_loggedIn) await _loadInteractionState();
     } catch (e) {
       if (mounted) setState(() => _error = '$e');
@@ -123,7 +134,13 @@ video,iframe{max-width:100%!important;height:auto!important;border-radius:12px}t
             try {
               await controller.runJavaScript("document.querySelectorAll('img').forEach(function(i){i.style.width='auto';i.style.maxWidth='100%';i.style.height='auto';i.style.maxHeight='72vh';i.style.objectFit='contain';});");
               final raw = await controller.runJavaScriptReturningResult(
-                'Math.max(document.body.scrollHeight,document.documentElement.scrollHeight)',
+                '''(function(){
+                  document.querySelectorAll('[style]').forEach(function(e){
+                    var st=(e.getAttribute('style')||'').replace(/\s/g,'').toLowerCase();
+                    if(st.indexOf('100vh')>=0 || st.indexOf('min-height:')>=0 || st.indexOf('height:100%')>=0) e.style.minHeight='0';
+                  });
+                  return Math.max(document.body.scrollHeight,document.documentElement.scrollHeight);
+                })()''',
               );
               final height = double.tryParse(raw.toString().replaceAll('"', '')) ?? 0;
               if (!mounted || height <= 0) return;
