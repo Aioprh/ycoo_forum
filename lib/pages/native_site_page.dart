@@ -45,18 +45,53 @@ class _NativeSitePageState extends State<NativeSitePage> {
   Widget _form(dom.Element form){
     final widgets=<Widget>[];
     for(final e in form.querySelectorAll('input')){
-      final type=(e.attributes['type']??'text').toLowerCase(); final name=e.attributes['name']??e.attributes['id']; if(name==null||type=='hidden'||type=='submit'||type=='button'||type=='checkbox'||type=='radio') continue;
-      widgets.add(Padding(padding:const EdgeInsets.symmetric(vertical:6),child:TextField(controller:_controller(name,e.attributes['value']??''),obscureText:type=='password',keyboardType:type=='number'?TextInputType.number:TextInputType.text,decoration:InputDecoration(labelText:e.attributes['placeholder']??e.attributes['title']??name,border:const OutlineInputBorder())));
+      final type=(e.attributes['type']??'text').toLowerCase();
+      final name=e.attributes['name']??e.attributes['id'];
+      if(name==null||type=='hidden'||type=='submit'||type=='button'||type=='checkbox'||type=='radio') continue;
+      widgets.add(Padding(
+        padding:const EdgeInsets.symmetric(vertical:6),
+        child:TextField(
+          controller:_controller(name,e.attributes['value']??''),
+          obscureText:type=='password',
+          keyboardType:type=='number'?TextInputType.number:TextInputType.text,
+          decoration:InputDecoration(labelText:e.attributes['placeholder']??e.attributes['title']??name,border:const OutlineInputBorder()),
+        ),
+      ));
     }
-    for(final e in form.querySelectorAll('textarea')){final name=e.attributes['name']??e.attributes['id'];if(name==null)continue;widgets.add(Padding(padding:const EdgeInsets.symmetric(vertical:6),child:TextField(controller:_controller(name,_clean(e.text)),maxLines:5,decoration:InputDecoration(labelText:name,border:const OutlineInputBorder()))));}
-    for(final e in form.querySelectorAll('select')){final name=e.attributes['name']??e.attributes['id'];if(name==null)continue;final opts=e.querySelectorAll('option');final initial=e.attributes['value']??(opts.isEmpty ? null : opts.first.attributes['value']);_selectValues.putIfAbsent(name,()=>initial??'');widgets.add(Padding(padding:const EdgeInsets.symmetric(vertical:6),child:DropdownButtonFormField<String>(initialValue:opts.any((o)=>(o.attributes['value']??o.text)==_selectValues[name])?_selectValues[name]:null,decoration:InputDecoration(labelText:name,border:const OutlineInputBorder()),items:opts.map((o)=>DropdownMenuItem(value:o.attributes['value']??o.text,child:Text(_clean(o.text)))).toList(),onChanged:(v){if(v!=null)_selectValues[name]=v;})));}
+    for(final e in form.querySelectorAll('textarea')){
+      final name=e.attributes['name']??e.attributes['id'];
+      if(name==null) continue;
+      widgets.add(Padding(
+        padding:const EdgeInsets.symmetric(vertical:6),
+        child:TextField(controller:_controller(name,_clean(e.text)),maxLines:5,decoration:InputDecoration(labelText:name,border:const OutlineInputBorder())),
+      ));
+    }
+    for(final e in form.querySelectorAll('select')){
+      final name=e.attributes['name']??e.attributes['id'];
+      if(name==null) continue;
+      final opts=e.querySelectorAll('option');
+      final initial=e.attributes['value']??(opts.isEmpty ? null : opts.first.attributes['value']??opts.first.text);
+      _selectValues.putIfAbsent(name,()=>initial??'');
+      final current=_selectValues[name];
+      widgets.add(Padding(
+        padding:const EdgeInsets.symmetric(vertical:6),
+        child:DropdownButtonFormField<String>(
+          initialValue:opts.any((o)=>(o.attributes['value']??o.text)==current) ? current : null,
+          decoration:InputDecoration(labelText:name,border:const OutlineInputBorder()),
+          items:opts.map((o)=>DropdownMenuItem<String>(value:o.attributes['value']??o.text,child:Text(_clean(o.text)))).toList(),
+          onChanged:(v){if(v!=null)_selectValues[name]=v;},
+        ),
+      ));
+    }
     if(widgets.isEmpty)return const SizedBox.shrink();
     return Card(child:Padding(padding:const EdgeInsets.all(14),child:Column(crossAxisAlignment:CrossAxisAlignment.stretch,children:[if(_label(form).isNotEmpty)Padding(padding:const EdgeInsets.only(bottom:8),child:Text(_label(form),style:const TextStyle(fontSize:18,fontWeight:FontWeight.w700))),...widgets,FilledButton.icon(onPressed:()=>_submit(form),icon:const Icon(Icons.save),label:const Text('保存'))])));
   }
 
   Future<void> _submit(dom.Element form) async {
-    final data=<String,String>{}; for(final e in form.querySelectorAll('input[type="hidden"]')){final n=e.attributes['name'];if(n!=null)data[n]=e.attributes['value']??'';}
-    for(final e in _fields.entries)data[e.key]=e.value.text; data.addAll(_selectValues);
+    final data=<String,String>{};
+    for(final e in form.querySelectorAll('input[type="hidden"]')){final n=e.attributes['name'];if(n!=null)data[n]=e.attributes['value']??'';}
+    for(final e in _fields.entries)data[e.key]=e.value.text;
+    data.addAll(_selectValues);
     try{final client=await NetClient.instance.client;await AuthService.instance.init();final r=await client.post(Uri.parse(_abs(form.attributes['action']??widget.path)),headers:{'User-Agent':NetClient.ua,'Referer':_abs(widget.path),'Content-Type':'application/x-www-form-urlencoded; charset=UTF-8',if((AuthService.instance.authCookie??'').isNotEmpty)'Cookie':AuthService.instance.authCookie!},body:data).timeout(const Duration(seconds:20));if(!mounted)return;final ok=r.statusCode>=200&&r.statusCode<400;ScaffoldMessenger.of(context).showSnackBar(SnackBar(content:Text(ok?'保存成功':'保存失败：HTTP ${r.statusCode}')));if(ok)await _load();}catch(e){if(mounted)ScaffoldMessenger.of(context).showSnackBar(SnackBar(content:Text('保存失败：$e')));}
   }
 
