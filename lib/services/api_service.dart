@@ -26,9 +26,10 @@ class ApiService {
   Future<String> _get(String url, {Map<String, String>? query}) async {
     final client = await NetClient.instance.client;
     final uri = Uri.parse(url).replace(queryParameters: query);
-    final resp = await client
+    // 弱网/瞬时断连(ERR_CONNECTION_CLOSED)做自动重试,GET 无副作用。
+    final resp = await NetClient.retry(() => client
         .get(uri, headers: {'User-Agent': NetClient.ua})
-        .timeout(_timeout);
+        .timeout(_timeout));
     if (resp.statusCode != 200) {
       throw Exception('请求失败 HTTP ${resp.statusCode}');
     }

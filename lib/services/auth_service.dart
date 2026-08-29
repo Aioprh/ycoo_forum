@@ -76,41 +76,45 @@ class AuthService {
     lastError = null;
     final client = await _http();
     try {
-      final formPage = await client
-          .get(Uri.parse(base + loginPath), headers: _headers())
-          .timeout(NetClient.timeout);
-      final page = NetClient.decode(formPage.bodyBytes);
-      final formhash = NetClient.first(
-              RegExp(r'''name="formhash"[^>]*value=['"]?([0-9a-f]{8})'''),
-              page) ??
-          NetClient.first(
-              RegExp(r'''formhash\s*=\s*['"]([0-9a-f]{8})'''), page) ??
-          '';
-      final loginHash =
-          NetClient.first(RegExp(r'loginhash=([A-Za-z0-9]+)'), page) ?? '';
-      var referer = NetClient.first(
-              RegExp(r'''name="referer"[^>]*value=['"]?([^'">]+)'''), page) ??
-          base;
-      referer = referer
-          .replaceAll('&amp;', '&')
-          .replaceAll('&quot;', '"')
-          .trim();
+      // 弱网/瞬时断连(ERR_CONNECTION_CLOSED)时自动重试;
+      // 传输层失败代表请求未提交,重试整段(取表单 + 提交)是安全的。
+      final body = await NetClient.retry(() async {
+        final formPage = await client
+            .get(Uri.parse(base + loginPath), headers: _headers())
+            .timeout(NetClient.timeout);
+        final page = NetClient.decode(formPage.bodyBytes);
+        final formhash = NetClient.first(
+                RegExp(r'''name="formhash"[^>]*value=['"]?([0-9a-f]{8})'''),
+                page) ??
+            NetClient.first(
+                RegExp(r'''formhash\s*=\s*['"]([0-9a-f]{8})'''), page) ??
+            '';
+        final loginHash =
+            NetClient.first(RegExp(r'loginhash=([A-Za-z0-9]+)'), page) ?? '';
+        var referer = NetClient.first(
+                RegExp(r'''name="referer"[^>]*value=['"]?([^'">]+)'''), page) ??
+            base;
+        referer = referer
+            .replaceAll('&amp;', '&')
+            .replaceAll('&quot;', '"')
+            .trim();
 
-      final uri = Uri.parse(
-          '${base}member.php?mod=logging&action=login&loginsubmit=yes'
-          '${loginHash.isEmpty ? '' : '&loginhash=$loginHash'}&mobile=2');
-      final resp = await client
-          .post(uri, headers: _headers(), body: <String, String>{
-        'formhash': formhash,
-        'referer': referer,
-        'fastloginfield': 'username',
-        'cookietime': '31104000',
-        'username': account,
-        'password': password,
-        'questionid': questionId,
-        'answer': answer,
-      }).timeout(NetClient.timeout);
-      final body = NetClient.decode(resp.bodyBytes);
+        final uri = Uri.parse(
+            '${base}member.php?mod=logging&action=login&loginsubmit=yes'
+            '${loginHash.isEmpty ? '' : '&loginhash=$loginHash'}&mobile=2');
+        final resp = await client
+            .post(uri, headers: _headers(), body: <String, String>{
+          'formhash': formhash,
+          'referer': referer,
+          'fastloginfield': 'username',
+          'cookietime': '31104000',
+          'username': account,
+          'password': password,
+          'questionid': questionId,
+          'answer': answer,
+        }).timeout(NetClient.timeout);
+        return NetClient.decode(resp.bodyBytes);
+      });
 
       // Cronet 已自动跟随重定向:登录成功会带着 auth Cookie 进入已登录页。
       final ok = body.contains('action=logout') || body.contains(account.trim());
@@ -121,6 +125,9 @@ class AuthService {
         return true;
       }
       lastError = _parseLoginError(body);
+      return false;
+    } on http.ClientException {
+      lastError = '网络不可用,请检查网络后重试';
       return false;
     } catch (e) {
       lastError = '网络请求失败,请检查网络后重试';

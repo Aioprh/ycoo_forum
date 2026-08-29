@@ -1,3 +1,4 @@
+import 'dart:async';
 import 'dart:convert';
 import 'dart:io';
 
@@ -35,7 +36,9 @@ class NetClient {
       cacheMaxSize: 8 * 1024 * 1024,
       enableHttp2: true,
       enableBrotli: true,
-      enableQuic: true,
+      // 不开 QUIC(HTTP/3):站点对大部分网络走 HTTP/2 足矣;部分 4G/弱网/
+      // 防火墙会丢弃 QUIC 的 UDP,导致 Cronet 反复报 ERR_CONNECTION_CLOSED。
+      enableQuic: false,
       userAgent: ua,
     );
     return CronetClient.fromCronetEngine(engine, closeEngine: true);
@@ -48,4 +51,26 @@ class NetClient {
 
   /// 解析单个正则捕获组。
   static String? first(RegExp re, String s) => re.firstMatch(s)?.group(1);
+
+  /// 对「瞬时网络故障」做简单重试。
+  ///
+  /// 站点握手强校验 + 弱网下会偶发 `ERR_CONNECTION_CLOSED` / 握手被掐断,
+  /// 这类错误属于传输层瞬时故障,重试大概率成功。仅在请求真正发出前或
+  /// 传输中途失败时触发(此时服务端未提交副作用),故对 GET/POST 都安全。
+  static Future<T> retry<T>(
+    Future<T> Function() fn, {
+    int times = 3,
+    Duration delay = const Duration(milliseconds: 600),
+  }) async {
+    Object? last;
+    for (var i = 0; i < times; i++) {
+      try {
+        return await fn();
+      } catch (e) {
+        last = e;
+        if (i < times - 1) await Future<void>.delayed(delay);
+      }
+    }
+    Error.throwWithStackTrace(last! as Object, StackTrace.current);
+  }
 }
