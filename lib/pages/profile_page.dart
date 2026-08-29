@@ -93,9 +93,7 @@ class _ProfilePageState extends State<ProfilePage> {
             children: [
               CircleAvatar(
                 radius: 22,
-                backgroundColor: Theme.of(context)
-                    .colorScheme
-                    .primaryContainer,
+                backgroundColor: Theme.of(context).colorScheme.primaryContainer,
                 child: Icon(icon),
               ),
               const SizedBox(width: 12),
@@ -180,7 +178,7 @@ class _ProfilePageState extends State<ProfilePage> {
                   icon: Icons.forum_outlined,
                   title: '我的回帖',
                   subtitle: '查看我的回复',
-                  onTap: () => _openSite('home.php?mod=space&do=thread&view=me&from=space&mobile=2', '我的帖子'),
+                  onTap: () => _openSite('home.php?mod=space&do=thread&view=me&type=reply&mobile=2', '我的回帖'),
                 ),
                 _featureTile(
                   icon: Icons.bookmark_border,
@@ -233,25 +231,25 @@ class _ProfilePageState extends State<ProfilePage> {
                   icon: Icons.casino_outlined,
                   title: '幸运抽奖',
                   subtitle: '参与站点抽奖活动',
-                  onTap: () => _openSite('plugin.php?id=luckypoint:luckypoint&mobile=2', '幸运抽奖'),
+                  onTap: () => _openSite('plugin.php?id=viewui_lottery', '幸运抽奖'),
                 ),
                 _featureTile(
                   icon: Icons.agriculture_outlined,
                   title: '明日农场',
                   subtitle: '站点农场活动',
-                  onTap: () => _openSite('plugin.php?id=tom_mfarm:tom_mfarm&mobile=2', '明日农场'),
+                  onTap: () => _openSite('plugin.php?id=jnfarm', '明日农场'),
                 ),
                 _featureTile(
                   icon: Icons.confirmation_number_outlined,
                   title: '邀请码',
                   subtitle: '购买或管理邀请码',
-                  onTap: () => _openSite('plugin.php?id=invitecode&mobile=2', '邀请码'),
+                  onTap: () => _openSite('plugin.php?frame=yes&id=boan_buycode&mobile=2', '邀请码'),
                 ),
                 _featureTile(
                   icon: Icons.star_outline,
                   title: '繁星达人',
                   subtitle: '达人与会员榜单',
-                  onTap: () => _openSite('plugin.php?id=tom_tstar&mobile=2', '繁星达人'),
+                  onTap: () => _openSite('plugin.php?frame=yes&id=boan_group', '繁星达人'),
                 ),
               ],
             ),
@@ -260,7 +258,7 @@ class _ProfilePageState extends State<ProfilePage> {
               icon: Icons.add_card,
               title: '源币充值',
               subtitle: '充值星币 / 查看充值服务',
-              onTap: () => _openSite('forum.php?mod=guide&view=newthread&mobile=2', '源币充值'),
+              onTap: () => _openSite('home.php?ac=plugin&id=boan_buycredit:buycredit&mod=spacecp&op=credit', '源币充值'),
             ),
             const SizedBox(height: 10),
             _featureTile(
