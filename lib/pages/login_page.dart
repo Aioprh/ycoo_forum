@@ -41,7 +41,8 @@ class _LoginPageState extends State<LoginPage> {
       if (ok) {
         Navigator.of(context).pop(true);
       } else {
-        setState(() => _error = '登录失败:用户名或密码错误');
+        setState(() =>
+            _error = AuthService.instance.lastError ?? '登录失败,请稍后重试');
       }
     } catch (e) {
       if (!mounted) return;

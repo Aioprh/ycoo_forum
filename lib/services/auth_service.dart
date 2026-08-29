@@ -1,3 +1,4 @@
+import 'dart:async';
 import 'dart:convert';
 import 'dart:io';
 
@@ -28,6 +29,9 @@ class AuthService {
   String _cookiepre = 'YPSa_2132_';
   bool _ready = false;
   bool _loggedIn = false;
+
+  /// 最近一次登录失败的具体原因(中文),供界面展示并避免笼统的"密码错误"。
+  String? lastError;
 
   /// 会话中是否持有 auth Cookie(视为已登录)。
   bool get isLoggedIn => _loggedIn;
@@ -72,15 +76,28 @@ class AuthService {
   }
 
   /// 原生登录。成功返回 true,并持久化会话;失败返回 false。
+  ///
+  /// 失败时不抛出异常,而是把具体原因(中文)写入 [lastError],由界面展示。
   Future<bool> login(
     String account,
     String password, {
     String questionId = '0',
     String answer = '',
   }) async {
+    lastError = null;
     await init();
-    final page = await _request('GET', loginPath);
-    if (page.isEmpty) return false;
+
+    final String page;
+    try {
+      page = await _request('GET', loginPath);
+    } catch (e) {
+      lastError = _friendlyNetwork(e);
+      return false;
+    }
+    if (page.isEmpty) {
+      lastError = '登录页加载失败,请稍后重试';
+      return false;
+    }
 
     final formhash =
         _first(RegExp(r'''name="formhash"[^>]*value=['"]?([0-9a-f]{8})'''),
@@ -106,27 +123,36 @@ class AuthService {
     suffix.write('&mobile=2');
 
     // 该移动端模板以明文提交密码(mobile 登录),无需 md5。
-    await _request(
-      'POST',
-      suffix.toString(),
-      form: {
-        'formhash': formhash,
-        'referer': referer,
-        'fastloginfield': 'username',
-        'cookietime': '31104000',
-        'username': account,
-        'password': password,
-        'questionid': questionId,
-        'answer': answer,
-      },
-    );
+    final String postBody;
+    try {
+      postBody = await _request(
+        'POST',
+        suffix.toString(),
+        form: {
+          'formhash': formhash,
+          'referer': referer,
+          'fastloginfield': 'username',
+          'cookietime': '31104000',
+          'username': account,
+          'password': password,
+          'questionid': questionId,
+          'answer': answer,
+        },
+      );
+    } catch (e) {
+      lastError = _friendlyNetwork(e);
+      return false;
+    }
 
     _loggedIn = _hasAuth();
     if (_loggedIn) {
-      _cookies['${_cookiepre}username'] = account;
+      if (account.isNotEmpty) _cookies['${_cookiepre}username'] = account;
       await _save();
+      return true;
     }
-    return _loggedIn;
+    // 登录未成功:解析服务端真实提示,避免笼统的"用户名或密码错误"。
+    lastError = _parseLoginError(postBody);
+    return false;
   }
 
   /// 原生回帖。成功返回 null;失败返回提示文本(中文)。
@@ -266,6 +292,38 @@ class AuthService {
     }
     // 200(错误/需验证码)等情况返回 null,由调用方判定失败。
     return null;
+  }
+
+  /// 把网络/握手/超时异常转成友好的中文提示。
+  static String _friendlyNetwork(Object e) {
+    if (e is HandshakeException) {
+      return '与服务器握手失败,请检查网络后重试';
+    }
+    if (e is SocketException) {
+      return '网络异常(连接被断开),请检查网络后重试';
+    }
+    if (e is TimeoutException) {
+      return '请求超时,请稍后重试';
+    }
+    return '网络请求失败,请稍后重试';
+  }
+
+  /// 解析 Discuz 登录失败响应里的真实原因,避免笼统的"密码错误"。
+  static String _parseLoginError(String body) {
+    if (body.contains('密码错误次数过多') || body.contains('次数过多')) {
+      return '该账号触发登录保护,请15分钟后重试';
+    }
+    if (body.contains('验证码')) return '需要输入验证码,请稍后在网页端登录';
+    if (body.contains('操作频繁') || body.contains('过快')) {
+      return '操作频繁,请稍后再试';
+    }
+    if (body.contains('来路不正确') || body.contains('无效')) {
+      return '登录请求已过期,请重试';
+    }
+    if (body.contains('密码错误') || body.contains('用户名')) {
+      return '用户名或密码错误';
+    }
+    return '登录失败,请稍后重试';
   }
 
   String _encodeForm(Map<String, String> fields) {
