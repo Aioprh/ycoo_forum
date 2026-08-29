@@ -69,6 +69,16 @@ class _BoardPageState extends State<BoardPage> {
     );
   }
 
+  /// 网站原始版块名称有时会把“今日: N / 帖数: N”一起放进链接文本。
+  /// App 卡片已经单独展示统计信息，因此标题只保留纯版块名。
+  String _displayBoardName(ForumBoard board) {
+    var name = board.name.replaceAll(RegExp(r'\s+'), ' ').trim();
+    name = name.replaceAll(RegExp(r'\s*(?:今日|今天)\s*[:：]?\s*\d+'), '');
+    name = name.replaceAll(RegExp(r'\s*(?:帖子数|贴数|主题数|帖数)\s*[:：]?\s*\d+'), '');
+    name = name.replaceAll(RegExp(r'\s+'), ' ').trim();
+    return name.isEmpty ? board.name : name;
+  }
+
   Widget _category(BuildContext context, ForumCategory cat) {
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
@@ -104,11 +114,15 @@ class _BoardPageState extends State<BoardPage> {
       itemCount: boards.length,
       itemBuilder: (context, i) {
         final b = boards[i];
+        final displayName = _displayBoardName(b);
         return InkWell(
           borderRadius: BorderRadius.circular(10),
           onTap: () => Navigator.of(context).push(
             MaterialPageRoute(
-              builder: (_) => BoardThreadListPage(fid: b.fid, filter: b.name),
+              builder: (_) => BoardThreadListPage(
+                fid: b.fid,
+                filter: displayName,
+              ),
             ),
           ),
           child: Container(
@@ -131,18 +145,26 @@ class _BoardPageState extends State<BoardPage> {
                   CircleAvatar(
                     radius: 18,
                     backgroundColor: theme.colorScheme.primary.withValues(alpha: 0.12),
-                    child: Icon(Icons.forum_outlined,
-                        size: 18, color: theme.colorScheme.primary),
+                    child: Icon(
+                      Icons.forum_outlined,
+                      size: 18,
+                      color: theme.colorScheme.primary,
+                    ),
                   ),
                 const SizedBox(height: 6),
                 Text(
-                  b.name,
+                  displayName,
                   maxLines: 1,
                   overflow: TextOverflow.ellipsis,
                   style: const TextStyle(fontSize: 12.5, fontWeight: FontWeight.w500),
                 ),
                 if (b.today.isNotEmpty)
-                  Text(b.today, style: const TextStyle(fontSize: 10.5, color: Colors.grey)),
+                  Text(
+                    b.today,
+                    maxLines: 1,
+                    overflow: TextOverflow.ellipsis,
+                    style: const TextStyle(fontSize: 10.5, color: Colors.grey),
+                  ),
               ],
             ),
           ),
