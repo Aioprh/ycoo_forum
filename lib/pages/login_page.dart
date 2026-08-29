@@ -195,7 +195,7 @@ class _LoginPageState extends State<LoginPage> {
                 constraints: const BoxConstraints(maxHeight: 300),
                 padding: const EdgeInsets.all(10),
                 decoration: BoxDecoration(
-                  color: theme.colorScheme.surfaceVariant,
+                  color: theme.colorScheme.surfaceContainerHighest,
                   borderRadius: BorderRadius.circular(8),
                 ),
                 child: SingleChildScrollView(

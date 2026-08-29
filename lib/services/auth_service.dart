@@ -75,9 +75,9 @@ class AuthService {
     String answer = '',
   }) async {
     lastError = null;
-    LoginLog.add('开始登录: $account');
+    LoginLog.instance.add('开始登录: $account');
     // 密码不落日志,只记录长度提示。
-    LoginLog.add('密码长度: ${password.length} 位');
+    LoginLog.instance.add('密码长度: ${password.length} 位');
     final client = await _http();
     try {
       // 弱网/瞬时断连(ERR_CONNECTION_CLOSED)时自动重试;
@@ -85,12 +85,12 @@ class AuthService {
       final body = await NetClient.retry(
         () async {
           final formUrl = Uri.parse(base + loginPath);
-          LoginLog.add('GET 登录表单: $formUrl');
+          LoginLog.instance.add('GET 登录表单: $formUrl');
           final formPage = await client
               .get(formUrl, headers: _headers())
               .timeout(NetClient.timeout);
           final page = NetClient.decode(formPage.bodyBytes);
-          LoginLog.add('表单响应 HTTP ${formPage.statusCode}, '
+          LoginLog.instance.add('表单响应 HTTP ${formPage.statusCode}, '
               '大小 ${page.length} 字符');
           final formhash = NetClient.first(
                   RegExp(r'''name="formhash"[^>]*value=['"]?([0-9a-f]{8})'''),
@@ -107,13 +107,13 @@ class AuthService {
               .replaceAll('&amp;', '&')
               .replaceAll('&quot;', '"')
               .trim();
-          LoginLog.add('解析: formhash=${formhash.isEmpty ? '(空)' : formhash}, '
+          LoginLog.instance.add('解析: formhash=${formhash.isEmpty ? '(空)' : formhash}, '
               'loginhash=${loginHash.isEmpty ? '(空)' : loginHash}');
 
           final uri = Uri.parse(
               '${base}member.php?mod=logging&action=login&loginsubmit=yes'
               '${loginHash.isEmpty ? '' : '&loginhash=$loginHash'}&mobile=2');
-          LoginLog.add('POST 登录: $uri');
+          LoginLog.instance.add('POST 登录: $uri');
           final resp = await client
               .post(uri, headers: _headers(), body: <String, String>{
             'formhash': formhash,
@@ -126,41 +126,41 @@ class AuthService {
             'answer': answer,
           }).timeout(NetClient.timeout);
           final body = NetClient.decode(resp.bodyBytes);
-          LoginLog.add('登录响应 HTTP ${resp.statusCode}, 大小 ${body.length} 字符');
+          LoginLog.instance.add('登录响应 HTTP ${resp.statusCode}, 大小 ${body.length} 字符');
           return body;
         },
         onRetry: (error, attempt) =>
-            LoginLog.add('传输失败,第 $attempt 次重试: $error'),
+            LoginLog.instance.add('传输失败,第 $attempt 次重试: $error'),
       );
 
       // Cronet 已自动跟随重定向:登录成功会带着 auth Cookie 进入已登录页。
       var ok = body.contains('action=logout') || body.contains(account.trim());
       if (ok) {
-        LoginLog.add('响应正文含登录成功标记(action=logout / 用户名)');
+        LoginLog.instance.add('响应正文含登录成功标记(action=logout / 用户名)');
       } else {
         // 拿到了响应但没有成功标记:常见于响应被压缩/跳转/截断导致漏判,
         // 登录其实可能已成功。用同一会话再抓一次首页核验登录态,比直接判失败可靠。
-        LoginLog.add('响应正文未检出成功标记,改用首页二次核验登录态');
+        LoginLog.instance.add('响应正文未检出成功标记,改用首页二次核验登录态');
         ok = await _verifyLoggedIn(client, account);
       }
 
       if (ok) {
-        LoginLog.add('登录判定: 成功');
+        LoginLog.instance.add('登录判定: 成功');
         _loggedIn = true;
         _username = account.trim();
         await _save();
         return true;
       }
       lastError = _parseLoginError(body);
-      LoginLog.add('登录判定: 失败 -> $lastError');
-      LoginLog.add('响应片段: ${_snippet(body)}');
+      LoginLog.instance.add('登录判定: 失败 -> $lastError');
+      LoginLog.instance.add('响应片段: ${_snippet(body)}');
       return false;
     } on http.ClientException catch (e) {
-      LoginLog.add('ClientException: $e');
+      LoginLog.instance.add('ClientException: $e');
       lastError = '网络不可用,请检查网络后重试';
       return false;
     } catch (e) {
-      LoginLog.add('异常: $e');
+      LoginLog.instance.add('异常: $e');
       lastError = '网络请求失败,请检查网络后重试';
       return false;
     }
@@ -175,11 +175,11 @@ class AuthService {
       final html = NetClient.decode(resp.bodyBytes);
       final ok =
           html.contains('action=logout') || html.contains(account.trim());
-      LoginLog.add(
+      LoginLog.instance.add(
           '二次核验: HTTP ${resp.statusCode}, 大小 ${html.length}, 结果=$ok');
       return ok;
     } catch (e) {
-      LoginLog.add('二次核验请求失败: $e');
+      LoginLog.instance.add('二次核验请求失败: $e');
       return false;
     }
   }
@@ -187,7 +187,7 @@ class AuthService {
   /// 截取响应正文开头的少量内容用作诊断日志,避免日志过大、泄露过多信息。
   static String _snippet(String body, {int max = 200}) {
     final s = body.replaceAll(RegExp(r'\s+'), ' ').trim();
-    return s.length <= max ? s : s.substring(0, max) + '…';
+    return s.length <= max ? s : '${s.substring(0, max)}…';
   }
 
   /// 登出:尽力请求站点登出,并清空本地登录态。
