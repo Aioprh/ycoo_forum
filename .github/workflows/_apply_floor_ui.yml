@@ -9,13 +9,13 @@ permissions:
 
 jobs:
   apply:
-    if: ${{ !contains(github.event.head_commit.message, 'chore: apply redesigned post floor UI') }}
+    if: ${{ !contains(github.event.head_commit.message, 'chore: apply redesigned post floor UI') && !contains(github.event.head_commit.message, 'feat: redesign post floor cards') }}
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
       - name: Patch floor card CSS
-        shell: python
         run: |
+          python3 - <<'PY'
           from pathlib import Path
           import re
           path = Path('lib/pages/detail_page.dart')
@@ -53,6 +53,7 @@ jobs:
   }
 '''
           path.write_text(text[:old.start()] + new + text[old.end():], encoding='utf-8')
+          PY
       - name: Commit and remove patcher
         run: |
           git config user.name github-actions[bot]
