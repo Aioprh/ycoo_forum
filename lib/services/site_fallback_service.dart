@@ -46,10 +46,8 @@ class SiteFallbackService {
 
     final uri = Uri.parse(url);
     if (uri.queryParameters.containsKey('mobile')) {
-      final desktop = uri.replace(queryParameters: {
-        ...uri.queryParameters,
-        'mobile': null,
-      });
+      final params = <String, String>{...uri.queryParameters}..remove('mobile');
+      final desktop = uri.replace(queryParameters: params);
       result = _parseThreads(parser.parse(await _get(desktop.toString())));
     }
     return result;
