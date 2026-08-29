@@ -25,7 +25,7 @@ class NativeCommentList extends StatelessWidget {
     return result;
   }
 
-  static String _text(dom.Element? e) => e?.text.replaceAll(RegExp(r'\\s+'), ' ').trim() ?? '';
+  static String _text(dom.Element? e) => e?.text.replaceAll(RegExp(r'\s+'), ' ').trim() ?? '';
 
   @override
   Widget build(BuildContext context) {
@@ -111,13 +111,16 @@ class _HtmlNodes extends StatelessWidget {
   Widget _node(BuildContext context, dom.Node node) {
     final s = Theme.of(context).colorScheme;
     if (node is dom.Text) {
-      final text = node.data.replaceAll(RegExp(r'\\s+'), ' ').trim();
+      final text = node.data.replaceAll(RegExp(r'\s+'), ' ').trim();
       return text.isEmpty ? const SizedBox.shrink() : Padding(padding: const EdgeInsets.only(bottom: 7), child: Text(text, style: const TextStyle(fontSize: 14, height: 1.7)));
     }
     if (node is! dom.Element) return const SizedBox.shrink();
     final tag = node.localName?.toLowerCase() ?? '';
     if (tag == 'img') {
-      final src = node.attributes['src'] ?? node.attributes['data-src'] ?? '';
+      var src = node.attributes['src'] ?? node.attributes['data-src'] ?? '';
+      if (src.startsWith('//')) src = 'https:$src';
+      else if (src.startsWith('/')) src = 'https://www.ycoo.net$src';
+      else if (!src.startsWith('http://') && !src.startsWith('https://')) src = 'https://www.ycoo.net/$src';
       if (src.isEmpty) return const SizedBox.shrink();
       return Padding(padding: const EdgeInsets.symmetric(vertical: 6), child: ClipRRect(borderRadius: BorderRadius.circular(12), child: Image.network(src, width: double.infinity, fit: BoxFit.contain, errorBuilder: (_, __, ___) => const SizedBox.shrink())));
     }
