@@ -1,0 +1,17 @@
+name: Apply native comment list migration
+
+on:
+  push:
+    branches:
+      - main
+
+permissions:
+  contents: write
+
+jobs:
+  migrate:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Validate migration target
+        run: test -f lib/pages/detail_page.dart && test -f lib/widgets/native_comment_list.dart
