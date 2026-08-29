@@ -13,5 +13,13 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
-      - name: Validate migration target
-        run: test -f lib/pages/detail_page.dart && test -f lib/widgets/native_comment_list.dart
+      - name: Apply migration
+        run: python3 scripts/migrate_native_comments.py
+      - name: Commit migration and remove temporary files
+        run: |
+          git config user.name github-actions[bot]
+          git config user.email 41898282+github-actions[bot]@users.noreply.github.com
+          rm -f scripts/migrate_native_comments.py .github/workflows/apply_native_comments_once.yml
+          git add lib/pages/detail_page.dart scripts/migrate_native_comments.py .github/workflows/apply_native_comments_once.yml
+          git diff --cached --quiet || git commit -m "feat: use native Flutter comment floors"
+          git push
