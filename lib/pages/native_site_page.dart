@@ -49,7 +49,7 @@ class _NativeSitePageState extends State<NativeSitePage> {
       widgets.add(Padding(padding:const EdgeInsets.symmetric(vertical:6),child:TextField(controller:_controller(name,e.attributes['value']??''),obscureText:type=='password',keyboardType:type=='number'?TextInputType.number:TextInputType.text,decoration:InputDecoration(labelText:e.attributes['placeholder']??e.attributes['title']??name,border:const OutlineInputBorder()))));
     }
     for(final e in form.querySelectorAll('textarea')){final name=e.attributes['name']??e.attributes['id'];if(name==null)continue;widgets.add(Padding(padding:const EdgeInsets.symmetric(vertical:6),child:TextField(controller:_controller(name,_clean(e.text)),maxLines:5,decoration:InputDecoration(labelText:name,border:const OutlineInputBorder()))));}
-    for(final e in form.querySelectorAll('select')){final name=e.attributes['name']??e.attributes['id'];if(name==null)continue;final opts=e.querySelectorAll('option');final initial=e.attributes['value']??opts.firstOrNull?.attributes['value'];_selectValues.putIfAbsent(name,()=>initial??'');widgets.add(Padding(padding:const EdgeInsets.symmetric(vertical:6),child:DropdownButtonFormField<String>(initialValue:opts.any((o)=>(o.attributes['value']??o.text)==_selectValues[name])?_selectValues[name]:null,decoration:InputDecoration(labelText:name,border:const OutlineInputBorder()),items:opts.map((o)=>DropdownMenuItem(value:o.attributes['value']??o.text,child:Text(_clean(o.text)))).toList(),onChanged:(v){if(v!=null)_selectValues[name]=v;})));}
+    for(final e in form.querySelectorAll('select')){final name=e.attributes['name']??e.attributes['id'];if(name==null)continue;final opts=e.querySelectorAll('option');final initial=e.attributes['value']??(opts.isEmpty ? null : opts.first.attributes['value']);_selectValues.putIfAbsent(name,()=>initial??'');widgets.add(Padding(padding:const EdgeInsets.symmetric(vertical:6),child:DropdownButtonFormField<String>(initialValue:opts.any((o)=>(o.attributes['value']??o.text)==_selectValues[name])?_selectValues[name]:null,decoration:InputDecoration(labelText:name,border:const OutlineInputBorder()),items:opts.map((o)=>DropdownMenuItem(value:o.attributes['value']??o.text,child:Text(_clean(o.text)))).toList(),onChanged:(v){if(v!=null)_selectValues[name]=v;})));}
     if(widgets.isEmpty)return const SizedBox.shrink();
     return Card(child:Padding(padding:const EdgeInsets.all(14),child:Column(crossAxisAlignment:CrossAxisAlignment.stretch,children:[if(_label(form).isNotEmpty)Padding(padding:const EdgeInsets.only(bottom:8),child:Text(_label(form),style:const TextStyle(fontSize:18,fontWeight:FontWeight.w700))),...widgets,FilledButton.icon(onPressed:()=>_submit(form),icon:const Icon(Icons.save),label:const Text('保存'))])));
   }
@@ -75,7 +75,15 @@ class _NativeSitePageState extends State<NativeSitePage> {
   }
 
   Widget _children(dom.Element e)=>Column(crossAxisAlignment:CrossAxisAlignment.start,children:e.nodes.map(_node).toList());
-  Future<void> _handleButton(dom.Element e) async { final form=e.closest('form'); if(form!=null)await _submit(form); }
+  dom.Element? _closestForm(dom.Element element) {
+    dom.Element? current = element;
+    while (current != null) {
+      if (current.localName == 'form') return current;
+      current = current.parent;
+    }
+    return null;
+  }
+  Future<void> _handleButton(dom.Element e) async { final form=_closestForm(e); if(form!=null)await _submit(form); }
   void _openLink(String url,String title){if(url.startsWith(_base))Navigator.push(context,MaterialPageRoute(builder:(_)=>NativeSitePage(path:url,title:title)));}
 
   @override void dispose(){for(final c in _fields.values)c.dispose();super.dispose();}
