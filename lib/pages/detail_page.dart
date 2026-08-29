@@ -27,6 +27,7 @@ class _DetailPageState extends State<DetailPage> {
   bool _sending = false;
   bool _loggedIn = false;
   String? _error;
+  double _bodyHeight = 0;
 
   @override
   void initState() {
@@ -97,7 +98,30 @@ $bodyHtml
     return WebViewController()
       ..setJavaScriptMode(JavaScriptMode.unrestricted)
       ..setBackgroundColor(const Color(0xFFFFFFFF))
+      ..setNavigationDelegate(NavigationDelegate(
+        onPageFinished: (_) => _fitWebViewHeight(),
+      ))
       ..loadHtmlString(doc, baseUrl: 'https://www.ycoo.net/');
+  }
+
+  /// 把 WebView 高度自适应为内容真实高度,使外层 ListView 整体可滚动。
+  ///
+  /// 若把 WebView 固定成屏幕一部分高度,内层 WebView 与外层 ListView 会
+  /// 抢竖向拖动手势,导致帖子内容滑不动。改为撑高到内容高度后,整篇由
+  /// 外层 ListView 统一滚动,手势不再冲突。
+  Future<void> _fitWebViewHeight() async {
+    try {
+      final raw = await _bodyController!
+          .runJavaScriptReturningResult(
+              'document.documentElement.scrollHeight')
+          .then((v) => v.toString());
+      final h = double.tryParse(raw.replaceAll(RegExp(r'"'), '')) ?? 0;
+      if (h > 0 && mounted && h != _bodyHeight) {
+        setState(() => _bodyHeight = h + 8);
+      }
+    } catch (_) {
+      // 测量失败时保留兜底高度,不影响阅读。
+    }
   }
 
   @override
@@ -243,7 +267,10 @@ $bodyHtml
           Padding(
             padding: const EdgeInsets.only(top: 8),
             child: SizedBox(
-              height: MediaQuery.of(context).size.height * 0.72,
+              // 先用自动测量高度;测量前临时用屏幕高度兜底撑满。
+              height: _bodyHeight > 0
+                  ? _bodyHeight
+                  : MediaQuery.of(context).size.height * 0.72,
               child: WebViewWidget(controller: _bodyController!),
             ),
           ),
