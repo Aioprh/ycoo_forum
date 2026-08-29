@@ -25,8 +25,15 @@ class ApiService {
 
   Future<String> _get(String url, {Map<String, String>? query}) async {
     final client = await NetClient.instance.client;
-    final params = <String, String>{...?query, '_ycoo_ts': DateTime.now().millisecondsSinceEpoch.toString()};
-    final uri = Uri.parse(url).replace(queryParameters: params);
+    final parsed = Uri.parse(url);
+    // 保留 URL 中已带的参数（如 mod/view/mobile/fid/page），只补充额外参数，
+    // 避免 replace(queryParameters:) 把整段查询串清空导致未带模板参数而请求失败。
+    final params = <String, String>{
+      ...parsed.queryParameters,
+      ...?query,
+      '_ycoo_ts': DateTime.now().millisecondsSinceEpoch.toString(),
+    };
+    final uri = parsed.replace(queryParameters: params);
     final headers = <String, String>{
       'User-Agent': NetClient.ua,
       'Accept': 'text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8',
