@@ -23,12 +23,15 @@ class ApiService {
 
   Future<String> _get(String url, {Map<String, String>? query}) async {
     final client = await NetClient.instance.client;
-    final uri = Uri.parse(url).replace(queryParameters: query);
+    final params = <String, String>{...?query};
+    params['_ycoo_ts'] = DateTime.now().millisecondsSinceEpoch.toString();
+    final uri = Uri.parse(url).replace(queryParameters: params);
     final headers = <String, String>{
       'User-Agent': NetClient.ua,
       'Accept': 'text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8',
       'Accept-Language': 'zh-CN,zh;q=0.9',
-      'Cache-Control': 'no-cache',
+      'Cache-Control': 'no-cache, no-store',
+      'Pragma': 'no-cache',
     };
     final cookie = AuthService.instance.authCookie;
     if (cookie != null && cookie.isNotEmpty) headers['Cookie'] = cookie;
@@ -152,27 +155,153 @@ class ApiService {
   }
 
   _PaidState _parsePaidState(dom.Document doc) {
-    final nodes = doc.querySelectorAll('body *');
-    for (final e in nodes) {
+    for (final e in doc.querySelectorAll('a,button,input,form')) {
       final text = _normSpace(e.text);
-      if (!text.contains('购买主题') || !text.contains('星币')) continue;
-      final price = _firstInt(RegExp(r'(\d+)\s*星币'), text);
-      String href = '';
-      final a = e.querySelector('a') ?? (e.localName == 'a' ? e : null);
-      if (a != null) href = _abs(a.attributes['href'] ?? '');
-      if (href.isEmpty) {
-        final parent = e.parent;
-        final pa = parent?.querySelector('a');
-        if (pa != null) href = _abs(pa.attributes['href'] ?? '');
-      }
-      return _PaidState(true, price, '星币', href);
+      final value = e.attributes['value'] ?? '';
+      final title = e.attributes['title'] ?? '';
+      final all = '$text $value $title';
+      if (!all.contains('购买主题') && !all.contains('本主题需向作者支付')) continue;
+      final price = _firstInt(RegExp(r'(?:支付|需要)\s*(\d+)\s*星币'), all);
+      final href = _abs(e.attributes['href'] ?? '');
+      if (href.isNotEmpty) return _PaidState(true, price, '星币', href);
+      final action = _abs(e.attributes['action'] ?? '');
+      if (action.isNotEmpty) return _PaidState(true, price, '星币', action);
+      return _PaidState(true, price, '星币', '');
     }
-    // 某些模板在正文里只留下“本主题需向作者支付 N 星币”。
     final allText = _normSpace(doc.body?.text ?? '');
     if (allText.contains('本主题需向作者支付') && allText.contains('星币')) {
       return _PaidState(true, _firstInt(RegExp(r'支付\s*(\d+)\s*星币'), allText), '星币', '');
     }
     return const _PaidState(false, null, '星币', '');
+  }
+
+  /// 在原生 HTTP 层完成站点原有的购买主题流程。
+  /// 不保存账号密码，只复用 WebView 登录后持久化的 Cookie。
+  Future<PurchaseResult> purchaseThread(int tid) async {
+    final cookie = AuthService.instance.authCookie;
+    if (cookie == null || cookie.isEmpty) {
+      return const PurchaseResult(false, '请先登录论坛');
+    }
+    final client = await NetClient.instance.client;
+    final headers = <String, String>{
+      'User-Agent': NetClient.ua,
+      'Accept': 'text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8',
+      'Accept-Language': 'zh-CN,zh;q=0.9',
+      'Cache-Control': 'no-cache, no-store',
+      'Pragma': 'no-cache',
+      'Referer': detailUrl(tid),
+      'Cookie': cookie,
+    };
+    try {
+      final sourceResp = await client.get(
+        Uri.parse(detailUrl(tid)),
+        headers: headers,
+      ).timeout(_timeout);
+      final source = NetClient.decode(sourceResp.bodyBytes);
+      final sourceDoc = parser.parse(source);
+      if (_isUnlocked(sourceDoc)) {
+        return const PurchaseResult(true, '主题已经购买，无需重复购买');
+      }
+
+      final buy = _findPurchaseForm(sourceDoc, tid);
+      if (buy == null) {
+        return const PurchaseResult(false, '未找到原站购买表单，可能是站点模板或购买插件已变更');
+      }
+
+      final form = <String, String>{...buy.fields};
+      form.putIfAbsent('tid', () => '$tid');
+      if (form['formhash'] == null || form['formhash']!.isEmpty) {
+        final formhash = NetClient.first(
+          RegExp(r'''name=["']formhash["'][^>]*value=["']([^"']+)["']''', caseSensitive: false),
+          source,
+        );
+        if (formhash != null && formhash.isNotEmpty) form['formhash'] = formhash;
+      }
+      final formhash = form['formhash'];
+      if (formhash == null || formhash.isEmpty) {
+        return const PurchaseResult(false, '未取得购买令牌(formhash)，请重新打开帖子后再试');
+      }
+
+      final submit = await client.post(
+        Uri.parse(_abs(buy.action)),
+        headers: {...headers, 'Content-Type': 'application/x-www-form-urlencoded'},
+        body: form,
+      ).timeout(_timeout);
+      final resultHtml = NetClient.decode(submit.bodyBytes);
+      final resultDoc = parser.parse(resultHtml);
+      final resultText = _normSpace(resultDoc.body?.text ?? resultHtml);
+
+      if (_looksLikePurchaseSuccess(resultText, resultDoc)) {
+        // 购买完成后强制重新请求主题，确保拿到服务器解锁后的正文，而不是评论缓存。
+        final refreshed = await client.get(
+          Uri.parse('${detailUrl(tid)}?refresh=${DateTime.now().millisecondsSinceEpoch}'),
+          headers: headers,
+        ).timeout(_timeout);
+        final refreshedDoc = parser.parse(NetClient.decode(refreshed.bodyBytes));
+        if (_isUnlocked(refreshedDoc) && _collectPosts(refreshedDoc).isNotEmpty) {
+          return const PurchaseResult(true, '购买成功，正文已解锁');
+        }
+        return const PurchaseResult(false, '购买请求已返回成功，但帖子正文仍未解锁，请重新进入帖子确认购买状态');
+      }
+
+      final failure = _purchaseFailure(resultText);
+      return PurchaseResult(false, failure ?? '购买失败，请检查星币余额或论坛提示');
+    } catch (_) {
+      return const PurchaseResult(false, '购买请求失败，请稍后重试');
+    }
+  }
+
+  _PurchaseForm? _findPurchaseForm(dom.Document doc, int tid) {
+    for (final form in doc.querySelectorAll('form')) {
+      final text = _normSpace(form.text);
+      final action = form.attributes['action'] ?? '';
+      final blob = '${form.innerHtml} $action $text';
+      final looksPaid = blob.contains('购买主题') || blob.contains('buythread') ||
+          blob.contains('buytopic') || blob.contains('星币') || blob.contains('threadid');
+      if (!looksPaid) continue;
+      final fields = <String, String>{};
+      for (final input in form.querySelectorAll('input')) {
+        final name = input.attributes['name'];
+        if (name == null || name.isEmpty) continue;
+        fields[name] = input.attributes['value'] ?? '';
+      }
+      final actionUrl = _abs(action.isEmpty ? detailUrl(tid) : action);
+      return _PurchaseForm(actionUrl, fields);
+    }
+    // 有些模板只有购买链接，没有 form。先定位链接；其目标通常是原站确认购买页，
+    // 仍然由上层解析确认页的表单，不直接在这里扣费。
+    for (final a in doc.querySelectorAll('a')) {
+      final href = a.attributes['href'] ?? '';
+      final text = _normSpace(a.text);
+      if (text.contains('购买主题') || href.contains('buythread') || href.contains('buytopic')) {
+        return _PurchaseForm(_abs(href), <String, String>{});
+      }
+    }
+    return null;
+  }
+
+  bool _isUnlocked(dom.Document doc) {
+    final text = _normSpace(doc.body?.text ?? '');
+    final paidNotice = text.contains('本主题需向作者支付') || text.contains('购买主题') && text.contains('星币');
+    final posts = _collectPosts(doc);
+    if (posts.isEmpty) return false;
+    // 购买成功后服务端通常不再输出购买提示，同时正文帖仍存在。
+    return !paidNotice;
+  }
+
+  bool _looksLikePurchaseSuccess(String text, dom.Document doc) {
+    if (text.contains('购买成功') || text.contains('购买成功！') || text.contains('操作成功')) return true;
+    if (text.contains('已经购买') || text.contains('已购买')) return true;
+    if (doc.querySelector('.comiis_message_table') != null && !text.contains('本主题需向作者支付')) return true;
+    return false;
+  }
+
+  String? _purchaseFailure(String text) {
+    const keys = <String>['星币不足', '余额不足', '积分不足', '没有足够', '无权购买', '购买失败', '请先登录', 'formhash', '验证失败'];
+    for (final key in keys) {
+      if (text.contains(key)) return key;
+    }
+    return null;
   }
 
   static List<String> _collectPosts(dom.Document doc) {
@@ -220,4 +349,16 @@ class _PaidState {
   final String currency;
   final String purchaseUrl;
   const _PaidState(this.isPaid, this.price, this.currency, this.purchaseUrl);
+}
+
+class _PurchaseForm {
+  final String action;
+  final Map<String, String> fields;
+  const _PurchaseForm(this.action, this.fields);
+}
+
+class PurchaseResult {
+  final bool success;
+  final String message;
+  const PurchaseResult(this.success, this.message);
 }
