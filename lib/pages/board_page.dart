@@ -115,13 +115,14 @@ class _BoardPageState extends State<BoardPage> {
                   CircleAvatar(
                     radius: 18,
                     backgroundImage: NetworkImage(b.icon),
-                    onBackgroundImageError: (_, __) {},
+                    onBackgroundImageError: (_, _) {},
                     child: const Icon(Icons.forum_outlined, size: 18),
                   )
                 else
                   CircleAvatar(
                     radius: 18,
-                    backgroundColor: theme.colorScheme.primary.withOpacity(0.12),
+                    backgroundColor:
+                      theme.colorScheme.primary.withValues(alpha: 0.12),
                     child: Icon(Icons.forum_outlined,
                         size: 18, color: theme.colorScheme.primary),
                   ),

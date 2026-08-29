@@ -11,7 +11,7 @@ class _NoNetOverrides extends HttpOverrides {
   HttpClient createHttpClient(SecurityContext? context) => _NoNetClient();
 }
 
-class _NoNetClient extends HttpClient {
+class _NoNetClient implements HttpClient {
   @override
   dynamic noSuchMethod(Invocation inv) {
     // 配置项赋值、close 等只需透传忽略;真正发起请求的方法则直接抛错。

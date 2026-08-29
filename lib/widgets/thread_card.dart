@@ -29,7 +29,7 @@ class ThreadCard extends StatelessWidget {
                   width: 84,
                   height: 84,
                   fit: BoxFit.cover,
-                  errorBuilder: (_, __, ___) => const SizedBox(
+                  errorBuilder: (_, _, _) => const SizedBox(
                     width: 84,
                     height: 84,
                     child: ColoredBox(color: Colors.black12),
@@ -71,7 +71,7 @@ class ThreadCard extends StatelessWidget {
               Container(
                 padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 1),
                 decoration: BoxDecoration(
-                  color: theme.colorScheme.primary.withOpacity(0.12),
+                  color: theme.colorScheme.primary.withValues(alpha: 0.12),
                   borderRadius: BorderRadius.circular(4),
                 ),
                 child: Text(

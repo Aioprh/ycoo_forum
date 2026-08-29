@@ -118,7 +118,7 @@ class _ThreadListViewState extends State<ThreadListView> {
         physics: const AlwaysScrollableScrollPhysics(),
         padding: widget.padding ?? const EdgeInsets.only(bottom: 12),
         itemCount: _items.length + 1,
-        separatorBuilder: (_, __) => const Divider(height: 1),
+        separatorBuilder: (_, _) => const Divider(height: 1),
         itemBuilder: (context, i) {
           if (i >= _items.length) {
             return _footer();

@@ -8,8 +8,6 @@ class ProfilePage extends StatelessWidget {
 
   static const _loginUrl =
       'https://www.ycoo.net/member.php?mod=logging&action=login&mobile=2';
-  static const _registerUrl =
-      'https://www.ycoo.net/member.php?mod=register&mobile=2';
 
   @override
   Widget build(BuildContext context) {
