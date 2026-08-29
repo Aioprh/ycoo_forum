@@ -18,10 +18,11 @@ class HomePage extends StatefulWidget {
 }
 
 class _HomePageState extends State<HomePage> {
+  // Discuz 导读的合法 view 参数：newthread=最新发表、new=最新回复、hot=热门。
   static const _tabs = <(String, String, IconData)>[
     ('最新', 'newthread', Icons.auto_awesome_rounded),
-    ('最新回复', 'newreply', Icons.forum_rounded),
-    ('热门', 'digest', Icons.local_fire_department_rounded),
+    ('最新回复', 'new', Icons.forum_rounded),
+    ('热门', 'hot', Icons.local_fire_department_rounded),
   ];
   int _index = 0;
 
