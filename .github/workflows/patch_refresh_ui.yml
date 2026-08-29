@@ -1,0 +1,86 @@
+name: One-time detail refresh UI patch
+on:
+  push:
+    branches: [main]
+permissions:
+  contents: write
+jobs:
+  patch:
+    if: github.event.head_commit.message != 'fix: keep detail content during refresh'
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Patch detail refresh behavior
+        run: |
+          python3 - <<'PY'
+          from pathlib import Path
+          p = Path('lib/pages/detail_page.dart')
+          s = p.read_text()
+          old = '''  Future<void> _fetch() async {
+    if (mounted) {
+      setState(() {
+        _loading = true;
+        _error = null;
+      });
+    }
+    try {
+      final d = await ApiService.instance.fetchThreadDetail(widget.tid);
+      if (!mounted) return;
+      setState(() {
+        _detail = d;
+        _likeCount = d.likeCount;
+        _liked = d.likedByMe;
+        _bodyHeight = 0;
+      });
+      _bodyController = d.bodyHtml.trim().isEmpty ? null : _web(d.bodyHtml);
+      if (_loggedIn) await _loadInteractionState();
+    } catch (e) {
+      if (mounted) setState(() => _error = '$e');
+    } finally {
+      if (mounted) setState(() => _loading = false);
+    }
+  }'''
+          new = '''  Future<void> _fetch() async {
+    final hadDetail = _detail != null;
+    final previousBody = _detail?.bodyHtml ?? '';
+    if (mounted) {
+      setState(() {
+        // 首次进入才显示全屏 loading；刷新时保留已有内容，避免整页闪白。
+        _loading = !hadDetail;
+        _error = null;
+      });
+    }
+    try {
+      final d = await ApiService.instance.fetchThreadDetail(widget.tid);
+      if (!mounted) return;
+      final bodyChanged = previousBody != d.bodyHtml;
+      setState(() {
+        _detail = d;
+        _likeCount = d.likeCount;
+        _liked = d.likedByMe;
+        if (bodyChanged) _bodyHeight = 0;
+      });
+      // 刷新评论/互动状态时不要重建正文 WebView，避免正文瞬间变空。
+      if (d.bodyHtml.trim().isEmpty) {
+        _bodyController = null;
+      } else if (_bodyController == null || bodyChanged) {
+        _bodyController = _web(d.bodyHtml);
+      }
+      if (_loggedIn) await _loadInteractionState();
+    } catch (e) {
+      if (mounted) setState(() => _error = '$e');
+    } finally {
+      if (mounted) setState(() => _loading = false);
+    }
+  }'''
+          if old not in s:
+              raise SystemExit('target block not found')
+          p.write_text(s.replace(old, new, 1))
+          PY
+      - name: Commit patch
+        run: |
+          git config user.name github-actions[bot]
+          git config user.email 41898282+github-actions[bot]@users.noreply.github.com
+          git add lib/pages/detail_page.dart
+          git diff --cached --quiet || git commit -m "fix: keep detail content during refresh"
+          git push
