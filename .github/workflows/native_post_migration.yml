@@ -1,0 +1,59 @@
+name: Migrate post detail body to native renderer
+
+on:
+  push:
+    branches: [fix/adaptive-post-body]
+    paths:
+      - '.github/workflows/native_post_migration.yml'
+
+permissions:
+  contents: write
+
+jobs:
+  migrate:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: fix/adaptive-post-body
+          fetch-depth: 0
+      - name: Replace WebView body with native renderer
+        run: |
+          python3 - <<'PY'
+          from pathlib import Path
+          p = Path('lib/pages/detail_page.dart')
+          s = p.read_text()
+          s = s.replace("import 'package:webview_flutter/webview_flutter.dart';\n", '')
+          if "../widgets/native_post_content.dart" not in s:
+              s = s.replace("import '../widgets/native_comment_list.dart';\n", "import '../widgets/native_comment_list.dart';\nimport '../widgets/native_post_content.dart';\n")
+          s = s.replace('  WebViewController? _bodyController;\n', '')
+          s = s.replace('  double _bodyHeight = 0;\n', '')
+          old_fetch = '''        if (newBody.isEmpty) { _bodyController = null; _bodyHeight = 0; }\n        else if (changed || _bodyController == null) { _bodyHeight = 0; }\n      });\n      if (newBody.isNotEmpty && (changed || _bodyController == null)) {\n        _bodyController = _web(newBody);\n      }'''
+          new_fetch = '''      });'''
+          if old_fetch not in s:
+              raise SystemExit('fetch WebView block not found')
+          s = s.replace(old_fetch, new_fetch)
+          start = s.find('  WebViewController _web(String html) {')
+          end = s.find('  void _snack(String text)', start)
+          if start < 0 or end < 0:
+              raise SystemExit('WebView method boundaries not found')
+          s = s[:start] + s[end:]
+          old_body = "d.isPaid ? _paidNotice(context, d) : (_bodyController == null ? _empty(context, '暂无正文内容') : _webCard(context, _bodyController!, _bodyHeight)),"
+          new_body = "d.isPaid ? _paidNotice(context, d) : (d.bodyHtml.trim().isEmpty ? _empty(context, '暂无正文内容') : _nativeBodyCard(context, d.bodyHtml)),"
+          if old_body not in s:
+              raise SystemExit('body call not found')
+          s = s.replace(old_body, new_body)
+          marker = '  Widget _errorView(BuildContext context) {'
+          method = '''  Widget _nativeBodyCard(BuildContext context, String html) {\n    final c = Theme.of(context).colorScheme;\n    return Container(\n      margin: const EdgeInsets.only(bottom: 14),\n      padding: const EdgeInsets.fromLTRB(16, 16, 16, 8),\n      decoration: BoxDecoration(\n        color: c.surface,\n        borderRadius: BorderRadius.circular(22),\n        border: Border.all(color: c.outlineVariant.withValues(alpha: .5)),\n      ),\n      child: NativePostContent(\n        html: html,\n        onLinkTap: _handlePostLink,\n      ),\n    );\n  }\n\n  Future<void> _handlePostLink(String url) async {\n    if (url.trim().isEmpty) return;\n    final uri = Uri.tryParse(url.trim());\n    if (uri == null) { _snack('链接格式无效'); return; }\n    if (AttachmentDownloadService.instance.isAttachmentUrl(uri.toString())) {\n      if (!_loggedIn) { if (mounted) await _login(); return; }\n      try {\n        final started = await AttachmentDownloadService.instance.download(url: uri.toString(), cookie: AuthService.instance.authCookie, referer: 'https://www.ycoo.net/');\n        if (mounted) _snack(started ? '已开始下载附件' : '当前平台暂不支持原生附件下载');\n      } catch (e) { if (mounted) _snack('附件下载失败：$e'); }\n      return;\n    }\n    _snack('链接：${uri.toString()}');\n  }\n\n'''
+          if marker not in s:
+              raise SystemExit('error view marker not found')
+          s = s.replace(marker, method + marker, 1)
+          p.write_text(s)
+          PY
+      - name: Commit migration
+        run: |
+          git config user.name 'github-actions[bot]'
+          git config user.email '41898282+github-actions[bot]@users.noreply.github.com'
+          git add lib/pages/detail_page.dart
+          git commit -m 'refactor: render post body with native Flutter widgets [skip ci]' || exit 0
+          git push origin fix/adaptive-post-body
