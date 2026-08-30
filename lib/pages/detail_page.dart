@@ -28,6 +28,7 @@ class _DetailPageState extends State<DetailPage> {
   bool _loading = true;
   bool _sending = false;
   bool _buying = false;
+  bool _rewarding = false;
   bool _loggedIn = false;
   bool _favorited = false;
   bool _liked = false;
@@ -46,9 +47,7 @@ class _DetailPageState extends State<DetailPage> {
   Future<void> _init() async {
     await AuthService.instance.init();
     await AuthService.instance.checkLoggedIn();
-    if (mounted) {
-      setState(() => _loggedIn = AuthService.instance.isLoggedIn);
-    }
+    if (mounted) setState(() => _loggedIn = AuthService.instance.isLoggedIn);
     await _fetch();
   }
 
@@ -84,9 +83,7 @@ class _DetailPageState extends State<DetailPage> {
           _bodyHeight = 0;
         }
       });
-      if (newBody.isNotEmpty && (bodyChanged || _bodyController == null)) {
-        _bodyController = _web(newBody);
-      }
+      if (newBody.isNotEmpty && (bodyChanged || _bodyController == null)) _bodyController = _web(newBody);
       if (_loggedIn) await _loadInteractionState();
     } catch (e) {
       if (mounted) setState(() => _error = '$e');
@@ -133,15 +130,13 @@ video,iframe{max-width:100%!important;height:auto!important;border-radius:12px}t
           onPageFinished: (_) async {
             try {
               await controller.runJavaScript("document.querySelectorAll('img').forEach(function(i){i.style.width='auto';i.style.maxWidth='100%';i.style.height='auto';i.style.maxHeight='72vh';i.style.objectFit='contain';});");
-              final raw = await controller.runJavaScriptReturningResult(
-                '''(function(){
-                  document.querySelectorAll('[style]').forEach(function(e){
-                    var st=(e.getAttribute('style')||'').replace(/\s/g,'').toLowerCase();
-                    if(st.indexOf('100vh')>=0 || st.indexOf('min-height:')>=0 || st.indexOf('height:100%')>=0) e.style.minHeight='0';
-                  });
-                  return Math.max(document.body.scrollHeight,document.documentElement.scrollHeight);
-                })()''',
-              );
+              final raw = await controller.runJavaScriptReturningResult('''(function(){
+                document.querySelectorAll('[style]').forEach(function(e){
+                  var st=(e.getAttribute('style')||'').replace(/\\s/g,'').toLowerCase();
+                  if(st.indexOf('100vh')>=0 || st.indexOf('min-height:')>=0 || st.indexOf('height:100%')>=0) e.style.minHeight='0';
+                });
+                return Math.max(document.body.scrollHeight,document.documentElement.scrollHeight);
+              })()''');
               final height = double.tryParse(raw.toString().replaceAll('"', '')) ?? 0;
               if (!mounted || height <= 0) return;
               setState(() => _bodyHeight = height + 8);
@@ -160,7 +155,6 @@ video,iframe{max-width:100%!important;height:auto!important;border-radius:12px}t
       await _login();
       if (!_loggedIn) return;
     }
-
     final price = d.price == null ? '以论坛页面为准' : '${d.price} ${d.currency}';
     final ok = await showDialog<bool>(
           context: context,
@@ -172,10 +166,8 @@ video,iframe{max-width:100%!important;height:auto!important;border-radius:12px}t
               FilledButton(onPressed: () => Navigator.pop(c, true), child: const Text('确定购买')),
             ],
           ),
-        ) ??
-        false;
+        ) ?? false;
     if (!ok || !mounted) return;
-
     setState(() => _buying = true);
     final result = await ApiService.instance.purchaseThread(d.tid);
     if (!mounted) return;
@@ -185,9 +177,7 @@ video,iframe{max-width:100%!important;height:auto!important;border-radius:12px}t
   }
 
   Future<void> _login() async {
-    final ok = await Navigator.of(context).push<bool>(
-      MaterialPageRoute(builder: (_) => const LoginPage()),
-    );
+    final ok = await Navigator.of(context).push<bool>(MaterialPageRoute(builder: (_) => const LoginPage()));
     if (ok == true && mounted) {
       await AuthService.instance.init();
       await AuthService.instance.checkLoggedIn();
@@ -200,12 +190,10 @@ video,iframe{max-width:100%!important;height:auto!important;border-radius:12px}t
     final d = _detail;
     final text = _replyCtrl.text.trim();
     if (d == null || text.isEmpty || _sending) return;
-
     setState(() => _sending = true);
     final error = await AuthService.instance.reply(d.tid, d.fid, text);
     if (!mounted) return;
     setState(() => _sending = false);
-
     if (error == null) {
       _replyCtrl.clear();
       _replyFocus.unfocus();
@@ -222,21 +210,14 @@ video,iframe{max-width:100%!important;height:auto!important;border-radius:12px}t
       if (!_loggedIn) return;
     }
     if (_interacting || d.firstPid <= 0) return;
-
     setState(() => _interacting = true);
-    final error = await ThreadInteractionService.instance.toggleLike(
-      tid: d.tid,
-      pid: d.firstPid,
-      like: !_liked,
-    );
+    final error = await ThreadInteractionService.instance.toggleLike(tid: d.tid, pid: d.firstPid, like: !_liked);
     if (!mounted) return;
-
     if (error != null) {
       setState(() => _interacting = false);
       ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text(error)));
       return;
     }
-
     setState(() {
       _liked = !_liked;
       _likeCount += _liked ? 1 : -1;
@@ -251,24 +232,63 @@ video,iframe{max-width:100%!important;height:auto!important;border-radius:12px}t
       if (!_loggedIn) return;
     }
     if (_interacting) return;
-
     setState(() => _interacting = true);
-    final error = await ThreadInteractionService.instance.toggleFavorite(
-      tid: d.tid,
-      favorite: !_favorited,
-    );
+    final error = await ThreadInteractionService.instance.toggleFavorite(tid: d.tid, favorite: !_favorited);
     if (!mounted) return;
-
     if (error != null) {
       setState(() => _interacting = false);
       ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text(error)));
       return;
     }
-
     setState(() {
       _favorited = !_favorited;
       _interacting = false;
     });
+  }
+
+  Future<void> _reward(ThreadDetail d) async {
+    if (!_loggedIn) {
+      await _login();
+      if (!_loggedIn) return;
+    }
+    if (_rewarding || d.firstPid <= 0) return;
+
+    final controller = TextEditingController(text: '10');
+    final amount = await showDialog<int>(
+      context: context,
+      builder: (c) => AlertDialog(
+        title: const Text('打赏作者'),
+        content: TextField(
+          controller: controller,
+          autofocus: true,
+          keyboardType: TextInputType.number,
+          decoration: InputDecoration(
+            labelText: '打赏数量',
+            hintText: '请输入数量',
+            suffixText: '积分',
+            border: OutlineInputBorder(borderRadius: BorderRadius.circular(14)),
+          ),
+        ),
+        actions: [
+          TextButton(onPressed: () => Navigator.pop(c), child: const Text('取消')),
+          FilledButton(
+            onPressed: () {
+              final value = int.tryParse(controller.text.trim()) ?? 0;
+              if (value > 0) Navigator.pop(c, value);
+            },
+            child: const Text('确认打赏'),
+          ),
+        ],
+      ),
+    );
+    controller.dispose();
+    if (amount == null || !mounted) return;
+
+    setState(() => _rewarding = true);
+    final result = await ThreadInteractionService.instance.reward(tid: d.tid, pid: d.firstPid, amount: amount);
+    if (!mounted) return;
+    setState(() => _rewarding = false);
+    ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text(result ?? '打赏成功')));
   }
 
   @override
@@ -296,16 +316,11 @@ video,iframe{max-width:100%!important;height:auto!important;border-radius:12px}t
             const SizedBox(height: 12),
             const Text('详情加载失败'),
             const SizedBox(height: 8),
-            FilledButton.icon(
-              onPressed: _fetch,
-              icon: const Icon(Icons.refresh_rounded),
-              label: const Text('重新加载'),
-            ),
+            FilledButton.icon(onPressed: _fetch, icon: const Icon(Icons.refresh_rounded), label: const Text('重新加载')),
           ],
         ),
       );
     }
-
     final d = _detail!;
     return RefreshIndicator(
       onRefresh: _fetch,
@@ -334,12 +349,7 @@ video,iframe{max-width:100%!important;height:auto!important;border-radius:12px}t
       padding: const EdgeInsets.fromLTRB(16, 7, 16, 9),
       child: Row(
         children: [
-          Container(
-            width: 36,
-            height: 36,
-            decoration: BoxDecoration(color: s.primaryContainer, borderRadius: BorderRadius.circular(11)),
-            child: Icon(icon, size: 20, color: s.primary),
-          ),
+          Container(width: 36, height: 36, decoration: BoxDecoration(color: s.primaryContainer, borderRadius: BorderRadius.circular(11)), child: Icon(icon, size: 20, color: s.primary)),
           const SizedBox(width: 10),
           Expanded(
             child: Column(
@@ -360,11 +370,7 @@ video,iframe{max-width:100%!important;height:auto!important;border-radius:12px}t
     final s = Theme.of(context).colorScheme;
     return Container(
       margin: const EdgeInsets.fromLTRB(12, 8, 12, 12),
-      decoration: BoxDecoration(
-        color: s.surface,
-        borderRadius: BorderRadius.circular(22),
-        border: Border.all(color: s.outlineVariant.withValues(alpha: .55)),
-      ),
+      decoration: BoxDecoration(color: s.surface, borderRadius: BorderRadius.circular(22), border: Border.all(color: s.outlineVariant.withValues(alpha: .55))),
       child: Column(
         children: [
           InkWell(
@@ -374,11 +380,7 @@ video,iframe{max-width:100%!important;height:auto!important;border-radius:12px}t
               padding: const EdgeInsets.fromLTRB(16, 14, 12, 14),
               child: Row(
                 children: [
-                  Container(
-                    width: 4,
-                    height: 25,
-                    decoration: BoxDecoration(color: s.secondary, borderRadius: BorderRadius.circular(4)),
-                  ),
+                  Container(width: 4, height: 25, decoration: BoxDecoration(color: s.secondary, borderRadius: BorderRadius.circular(4))),
                   const SizedBox(width: 10),
                   Expanded(
                     child: Column(
@@ -390,14 +392,7 @@ video,iframe{max-width:100%!important;height:auto!important;border-radius:12px}t
                       ],
                     ),
                   ),
-                  Container(
-                    padding: const EdgeInsets.all(7),
-                    decoration: BoxDecoration(color: s.surfaceContainerHighest, shape: BoxShape.circle),
-                    child: Icon(
-                      _commentsExpanded ? Icons.keyboard_arrow_up_rounded : Icons.keyboard_arrow_down_rounded,
-                      size: 20,
-                    ),
-                  ),
+                  Container(padding: const EdgeInsets.all(7), decoration: BoxDecoration(color: s.surfaceContainerHighest, shape: BoxShape.circle), child: Icon(_commentsExpanded ? Icons.keyboard_arrow_up_rounded : Icons.keyboard_arrow_down_rounded, size: 20)),
                 ],
               ),
             ),
@@ -416,15 +411,8 @@ video,iframe{max-width:100%!important;height:auto!important;border-radius:12px}t
     return Container(
       margin: const EdgeInsets.fromLTRB(12, 0, 12, 12),
       padding: const EdgeInsets.fromLTRB(10, 10, 10, 8),
-      decoration: BoxDecoration(
-        color: s.surface,
-        borderRadius: BorderRadius.circular(22),
-        border: Border.all(color: s.outlineVariant.withValues(alpha: .5)),
-      ),
-      child: SizedBox(
-        height: height > 0 ? height : 260,
-        child: WebViewWidget(controller: controller),
-      ),
+      decoration: BoxDecoration(color: s.surface, borderRadius: BorderRadius.circular(22), border: Border.all(color: s.outlineVariant.withValues(alpha: .5))),
+      child: SizedBox(height: height > 0 ? height : 260, child: WebViewWidget(controller: controller)),
     );
   }
 
@@ -433,60 +421,25 @@ video,iframe{max-width:100%!important;height:auto!important;border-radius:12px}t
     return Container(
       margin: const EdgeInsets.fromLTRB(12, 0, 12, 8),
       padding: const EdgeInsets.fromLTRB(18, 18, 18, 16),
-      decoration: BoxDecoration(
-        color: s.surface,
-        borderRadius: BorderRadius.circular(22),
-        border: Border.all(color: s.outlineVariant.withValues(alpha: .5)),
-      ),
+      decoration: BoxDecoration(color: s.surface, borderRadius: BorderRadius.circular(22), border: Border.all(color: s.outlineVariant.withValues(alpha: .5))),
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
           if (d.boardName.isNotEmpty)
             GestureDetector(
-              onTap: d.fid == 0
-                  ? null
-                  : () => Navigator.of(context).push(
-                        MaterialPageRoute(
-                          builder: (_) => BoardThreadListPage(filter: d.boardName, fid: d.fid),
-                        ),
-                      ),
+              onTap: d.fid == 0 ? null : () => Navigator.of(context).push(MaterialPageRoute(builder: (_) => BoardThreadListPage(filter: d.boardName, fid: d.fid))),
               child: Container(
                 padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 5),
-                decoration: BoxDecoration(
-                  color: s.primary.withValues(alpha: .1),
-                  borderRadius: BorderRadius.circular(10),
-                ),
-                child: Row(
-                  mainAxisSize: MainAxisSize.min,
-                  children: [
-                    Icon(Icons.forum_outlined, size: 14, color: s.primary),
-                    const SizedBox(width: 5),
-                    Text(
-                      d.boardName,
-                      style: TextStyle(fontSize: 12, fontWeight: FontWeight.w600, color: s.primary),
-                    ),
-                  ],
-                ),
+                decoration: BoxDecoration(color: s.primary.withValues(alpha: .1), borderRadius: BorderRadius.circular(10)),
+                child: Row(mainAxisSize: MainAxisSize.min, children: [Icon(Icons.forum_outlined, size: 14, color: s.primary), const SizedBox(width: 5), Text(d.boardName, style: TextStyle(fontSize: 12, fontWeight: FontWeight.w600, color: s.primary))]),
               ),
             ),
           const SizedBox(height: 12),
-          Text(
-            d.title,
-            style: Theme.of(context).textTheme.headlineSmall?.copyWith(
-                  fontSize: 21,
-                  height: 1.3,
-                  fontWeight: FontWeight.w800,
-                ),
-          ),
+          Text(d.title, style: Theme.of(context).textTheme.headlineSmall?.copyWith(fontSize: 21, height: 1.3, fontWeight: FontWeight.w800)),
           const SizedBox(height: 16),
           Row(
             children: [
-              CircleAvatar(
-                radius: 20,
-                backgroundColor: s.primaryContainer,
-                backgroundImage: d.avatar.isNotEmpty ? NetworkImage(d.avatar) : null,
-                child: d.avatar.isNotEmpty ? null : Icon(Icons.person_rounded, color: s.primary),
-              ),
+              CircleAvatar(radius: 20, backgroundColor: s.primaryContainer, backgroundImage: d.avatar.isNotEmpty ? NetworkImage(d.avatar) : null, child: d.avatar.isNotEmpty ? null : Icon(Icons.person_rounded, color: s.primary)),
               const SizedBox(width: 10),
               Expanded(
                 child: Column(
@@ -494,32 +447,14 @@ video,iframe{max-width:100%!important;height:auto!important;border-radius:12px}t
                   children: [
                     Row(
                       children: [
-                        Flexible(
-                          child: Text(
-                            d.author,
-                            maxLines: 1,
-                            overflow: TextOverflow.ellipsis,
-                            style: const TextStyle(fontWeight: FontWeight.w700),
-                          ),
-                        ),
+                        Flexible(child: Text(d.author, maxLines: 1, overflow: TextOverflow.ellipsis, style: const TextStyle(fontWeight: FontWeight.w700))),
                         if (d.level.isNotEmpty) ...[
                           const SizedBox(width: 7),
-                          Container(
-                            padding: const EdgeInsets.symmetric(horizontal: 7, vertical: 2),
-                            decoration: BoxDecoration(
-                              color: s.secondaryContainer,
-                              borderRadius: BorderRadius.circular(8),
-                            ),
-                            child: Text(
-                              d.level,
-                              style: TextStyle(fontSize: 10, color: s.onSecondaryContainer),
-                            ),
-                          ),
+                          Container(padding: const EdgeInsets.symmetric(horizontal: 7, vertical: 2), decoration: BoxDecoration(color: s.secondaryContainer, borderRadius: BorderRadius.circular(8)), child: Text(d.level, style: TextStyle(fontSize: 10, color: s.onSecondaryContainer))),
                         ],
                       ],
                     ),
-                    if (d.time.isNotEmpty)
-                      Text(d.time, style: TextStyle(fontSize: 11.5, color: s.onSurfaceVariant)),
+                    if (d.time.isNotEmpty) Text(d.time, style: TextStyle(fontSize: 11.5, color: s.onSurfaceVariant)),
                   ],
                 ),
               ),
@@ -533,13 +468,7 @@ video,iframe{max-width:100%!important;height:auto!important;border-radius:12px}t
   Widget _actions(BuildContext context, ThreadDetail d) {
     final s = Theme.of(context).colorScheme;
 
-    Widget button(
-      IconData icon,
-      String label, {
-      int? count,
-      bool active = false,
-      required VoidCallback onTap,
-    }) {
+    Widget button(IconData icon, String label, {int? count, bool active = false, required VoidCallback onTap}) {
       return Expanded(
         child: Material(
           color: active ? s.primary.withValues(alpha: .12) : Colors.transparent,
@@ -554,14 +483,7 @@ video,iframe{max-width:100%!important;height:auto!important;border-radius:12px}t
                 children: [
                   Icon(icon, size: 19, color: active ? s.primary : s.onSurfaceVariant),
                   const SizedBox(width: 5),
-                  Text(
-                    label,
-                    style: TextStyle(
-                      fontSize: 13,
-                      fontWeight: active ? FontWeight.w700 : FontWeight.w500,
-                      color: active ? s.primary : s.onSurfaceVariant,
-                    ),
-                  ),
+                  Text(label, style: TextStyle(fontSize: 13, fontWeight: active ? FontWeight.w700 : FontWeight.w500, color: active ? s.primary : s.onSurfaceVariant)),
                   if (count != null && count > 0) ...[
                     const SizedBox(width: 3),
                     Text('$count', style: TextStyle(fontSize: 12, color: active ? s.primary : s.onSurfaceVariant)),
@@ -578,26 +500,14 @@ video,iframe{max-width:100%!important;height:auto!important;border-radius:12px}t
       padding: const EdgeInsets.fromLTRB(16, 4, 16, 10),
       child: Container(
         padding: const EdgeInsets.all(5),
-        decoration: BoxDecoration(
-          color: s.surfaceContainerHighest.withValues(alpha: .6),
-          borderRadius: BorderRadius.circular(17),
-        ),
+        decoration: BoxDecoration(color: s.surfaceContainerHighest.withValues(alpha: .6), borderRadius: BorderRadius.circular(17)),
         child: Row(
           children: [
-            button(
-              _liked ? Icons.favorite_rounded : Icons.favorite_border_rounded,
-              _liked ? '已点赞' : '点赞',
-              count: _likeCount,
-              active: _liked,
-              onTap: () => _like(d),
-            ),
+            button(_liked ? Icons.favorite_rounded : Icons.favorite_border_rounded, _liked ? '已点赞' : '点赞', count: _likeCount, active: _liked, onTap: () => _like(d)),
             const SizedBox(width: 4),
-            button(
-              _favorited ? Icons.star_rounded : Icons.star_border_rounded,
-              _favorited ? '已收藏' : '收藏',
-              active: _favorited,
-              onTap: () => _favorite(d),
-            ),
+            button(_favorited ? Icons.star_rounded : Icons.star_border_rounded, _favorited ? '已收藏' : '收藏', active: _favorited, onTap: () => _favorite(d)),
+            const SizedBox(width: 4),
+            button(_rewarding ? Icons.hourglass_top_rounded : Icons.card_giftcard_outlined, '打赏', active: _rewarding, onTap: () => _reward(d)),
             const SizedBox(width: 4),
             button(Icons.reply_rounded, '回复', onTap: () => _replyFocus.requestFocus()),
           ],
@@ -611,33 +521,18 @@ video,iframe{max-width:100%!important;height:auto!important;border-radius:12px}t
     return Container(
       margin: const EdgeInsets.fromLTRB(12, 0, 12, 12),
       padding: const EdgeInsets.all(24),
-      decoration: BoxDecoration(
-        gradient: LinearGradient(colors: [s.primaryContainer, s.surface]),
-        borderRadius: BorderRadius.circular(22),
-        border: Border.all(color: s.outlineVariant.withValues(alpha: .5)),
-      ),
+      decoration: BoxDecoration(gradient: LinearGradient(colors: [s.primaryContainer, s.surface]), borderRadius: BorderRadius.circular(22), border: Border.all(color: s.outlineVariant.withValues(alpha: .5))),
       child: Column(
         children: [
-          Container(
-            width: 64,
-            height: 64,
-            decoration: BoxDecoration(color: s.primary.withValues(alpha: .12), shape: BoxShape.circle),
-            child: Icon(Icons.lock_rounded, size: 30, color: s.primary),
-          ),
+          Container(width: 64, height: 64, decoration: BoxDecoration(color: s.primary.withValues(alpha: .12), shape: BoxShape.circle), child: Icon(Icons.lock_rounded, size: 30, color: s.primary)),
           const SizedBox(height: 14),
           const Text('这是一个付费主题', style: TextStyle(fontSize: 17, fontWeight: FontWeight.w800)),
           const SizedBox(height: 5),
-          Text(
-            d.price == null ? '购买后即可查看完整内容' : '支付 ${d.price} ${d.currency} 后查看完整内容',
-            textAlign: TextAlign.center,
-            style: TextStyle(color: s.onSurfaceVariant),
-          ),
+          Text(d.price == null ? '购买后即可查看完整内容' : '支付 ${d.price} ${d.currency} 后查看完整内容', textAlign: TextAlign.center, style: TextStyle(color: s.onSurfaceVariant)),
           const SizedBox(height: 17),
           FilledButton.icon(
             onPressed: _buying ? null : _purchase,
-            icon: _buying
-                ? const SizedBox(width: 18, height: 18, child: CircularProgressIndicator(strokeWidth: 2))
-                : const Icon(Icons.shopping_bag_outlined),
+            icon: _buying ? const SizedBox(width: 18, height: 18, child: CircularProgressIndicator(strokeWidth: 2)) : const Icon(Icons.shopping_bag_outlined),
             label: Text(_buying ? '购买中…' : '购买主题'),
           ),
         ],
@@ -665,16 +560,9 @@ video,iframe{max-width:100%!important;height:auto!important;border-radius:12px}t
         top: false,
         child: Container(
           padding: const EdgeInsets.fromLTRB(16, 9, 16, 9),
-          decoration: BoxDecoration(
-            color: s.surface,
-            border: Border(top: BorderSide(color: s.outlineVariant.withValues(alpha: .45))),
+          decoration: BoxDecoration(color: s.surface, border: Border(top: BorderSide(color: s.outlineVariant.withValues(alpha: .45))),
           ),
-          child: OutlinedButton.icon(
-            onPressed: _login,
-            icon: const Icon(Icons.login_rounded, size: 18),
-            label: const Text('登录后参与讨论'),
-            style: OutlinedButton.styleFrom(minimumSize: const Size.fromHeight(46)),
-          ),
+          child: OutlinedButton.icon(onPressed: _login, icon: const Icon(Icons.login_rounded, size: 18), label: const Text('登录后参与讨论'), style: OutlinedButton.styleFrom(minimumSize: const Size.fromHeight(46))),
         ),
       );
     }
@@ -683,9 +571,7 @@ video,iframe{max-width:100%!important;height:auto!important;border-radius:12px}t
       top: false,
       child: Container(
         padding: const EdgeInsets.fromLTRB(12, 8, 12, 8),
-        decoration: BoxDecoration(
-          color: s.surface,
-          border: Border(top: BorderSide(color: s.outlineVariant.withValues(alpha: .45))),
+        decoration: BoxDecoration(color: s.surface, border: Border(top: BorderSide(color: s.outlineVariant.withValues(alpha: .45))),
         ),
         child: Row(
           crossAxisAlignment: CrossAxisAlignment.end,
@@ -705,10 +591,7 @@ video,iframe{max-width:100%!important;height:auto!important;border-radius:12px}t
                   fillColor: s.surfaceContainerHighest.withValues(alpha: .65),
                   border: OutlineInputBorder(borderRadius: BorderRadius.circular(22), borderSide: BorderSide.none),
                   enabledBorder: OutlineInputBorder(borderRadius: BorderRadius.circular(22), borderSide: BorderSide.none),
-                  focusedBorder: OutlineInputBorder(
-                    borderRadius: BorderRadius.circular(22),
-                    borderSide: BorderSide(color: s.primary.withValues(alpha: .45)),
-                  ),
+                  focusedBorder: OutlineInputBorder(borderRadius: BorderRadius.circular(22), borderSide: BorderSide(color: s.primary.withValues(alpha: .45))),
                   contentPadding: const EdgeInsets.symmetric(horizontal: 16, vertical: 10),
                 ),
               ),
@@ -719,9 +602,7 @@ video,iframe{max-width:100%!important;height:auto!important;border-radius:12px}t
               shape: const CircleBorder(),
               child: IconButton(
                 onPressed: _sending ? null : _reply,
-                icon: _sending
-                    ? const SizedBox(width: 18, height: 18, child: CircularProgressIndicator(strokeWidth: 2, color: Colors.white))
-                    : const Icon(Icons.arrow_upward_rounded, color: Colors.white),
+                icon: _sending ? const SizedBox(width: 18, height: 18, child: CircularProgressIndicator(strokeWidth: 2, color: Colors.white)) : const Icon(Icons.arrow_upward_rounded, color: Colors.white),
               ),
             ),
           ],
