@@ -65,7 +65,7 @@ class _CreditRechargePageState extends State<CreditRechargePage> {
             if (mounted) setState(() { _loading = false; _progress = 100; });
           },
           onWebResourceError: (error) {
-            if (!error.isForMainFrame) return;
+            if (error.isForMainFrame != true) return;
             if (mounted) setState(() { _loading = false; _error = error.description; });
           },
           onNavigationRequest: (_) => NavigationDecision.navigate,
