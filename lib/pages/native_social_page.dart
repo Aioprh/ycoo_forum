@@ -5,7 +5,6 @@ import 'native_profile_page.dart';
 
 class NativeSocialPage extends StatefulWidget {
   const NativeSocialPage({super.key});
-
   @override
   State<NativeSocialPage> createState() => _NativeSocialPageState();
 }
@@ -33,8 +32,8 @@ class _NativeSocialPageState extends State<NativeSocialPage> {
     }
   }
 
-  void _switchTab(_SocialTab tab) {
-    if (_tab == tab) return;
+  void _select(_SocialTab tab) {
+    if (tab == _tab) return;
     setState(() {
       _tab = tab;
       _future = _load();
@@ -42,18 +41,24 @@ class _NativeSocialPageState extends State<NativeSocialPage> {
   }
 
   Future<void> _refresh() async {
-    setState(() => _future = _load());
-    await _future;
+    final future = _load();
+    setState(() => _future = future);
+    await future;
   }
 
-  String get _title {
+  String get _tabTitle {
     switch (_tab) {
-      case _SocialTab.friends:
-        return '好友';
-      case _SocialTab.following:
-        return '关注';
-      case _SocialTab.followers:
-        return '粉丝';
+      case _SocialTab.friends: return '好友';
+      case _SocialTab.following: return '关注';
+      case _SocialTab.followers: return '粉丝';
+    }
+  }
+
+  String get _emptyText {
+    switch (_tab) {
+      case _SocialTab.friends: return '你添加的好友会显示在这里';
+      case _SocialTab.following: return '你关注的用户会显示在这里';
+      case _SocialTab.followers: return '关注你的用户会显示在这里';
     }
   }
 
@@ -64,9 +69,7 @@ class _NativeSocialPageState extends State<NativeSocialPage> {
       backgroundColor: scheme.surfaceContainerLowest,
       appBar: AppBar(
         title: const Text('好友 / 关注'),
-        actions: [
-          IconButton(onPressed: _refresh, tooltip: '刷新', icon: const Icon(Icons.refresh_rounded)),
-        ],
+        actions: [IconButton(onPressed: _refresh, tooltip: '刷新', icon: const Icon(Icons.refresh_rounded))],
       ),
       body: Column(
         children: [
@@ -90,20 +93,19 @@ class _NativeSocialPageState extends State<NativeSocialPage> {
                   return const Center(child: CircularProgressIndicator());
                 }
                 if (snapshot.hasError) {
-                  return _ErrorState(message: snapshot.error.toString().replaceFirst('Exception: ', ''), onRetry: _refresh);
+                  final message = snapshot.error.toString().replaceFirst('Exception: ', '');
+                  return _ErrorState(message: message, onRetry: _refresh);
                 }
                 final users = snapshot.data ?? const <SocialUser>[];
-                if (users.isEmpty) {
-                  return _EmptyState(title: '暂无$_title', subtitle: _emptySubtitle);
-                }
+                if (users.isEmpty) return _EmptyState(title: '暂无$_tabTitle', subtitle: _emptyText);
                 return RefreshIndicator(
                   onRefresh: _refresh,
                   child: ListView.separated(
                     physics: const AlwaysScrollableScrollPhysics(),
                     padding: const EdgeInsets.fromLTRB(14, 4, 14, 28),
                     itemCount: users.length,
-                    separatorBuilder: (_, _) => const SizedBox(height: 8),
-                    itemBuilder: (_, index) => _UserCard(user: users[index], tab: _tab, onChanged: _refresh),
+                    separatorBuilder: (context, index) => const SizedBox(height: 8),
+                    itemBuilder: (context, index) => _UserCard(user: users[index], tab: _tab, onChanged: _refresh),
                   ),
                 );
               },
@@ -114,23 +116,13 @@ class _NativeSocialPageState extends State<NativeSocialPage> {
     );
   }
 
-  String get _emptySubtitle {
-    switch (_tab) {
-      case _SocialTab.friends:
-        return '你添加的好友会显示在这里';
-      case _SocialTab.following:
-        return '你关注的用户会显示在这里';
-      case _SocialTab.followers:
-        return '关注你的用户会显示在这里';
-    }
-  }
-
   Widget _tabButton(_SocialTab tab, String label, IconData icon) {
     final selected = _tab == tab;
     final scheme = Theme.of(context).colorScheme;
     return Expanded(
-      child: GestureDetector(
-        onTap: () => _switchTab(tab),
+      child: InkWell(
+        borderRadius: BorderRadius.circular(11),
+        onTap: () => _select(tab),
         child: AnimatedContainer(
           duration: const Duration(milliseconds: 180),
           padding: const EdgeInsets.symmetric(vertical: 10),
@@ -163,22 +155,21 @@ class _UserCard extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final scheme = Theme.of(context).colorScheme;
-    final avatar = user.avatar;
     final first = user.name.isEmpty ? '用' : user.name.characters.first;
     return Material(
       color: scheme.surface,
       borderRadius: BorderRadius.circular(18),
       clipBehavior: Clip.antiAlias,
       child: InkWell(
-        onTap: user.uid > 0 ? () => Navigator.of(context).push(MaterialPageRoute(builder: (_) => NativeProfilePage(uid: user.uid, username: user.name))) : null,
+        onTap: user.uid > 0 ? () => Navigator.of(context).push(MaterialPageRoute(builder: (context) => NativeProfilePage(uid: user.uid, username: user.name))) : null,
         child: Padding(
           padding: const EdgeInsets.fromLTRB(14, 13, 12, 13),
           child: Row(children: [
             CircleAvatar(
               radius: 27,
               backgroundColor: scheme.primaryContainer,
-              backgroundImage: avatar.isEmpty ? null : NetworkImage(avatar),
-              child: avatar.isEmpty ? Text(first, style: TextStyle(fontWeight: FontWeight.w800, color: scheme.onPrimaryContainer)) : null,
+              backgroundImage: user.avatar.isEmpty ? null : NetworkImage(user.avatar),
+              child: user.avatar.isEmpty ? Text(first, style: TextStyle(fontWeight: FontWeight.w800, color: scheme.onPrimaryContainer)) : null,
             ),
             const SizedBox(width: 12),
             Expanded(child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
@@ -217,13 +208,13 @@ class _EmptyState extends StatelessWidget {
       Text(title, style: const TextStyle(fontSize: 17, fontWeight: FontWeight.w800)),
       const SizedBox(height: 6),
       Text(subtitle, textAlign: TextAlign.center, style: TextStyle(fontSize: 12, color: scheme.onSurfaceVariant)),
-    ])));
+    ]));
   }
 }
 
 class _ErrorState extends StatelessWidget {
   final String message;
-  final VoidCallback onRetry;
+  final Future<void> Function() onRetry;
   const _ErrorState({required this.message, required this.onRetry});
   @override
   Widget build(BuildContext context) => Center(child: Padding(padding: const EdgeInsets.all(24), child: Column(mainAxisSize: MainAxisSize.min, children: [
