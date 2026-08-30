@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 
 import '../models/thread_item.dart';
 import '../services/profile_service.dart';
+import '../services/profile_username_service.dart';
 import 'detail_page.dart';
 import 'native_chat_page.dart';
 
@@ -18,6 +19,7 @@ class _NativeProfilePageState extends State<NativeProfilePage> with SingleTicker
   List<ThreadItem> _items = const [];
   bool _loading = true, _loadingList = false, _followBusy = false;
   String? _error;
+  String? _displayUsername;
 
   @override void initState() { super.initState(); _tabs = TabController(length: 2, vsync: this)..addListener(_tabChanged); _load(); }
   @override void dispose() { _tabs.removeListener(_tabChanged); _tabs.dispose(); super.dispose(); }
@@ -27,7 +29,11 @@ class _NativeProfilePageState extends State<NativeProfilePage> with SingleTicker
     if (mounted) setState(() { _loading = true; _error = null; });
     try {
       final p = await ProfileService.instance.fetchProfile(widget.uid, fallbackUsername: widget.username, forceRefresh: true);
-      if (mounted) setState(() => _profile = p);
+      final resolvedName = await ProfileUsernameService.instance.resolve(widget.uid, fallback: widget.username);
+      if (mounted) setState(() {
+        _profile = p;
+        _displayUsername = resolvedName ?? (_isUsableName(p.username) ? p.username : null);
+      });
       await _loadList(replies: _tabs.index == 1);
     } catch (e) { if (mounted) setState(() => _error = e.toString().replaceFirst('Exception: ', '')); }
     finally { if (mounted) setState(() => _loading = false); }
@@ -52,13 +58,15 @@ class _NativeProfilePageState extends State<NativeProfilePage> with SingleTicker
 
   void _chat() {
     final p = _profile; if (p == null || p.uid <= 0) return;
-    Navigator.of(context).push(MaterialPageRoute(builder: (_) => NativeChatPage(uid: p.uid, username: p.username)));
+    final name = _displayUsername ?? p.username;
+    Navigator.of(context).push(MaterialPageRoute(builder: (_) => NativeChatPage(uid: p.uid, username: name)));
   }
 
   @override Widget build(BuildContext context) {
     final p = _profile;
     if (_loading && p == null) return const Scaffold(body: Center(child: CircularProgressIndicator()));
     if (p == null) return Scaffold(appBar: AppBar(title: const Text('个人资料')), body: _Error(message: _error ?? '加载失败', retry: _load));
+    final name = _displayUsername ?? (_isUsableName(p.username) ? p.username : '用户');
     return Scaffold(
       backgroundColor: Theme.of(context).colorScheme.surfaceContainerLowest,
       body: RefreshIndicator(
@@ -67,7 +75,7 @@ class _NativeProfilePageState extends State<NativeProfilePage> with SingleTicker
           SliverAppBar(
             expandedHeight: 238, pinned: true, title: const Text('个人资料'),
             actions: [IconButton(onPressed: _chat, tooltip: '聊天', icon: const Icon(Icons.chat_bubble_outline_rounded)), IconButton(onPressed: _load, tooltip: '刷新', icon: const Icon(Icons.refresh))],
-            flexibleSpace: FlexibleSpaceBar(background: _Header(profile: p, onFollow: _follow, onChat: _chat, busy: _followBusy)),
+            flexibleSpace: FlexibleSpaceBar(background: _Header(profile: p, username: name, onFollow: _follow, onChat: _chat, busy: _followBusy)),
           ),
           SliverToBoxAdapter(child: _Stats(profile: p)),
           SliverPersistentHeader(pinned: true, delegate: _TabHeader(TabBar(controller: _tabs, tabs: const [Tab(icon: Icon(Icons.article_outlined), text: '主题'), Tab(icon: Icon(Icons.forum_outlined), text: '回帖')]))),
@@ -78,20 +86,27 @@ class _NativeProfilePageState extends State<NativeProfilePage> with SingleTicker
       ),
     );
   }
+
+  static bool _isUsableName(String value) {
+    final v = value.trim();
+    if (v.isEmpty || v == '用户' || v.contains('�') || v.contains('\uFFFD')) return false;
+    final compact = v.replaceAll(RegExp(r'[\s\u2000-\u206F\u25A0-\u27BF\uE000-\uF8FF]+'), '');
+    return !RegExp(r'^(?:资料|个人资料|用户资料|用户|用户名|昵称|关注|已关注|聊天|私信|回复|主题|回帖|粉丝|积分|星币|登录|注册|退出|刷新)$', caseSensitive: false).hasMatch(compact);
+  }
 }
 
 class _Header extends StatelessWidget {
-  final ProfileData profile; final VoidCallback onFollow, onChat; final bool busy;
-  const _Header({required this.profile, required this.onFollow, required this.onChat, required this.busy});
+  final ProfileData profile; final String username; final VoidCallback onFollow, onChat; final bool busy;
+  const _Header({required this.profile, required this.username, required this.onFollow, required this.onChat, required this.busy});
   @override Widget build(BuildContext context) {
     final s = Theme.of(context).colorScheme;
     return Container(
       decoration: BoxDecoration(gradient: LinearGradient(begin: Alignment.topLeft, end: Alignment.bottomRight, colors: [s.primaryContainer, s.surface])),
       child: SafeArea(bottom: false, child: Padding(padding: const EdgeInsets.fromLTRB(20, 70, 20, 18), child: Row(crossAxisAlignment: CrossAxisAlignment.end, children: [
-        CircleAvatar(radius: 38, backgroundColor: s.surface, backgroundImage: profile.avatar.isNotEmpty ? NetworkImage(profile.avatar) : null, child: profile.avatar.isEmpty ? Text(profile.username.isEmpty ? '?' : profile.username.characters.first, style: const TextStyle(fontSize: 28, fontWeight: FontWeight.w700)) : null),
+        CircleAvatar(radius: 38, backgroundColor: s.surface, backgroundImage: profile.avatar.isNotEmpty ? NetworkImage(profile.avatar) : null, child: profile.avatar.isEmpty ? Text(username.isEmpty ? '?' : username.characters.first, style: const TextStyle(fontSize: 28, fontWeight: FontWeight.w700)) : null),
         const SizedBox(width: 14),
         Expanded(child: Column(mainAxisAlignment: MainAxisAlignment.end, crossAxisAlignment: CrossAxisAlignment.start, children: [
-          Text(profile.username, maxLines: 1, overflow: TextOverflow.ellipsis, style: const TextStyle(fontSize: 22, fontWeight: FontWeight.w800)),
+          Text(username, maxLines: 1, overflow: TextOverflow.ellipsis, style: const TextStyle(fontSize: 22, fontWeight: FontWeight.w800)),
           const SizedBox(height: 3),
           Text('UID ${profile.uid}', style: TextStyle(fontSize: 13, color: s.onSurfaceVariant, fontWeight: FontWeight.w600)),
           if (profile.group.isNotEmpty) Text(profile.group, style: TextStyle(color: s.primary, fontWeight: FontWeight.w600)),
