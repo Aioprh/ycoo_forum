@@ -112,21 +112,22 @@ class _Header extends StatelessWidget {
     for (final rank in ranks) {
       if (value.contains(rank)) { result.add(rank); break; }
     }
+    // 积分属于统计数据，不再从用户组信息生成铭牌。
     return result;
   }
 
   Widget _badge(BuildContext context, String text, IconData icon) {
     final s = Theme.of(context).colorScheme;
     return Container(
-      padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
+      padding: const EdgeInsets.symmetric(horizontal: 7, vertical: 4),
       decoration: BoxDecoration(
-        color: s.surface.withValues(alpha: 0.78),
-        borderRadius: BorderRadius.circular(8),
+        color: s.surface.withValues(alpha: 0.84),
+        borderRadius: BorderRadius.circular(7),
         border: Border.all(color: s.outlineVariant.withValues(alpha: 0.65)),
       ),
       child: Row(mainAxisSize: MainAxisSize.min, children: [
-        Icon(icon, size: 13, color: s.primary),
-        const SizedBox(width: 4),
+        Icon(icon, size: 12, color: s.primary),
+        const SizedBox(width: 3),
         Text(text, style: TextStyle(fontSize: 11, fontWeight: FontWeight.w700, color: s.onSurface)),
       ]),
     );
@@ -138,7 +139,7 @@ class _Header extends StatelessWidget {
     return Container(
       decoration: BoxDecoration(gradient: LinearGradient(begin: Alignment.topLeft, end: Alignment.bottomRight, colors: [s.primaryContainer, s.surface])),
       child: SafeArea(bottom: false, child: Padding(
-        padding: const EdgeInsets.fromLTRB(20, 70, 20, 18),
+        padding: const EdgeInsets.fromLTRB(20, 72, 20, 18),
         child: Row(crossAxisAlignment: CrossAxisAlignment.end, children: [
           CircleAvatar(
             radius: 38,
@@ -146,20 +147,23 @@ class _Header extends StatelessWidget {
             backgroundImage: profile.avatar.isNotEmpty ? NetworkImage(profile.avatar) : null,
             child: profile.avatar.isEmpty ? Text(username.isEmpty ? '?' : username.characters.first, style: const TextStyle(fontSize: 28, fontWeight: FontWeight.w700)) : null,
           ),
-          const SizedBox(width: 14),
+          const SizedBox(width: 13),
           Expanded(child: Column(mainAxisAlignment: MainAxisAlignment.end, crossAxisAlignment: CrossAxisAlignment.start, children: [
-            Text(username, maxLines: 1, overflow: TextOverflow.ellipsis, style: const TextStyle(fontSize: 22, fontWeight: FontWeight.w800)),
-            const SizedBox(height: 3),
-            Text('UID ${profile.uid}', style: TextStyle(fontSize: 13, color: s.onSurfaceVariant, fontWeight: FontWeight.w600)),
+            Row(children: [
+              Flexible(child: Text(username, maxLines: 1, overflow: TextOverflow.ellipsis, style: const TextStyle(fontSize: 21, fontWeight: FontWeight.w800))),
+            ]),
             if (badges.isNotEmpty) ...[
-              const SizedBox(height: 7),
-              Wrap(spacing: 5, runSpacing: 5, children: [
+              const SizedBox(height: 6),
+              Wrap(spacing: 5, runSpacing: 4, children: [
                 for (var i = 0; i < badges.length; i++) _badge(context, badges[i], i == 0 && badges[i].toLowerCase().startsWith('lv') ? Icons.diamond_outlined : Icons.school_outlined),
               ]),
             ],
+            const SizedBox(height: 5),
+            Text('UID ${profile.uid}', style: TextStyle(fontSize: 12, color: s.onSurfaceVariant, fontWeight: FontWeight.w600)),
           ])),
+          const SizedBox(width: 8),
           Column(mainAxisSize: MainAxisSize.min, children: [
-            FilledButton.tonalIcon(onPressed: busy ? null : onFollow, icon: Icon(profile.followedByMe ? Icons.check : Icons.person_add_alt_1), label: Text(profile.followedByMe ? '已关注' : '关注')),
+            FilledButton.tonalIcon(onPressed: busy ? null : onFollow, icon: Icon(profile.followedByMe ? Icons.check : Icons.person_add_alt_1, size: 18), label: Text(profile.followedByMe ? '已关注' : '关注')),
             const SizedBox(height: 6),
             OutlinedButton.icon(onPressed: onChat, icon: const Icon(Icons.chat_bubble_outline, size: 18), label: const Text('聊天')),
           ]),
