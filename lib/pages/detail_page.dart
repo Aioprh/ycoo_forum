@@ -4,6 +4,7 @@ import 'package:webview_flutter/webview_flutter.dart';
 import '../models/thread_detail.dart';
 import '../services/api_service.dart';
 import '../services/auth_service.dart';
+import '../services/attachment_download_service.dart';
 import '../services/thread_interaction_service.dart';
 import '../widgets/native_comment_list.dart';
 import 'login_page.dart';
@@ -119,6 +120,7 @@ img{display:block!important;width:auto!important;max-width:100%!important;height
 video,iframe{max-width:100%!important;height:auto!important;border-radius:12px}table{width:100%!important;max-width:100%!important;border-collapse:collapse}td,th{padding:7px;overflow-wrap:anywhere;border:1px solid #e3e6ec}pre,code{white-space:pre-wrap;word-break:break-word}code{background:#f1f3f6;padding:2px 5px;border-radius:5px}pre{background:#f4f5f7;padding:12px 14px;border-radius:10px;overflow:hidden}blockquote{margin:12px 0;padding:9px 13px;border-left:3px solid #8a9cff;background:#f4f6ff;color:#687080;border-radius:0 10px 10px 0}
 .post-card{background:#fff;border:1px solid #e7e8ee;border-radius:16px;padding:16px;margin:0 0 12px;box-shadow:0 2px 10px rgba(30,35,55,.035)}
 .p-body{font-size:15.5px;line-height:1.82;color:#252832}
+.attachment-link{display:flex!important;align-items:center;gap:10px;padding:12px 14px;margin:10px 0;background:#f5f7ff;border:1px solid #dfe5ff;border-radius:12px;color:#4058d6!important;font-weight:600}
 </style></head><body>$html</body></html>''';
 
     late WebViewController controller;
@@ -127,9 +129,34 @@ video,iframe{max-width:100%!important;height:auto!important;border-radius:12px}t
       ..setBackgroundColor(Colors.transparent)
       ..setNavigationDelegate(
         NavigationDelegate(
+          onNavigationRequest: (request) async {
+            final url = request.url;
+            if (!AttachmentDownloadService.instance.isAttachmentUrl(url)) {
+              return NavigationDecision.navigate;
+            }
+            if (!_loggedIn) {
+              if (mounted) await _login();
+              return NavigationDecision.prevent;
+            }
+            try {
+              final started = await AttachmentDownloadService.instance.download(
+                url: url,
+                cookie: AuthService.instance.authCookie,
+                referer: 'https://www.ycoo.net/',
+              );
+              if (mounted) {
+                ScaffoldMessenger.of(context).showSnackBar(
+                  SnackBar(content: Text(started ? '已开始下载附件' : '当前平台暂不支持原生附件下载')),
+                );
+              }
+            } catch (e) {
+              if (mounted) ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text('附件下载失败：$e')));
+            }
+            return NavigationDecision.prevent;
+          },
           onPageFinished: (_) async {
             try {
-              await controller.runJavaScript("document.querySelectorAll('img').forEach(function(i){i.style.width='auto';i.style.maxWidth='100%';i.style.height='auto';i.style.maxHeight='72vh';i.style.objectFit='contain';});");
+              await controller.runJavaScript("document.querySelectorAll('a').forEach(function(a){try{var h=a.href||'';if(/attachment\\.php|mod=attachment|[?&]aid=|\\/attachment\\/|\\/download\\//i.test(h)){a.classList.add('attachment-link');if(!a.querySelector('.attachment-icon')){var i=document.createElement('span');i.className='attachment-icon';i.textContent='📎';a.prepend(i);}}}catch(e){}});document.querySelectorAll('img').forEach(function(i){i.style.width='auto';i.style.maxWidth='100%';i.style.height='auto';i.style.maxHeight='72vh';i.style.objectFit='contain';});");
               final raw = await controller.runJavaScriptReturningResult('''(function(){
                 document.querySelectorAll('[style]').forEach(function(e){
                   var st=(e.getAttribute('style')||'').replace(/\\s/g,'').toLowerCase();
@@ -560,8 +587,7 @@ video,iframe{max-width:100%!important;height:auto!important;border-radius:12px}t
         top: false,
         child: Container(
           padding: const EdgeInsets.fromLTRB(16, 9, 16, 9),
-          decoration: BoxDecoration(color: s.surface, border: Border(top: BorderSide(color: s.outlineVariant.withValues(alpha: .45))),
-          ),
+          decoration: BoxDecoration(color: s.surface, border: Border(top: BorderSide(color: s.outlineVariant.withValues(alpha: .45)))),
           child: OutlinedButton.icon(onPressed: _login, icon: const Icon(Icons.login_rounded, size: 18), label: const Text('登录后参与讨论'), style: OutlinedButton.styleFrom(minimumSize: const Size.fromHeight(46))),
         ),
       );
@@ -571,8 +597,7 @@ video,iframe{max-width:100%!important;height:auto!important;border-radius:12px}t
       top: false,
       child: Container(
         padding: const EdgeInsets.fromLTRB(12, 8, 12, 8),
-        decoration: BoxDecoration(color: s.surface, border: Border(top: BorderSide(color: s.outlineVariant.withValues(alpha: .45))),
-        ),
+        decoration: BoxDecoration(color: s.surface, border: Border(top: BorderSide(color: s.outlineVariant.withValues(alpha: .45)))),
         child: Row(
           crossAxisAlignment: CrossAxisAlignment.end,
           children: [
