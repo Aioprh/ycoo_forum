@@ -310,6 +310,7 @@ class _ProfilePageState extends State<ProfilePage> {
                             children: [
                               _accountBadge(icon: Icons.diamond_outlined, text: _level ?? '等级'),
                               _accountBadge(icon: Icons.school_outlined, text: _cleanRankText(_rank)),
+                              _accountBadge(icon: Icons.stars_outlined, text: _points == null ? '积分' : '积分 $_points'),
                               _accountBadge(icon: Icons.payments_outlined, text: _coins == null ? '星币' : '星币 $_coins'),
                             ],
                           ),
