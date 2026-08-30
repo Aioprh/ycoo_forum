@@ -18,11 +18,53 @@ class NativeCommentList extends StatelessWidget {
       final body = card.querySelector('.p-body');
       if (body == null) continue;
       final authorNode = card.querySelector('.p-author');
-      final href = authorNode?.querySelector('a[href]')?.attributes['href'] ?? authorNode?.attributes['href'] ?? '';
-      final uid = int.tryParse(RegExp(r'[?&]uid=(\d+)').firstMatch(href)?.group(1) ?? '0') ?? 0;
+      final uid = _extractUid(card, authorNode);
       result.add(_CommentFloor(pid: int.tryParse(card.attributes['data-pid'] ?? '0') ?? 0, uid: uid, floor: _text(card.querySelector('.p-floor')), author: _text(authorNode), level: _text(card.querySelector('.p-level')), time: _text(card.querySelector('.p-time')), body: body));
     }
     return result;
+  }
+
+  static int _extractUid(dom.Element card, dom.Element? author) {
+    const keys = ['data-uid', 'data-user-id', 'data-author-id', 'uid', 'userid', 'user-id', 'author-id'];
+    for (final key in keys) {
+      final value = card.attributes[key] ?? author?.attributes[key];
+      final uid = _firstInt(value);
+      if (uid != null && uid > 0) return uid;
+    }
+
+    final nodes = <dom.Element>[
+      card,
+      if (author != null) author,
+      ...card.querySelectorAll('a[href], img[src], img[data-src]'),
+    ];
+    for (final node in nodes) {
+      final href = node.attributes['href'] ?? '';
+      final src = node.attributes['src'] ?? node.attributes['data-src'] ?? '';
+      final uid = _uidFromUrl('$href $src');
+      if (uid > 0) return uid;
+    }
+    return 0;
+  }
+
+  static int _uidFromUrl(String value) {
+    final patterns = <RegExp>[
+      RegExp(r'(?:[?&]|%3F|%26)uid(?:=|%3D)(\d+)', caseSensitive: false),
+      RegExp(r'(?:^|[/?_-])uid[-_/](\d+)', caseSensitive: false),
+      RegExp(r'(?:^|[/?_-])space[-_/](\d+)', caseSensitive: false),
+      RegExp(r'home\.php[^\s]*[?&]uid=(\d+)', caseSensitive: false),
+    ];
+    for (final pattern in patterns) {
+      final match = pattern.firstMatch(value);
+      final uid = int.tryParse(match?.group(1) ?? '');
+      if (uid != null && uid > 0) return uid;
+    }
+    return 0;
+  }
+
+  static int? _firstInt(String? value) {
+    if (value == null || value.isEmpty) return null;
+    final match = RegExp(r'\d+').firstMatch(value);
+    return match == null ? null : int.tryParse(match.group(0)!);
   }
 
   static String _text(dom.Element? e) => e?.text.replaceAll(RegExp(r'\s+'), ' ').trim() ?? '';
@@ -50,7 +92,7 @@ class NativeCommentList extends StatelessWidget {
 
   void _openProfile(BuildContext context, _CommentFloor comment) {
     if (comment.uid <= 0) {
-      ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('未取得用户资料，请刷新帖子后重试')));
+      ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('当前楼层未找到用户 ID')));
       return;
     }
     Navigator.of(context).push(MaterialPageRoute(builder: (_) => NativeProfilePage(uid: comment.uid, username: comment.author)));
