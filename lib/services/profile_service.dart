@@ -70,7 +70,6 @@ class ProfileService {
 
     final username = _profileUsername(doc, uid) ??
         _labelValue(doc, ['昵称', '显示名称', '用户名']) ??
-        _visibleName(doc) ??
         (fallbackUsername?.trim().isNotEmpty == true && _validName(fallbackUsername) ? fallbackUsername!.trim() : '用户');
     final avatar = _avatar(doc, uid);
     final group = _clean(doc.querySelector('.comiis_space_level, .gm, .xg1, a[href*="gid="]')?.text ?? '');
@@ -108,13 +107,12 @@ class ProfileService {
     final uidText = uid.toString();
 
     // Prefer the username rendered by Discuz's profile header. These selectors
-    // are deliberately specific so labels such as “资料/关注/聊天” cannot win.
+    // are deliberately specific (Discuz 标准空间头锚点) so labels such as
+    // “资料/关注/帖子” cannot win. Gener-ic class scans (.username/.nickname)
+    // are avoided deliberately — they match navigation/UI labels too.
     const selectors = [
       '#uhd .vwmy a', '#uhd .vwmy',
-      '.comiis_space_user .username', '.comiis_space_user .nickname',
-      '.comiis_space_user .name', '.comiis_space_user h2',
-      '.pf_username', '.userinfo .username', '.user-info .username',
-      '.member-name',
+      '.vwmy a', '.vwmy',
     ];
     for (final selector in selectors) {
       final value = _clean(doc.querySelector(selector)?.text ?? '');
@@ -229,14 +227,6 @@ class ProfileService {
         final value = _clean(text.replaceFirst(label, '').replaceFirst(':', '').replaceFirst('：', ''));
         if (_validName(value) && !_uiLabel(value)) return value;
       }
-    }
-    return null;
-  }
-
-  static String? _visibleName(dom.Document doc) {
-    for (final selector in ['.vwmy a', '.vwmy', '.pf_username', '.userinfo a', '.user-info a', '.member-name', '.username', '.nickname', '[class*="username"]', '[class*="nickname"]']) {
-      final value = _clean(doc.querySelector(selector)?.text ?? '');
-      if (_validName(value) && !_uiLabel(value)) return value;
     }
     return null;
   }

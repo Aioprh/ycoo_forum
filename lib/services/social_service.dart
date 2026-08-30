@@ -155,7 +155,7 @@ class SocialService {
       _clean(anchor.attributes['title'] ?? ''),
       _clean(anchor.attributes['aria-label'] ?? ''),
       _clean(anchor.querySelector('img')?.attributes['alt'] ?? ''),
-      _clean(container?.querySelector('.xw1,.xi2,.name,.username,.nickname,.title,[class*="username"],[class*="nickname"],[class*="name"]')?.text ?? ''),
+      _clean(container?.querySelector('.xw1,.xi2,.name,.username,.nickname,.title')?.text ?? ''),
       _clean(container?.attributes['title'] ?? ''),
     ];
 
@@ -278,7 +278,7 @@ class SocialService {
   static bool _badName(String value) {
     final v = _clean(value);
     if (v.isEmpty || v.length > 40) return true;
-    if (const {'首页','下一页','上一页','更多','关注','粉丝','好友','删除','取消关注','×','x','X','××'}.contains(v)) return true;
+    if (const {'首页','下一页','上一页','更多','关注','粉丝','好友','删除','取消关注','帖子','主题','回帖','资料','个人资料','昵称','用户名','设置','×','x','X','××'}.contains(v)) return true;
     if (v.contains('�') || v.contains('\uFFFD')) return true;
     if (!RegExp(r'[\u4e00-\u9fffA-Za-z0-9]').hasMatch(v)) return true;
     return false;

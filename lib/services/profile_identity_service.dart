@@ -210,9 +210,10 @@ class ProfileIdentityService {
   }
 
   String? _findNicknameNode(dynamic doc) {
+    // 仅信任语义明确的昵称锚点，移除 [class*="nick"] 等模糊通配类名。
     const selectors = [
       '.nickname', '.nick-name', '.pf_nickname', '.userinfo .name',
-      '.user-info .name', '[class*="nickname"]', '[class*="nick"]',
+      '.user-info .name',
     ];
     for (final selector in selectors) {
       for (final node in doc.querySelectorAll(selector)) {
@@ -258,7 +259,9 @@ class ProfileIdentityService {
   }
 
   String? _findVisibleName(dynamic doc) {
-    const selectors = ['.vwmy', '.pf_username', '.userinfo a', '.user-info a', '.member-name', '.username', '[class*="username"]'];
+    // 结构化锚点白名单：只信 Discuz 标准“空间头”用户名锚点(.vwmy)。
+    // 不再用 .username/[class*="username"] 等通配类名——会误命中导航/UI 词(如“帖子”)。
+    const selectors = ['.vwmy a', '.vwmy'];
     for (final selector in selectors) {
       for (final node in doc.querySelectorAll(selector)) {
         final text = _clean(node.text);
@@ -290,7 +293,7 @@ class ProfileIdentityService {
     if (s == null) return false;
     final v = _clean(s);
     if (v.isEmpty || v.length > 32) return false;
-    if (const {'X', 'x', '×', '登录', '注册', '退出', '退出登录', '个人主页', '资料', '主题', '回帖', '用户名', '昵称', '首页', '搜索', '设置'}.contains(v)) return false;
+    if (const {'X', 'x', '×', '登录', '注册', '退出', '退出登录', '个人主页', '资料', '主题', '回帖', '帖子', '帖子数', '用户名', '昵称', '关注', '已关注', '聊天', '私信', '回复', '粉丝', '积分', '星币', '首页', '搜索', '设置'}.contains(v)) return false;
     return !v.contains('�') && !v.contains('Ã') && !v.contains('Â') && !v.contains('â');
   }
 

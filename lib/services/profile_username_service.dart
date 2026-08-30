@@ -57,24 +57,26 @@ class ProfileUsernameService {
       node.remove();
     }
 
+    // 结构化锚点白名单：只信任 Discuz 标准“空间头”用户名锚点(#uhd .vwmy)，
+    // 不再用 .username/.nickname 等通配类名扫描——它们会误命中导航栏/UI 词(如“帖子”)。
     const selectors = <String>[
       '#uhd .vwmy a',
       '#uhd .vwmy',
       '.vwmy a',
       '.vwmy',
-      '.comiis_space_user .username',
-      '.comiis_space_user .nickname',
-      '.comiis_space_user .name',
-      '.comiis_space_user h2',
-      '.pf_username',
-      '.userinfo .username',
-      '.user-info .username',
-      '.member-name',
-      '.username',
-      '.nickname',
     ];
     for (final selector in selectors) {
       final value = _stripUi(_clean(doc.querySelector(selector)?.text ?? ''));
+      if (_valid(value)) return value;
+    }
+
+    // Some templates expose it as a JS variable instead of visible markup.
+    for (final pattern in <RegExp>[
+      RegExp(r'''(?:spaceusername|space_username|user_name|username)\s*[:=]\s*['"]([^'"]{1,64})['"]''', caseSensitive: false),
+      RegExp(r'''data-(?:username|user-name)\s*=\s*['"]([^'"]{1,64})['"]''', caseSensitive: false),
+    ]) {
+      final match = pattern.firstMatch(html);
+      final value = _stripUi(_clean(match?.group(1) ?? ''));
       if (_valid(value)) return value;
     }
 
@@ -87,16 +89,6 @@ class ProfileUsernameService {
           href.contains('uid%253d$uidText');
       if (!hasUid || !href.contains('mod=space')) continue;
       final value = _stripUi(_clean(a.text));
-      if (_valid(value)) return value;
-    }
-
-    // Some templates expose it as a JS variable instead of visible markup.
-    for (final pattern in <RegExp>[
-      RegExp(r'''(?:spaceusername|space_username|user_name|username)\s*[:=]\s*['"]([^'"]{1,64})['"]''', caseSensitive: false),
-      RegExp(r'''data-(?:username|user-name)\s*=\s*['"]([^'"]{1,64})['"]''', caseSensitive: false),
-    ]) {
-      final match = pattern.firstMatch(html);
-      final value = _stripUi(_clean(match?.group(1) ?? ''));
       if (_valid(value)) return value;
     }
 
