@@ -7,6 +7,7 @@ import 'login_page.dart';
 import 'member_feature_page.dart';
 import 'native_profile_page.dart';
 import 'native_site_page.dart';
+import 'native_social_page.dart';
 import 'profile_edit_page.dart';
 import 'search_page.dart';
 
@@ -123,6 +124,12 @@ class _ProfilePageState extends State<ProfilePage> {
     );
   }
 
+  void _openSocial() {
+    Navigator.of(context).push(
+      MaterialPageRoute(builder: (_) => const NativeSocialPage()),
+    );
+  }
+
   void _openMySpace() {
     final uid = _uid;
     if (uid == null || uid <= 0) return;
@@ -200,35 +207,21 @@ class _ProfilePageState extends State<ProfilePage> {
     return CircleAvatar(radius: 34, backgroundImage: NetworkImage(_avatarUrl!));
   }
 
-  // 昵称去掉尾部的 Lv.X / 品级（如“童生”）/ 积分 信息，只保留纯昵称。
   String _stripAccountMetaFromNick(String? value) {
     if (value == null) return '用户';
     var text = value.trim();
     if (text.isEmpty) return '用户';
-
-    // 去掉“积分:138”或“童生积分:138”类的尾巴。
     final points = RegExp(r'积分\s*[:：]?\s*\d*', caseSensitive: false);
     text = text.replaceAll(points, ' ');
-
-    // 去掉已知品级文本（优先去掉）。
     if (_rank != null && _rank!.isNotEmpty) {
       text = text.replaceAll(RegExp.escape(_rank!), ' ');
     }
-
-    // 去掉 Lv.X。
     text = text.replaceAll(RegExp(r'Lv\.?\s*\d+', caseSensitive: false), ' ');
-
-    // 去掉常见品级/等级类常见词兜底。
-    text = text.replaceAll(
-      RegExp(r'(?:管理员|版主|实习|超级版主|童生|秀才|举人|进士|探花|榜眼|状元|九品|八品|七品|六品|五品|四品|三品|二品|一品|新人|元老|新手上路|正式|核心|VIP|会员|用户组)\s*'),
-      ' ',
-    );
-
+    text = text.replaceAll(RegExp(r'(?:管理员|版主|实习|超级版主|童生|秀才|举人|进士|探花|榜眼|状元|九品|八品|七品|六品|五品|四品|三品|二品|一品|新人|元老|新手上路|正式|核心|VIP|会员|用户组)\s*'), ' ');
     text = text.replaceAll(RegExp(r'\s+'), ' ').trim();
     return text.isEmpty ? '用户' : text;
   }
 
-  // 品级铭牌只保留“童生”这类文字，去掉“积分:138”之类的后缀。
   String _cleanRankText(String? rank) {
     if (rank == null) return '品级';
     final value = rank.replaceAll(RegExp(r'积分\s*[:：]?\s*\d*'), '').replaceAll(RegExp(r'\s+'), ' ').trim();
@@ -299,9 +292,7 @@ class _ProfilePageState extends State<ProfilePage> {
                   crossAxisAlignment: CrossAxisAlignment.start,
                   children: [
                     Text(
-                      loggedIn
-                          ? _stripAccountMetaFromNick(_username)
-                          : '登录 / 注册',
+                      loggedIn ? _stripAccountMetaFromNick(_username) : '登录 / 注册',
                       maxLines: 1,
                       overflow: TextOverflow.ellipsis,
                       style: const TextStyle(fontSize: 19, fontWeight: FontWeight.w800),
@@ -341,16 +332,11 @@ class _ProfilePageState extends State<ProfilePage> {
   Widget _checkinCard() {
     final scheme = Theme.of(context).colorScheme;
     final result = _checkinResult;
-    final done = result != null &&
-        (result.contains('成功') || result.contains('已经签到') || result.contains('已签'));
+    final done = result != null && (result.contains('成功') || result.contains('已经签到') || result.contains('已签'));
 
     Widget trailing;
     if (_signing) {
-      trailing = const SizedBox(
-        width: 20,
-        height: 20,
-        child: CircularProgressIndicator(strokeWidth: 2),
-      );
+      trailing = const SizedBox(width: 20, height: 20, child: CircularProgressIndicator(strokeWidth: 2));
     } else if (done) {
       trailing = Icon(Icons.check_circle_rounded, color: scheme.primary);
     } else {
@@ -387,44 +373,27 @@ class _ProfilePageState extends State<ProfilePage> {
               Container(
                 width: 46,
                 height: 46,
-                decoration: BoxDecoration(
-                  color: scheme.secondary,
-                  borderRadius: BorderRadius.circular(14),
-                ),
-                child: Icon(
-                  done ? Icons.check_rounded : Icons.calendar_month_rounded,
-                  color: scheme.onSecondary,
-                  size: 25,
-                ),
+                decoration: BoxDecoration(color: scheme.secondary, borderRadius: BorderRadius.circular(14)),
+                child: Icon(done ? Icons.check_rounded : Icons.calendar_month_rounded, color: scheme.onSecondary, size: 25),
               ),
               const SizedBox(width: 12),
               Expanded(
                 child: Column(
                   crossAxisAlignment: CrossAxisAlignment.start,
                   children: [
-                    Row(
-                      children: [
-                        const Text('每日签到', style: TextStyle(fontSize: 16, fontWeight: FontWeight.w800)),
-                        if (done) ...[
-                          const SizedBox(width: 6),
-                          Container(
-                            padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 3),
-                            decoration: BoxDecoration(
-                              color: scheme.primaryContainer,
-                              borderRadius: BorderRadius.circular(7),
-                            ),
-                            child: const Text('已完成', style: TextStyle(fontSize: 9, fontWeight: FontWeight.w700)),
-                          ),
-                        ],
+                    Row(children: [
+                      const Text('每日签到', style: TextStyle(fontSize: 16, fontWeight: FontWeight.w800)),
+                      if (done) ...[
+                        const SizedBox(width: 6),
+                        Container(
+                          padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 3),
+                          decoration: BoxDecoration(color: scheme.primaryContainer, borderRadius: BorderRadius.circular(7)),
+                          child: const Text('已完成', style: TextStyle(fontSize: 9, fontWeight: FontWeight.w700)),
+                        ),
                       ],
-                    ),
+                    ]),
                     const SizedBox(height: 4),
-                    Text(
-                      subtitle,
-                      maxLines: 1,
-                      overflow: TextOverflow.ellipsis,
-                      style: TextStyle(fontSize: 12, color: scheme.onSurfaceVariant),
-                    ),
+                    Text(subtitle, maxLines: 1, overflow: TextOverflow.ellipsis, style: TextStyle(fontSize: 12, color: scheme.onSurfaceVariant)),
                   ],
                 ),
               ),
@@ -455,7 +424,7 @@ class _ProfilePageState extends State<ProfilePage> {
           _featureTile(icon: Icons.bookmark_border, title: '我的收藏', subtitle: '收藏的主题', onTap: () => _openNative(title: '我的收藏', path: 'home.php?mod=space&do=favorite&view=me&mobile=2', type: MemberFeatureType.favorites)),
           _featureTile(icon: Icons.notifications_none, title: '通知', subtitle: '回复、提醒、赞', onTap: () => _openNative(title: '通知', path: 'home.php?mod=space&do=notice&mobile=2', type: MemberFeatureType.notices)),
           _featureTile(icon: Icons.mail_outline, title: '消息', subtitle: '站内私信', onTap: () => _openNative(title: '消息', path: 'home.php?mod=space&do=pm&mobile=2', type: MemberFeatureType.messages)),
-          _featureTile(icon: Icons.people_outline, title: '好友 / 关注', subtitle: '好友、关注与粉丝', onTap: () => _openNative(title: '好友 / 关注', path: 'home.php?mod=space&do=friend&mobile=2', type: MemberFeatureType.friends)),
+          _featureTile(icon: Icons.people_outline, title: '好友 / 关注', subtitle: '好友、关注与粉丝', onTap: _openSocial),
         ],
       ),
       _sectionHeader(context, '签到与资产'),
@@ -519,10 +488,7 @@ class _ProfilePageState extends State<ProfilePage> {
 
   @override
   Widget build(BuildContext context) {
-    final loggedIn = _username != null &&
-        _username!.trim().isNotEmpty &&
-        AuthService.instance.isLoggedIn;
-
+    final loggedIn = _username != null && _username!.trim().isNotEmpty && AuthService.instance.isLoggedIn;
     final children = <Widget>[
       _sectionHeader(context, '帐号'),
       _accountCard(loggedIn),
@@ -534,11 +500,7 @@ class _ProfilePageState extends State<ProfilePage> {
       appBar: AppBar(
         title: const Text('我的'),
         actions: [
-          IconButton(
-            tooltip: '刷新',
-            onPressed: _load,
-            icon: const Icon(Icons.refresh_rounded),
-          ),
+          IconButton(tooltip: '刷新', onPressed: _load, icon: const Icon(Icons.refresh_rounded)),
         ],
       ),
       body: RefreshIndicator(
