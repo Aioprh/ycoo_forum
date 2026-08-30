@@ -18,10 +18,10 @@ class ThreadDetail {
   String get bodyHtml => _sanitizeForumHtml(_bodyHtml);
   String get commentsHtml => _sanitizeForumHtml(_commentsHtml);
 
-  /// 付费主题未购买时，原站购买提示会被正文清洗器移除，最终正文为空。
-  /// API 同时提供 purchaseUrl，因此这里保留购买态，避免 UI 只显示“暂无正文”。
+  /// Discuz 付费主题可能仍提供一部分免费预览内容。
+  /// 不能再用“清洗后的正文为空”判断付费状态，否则购买按钮会消失。
   final bool _paid;
-  bool get isPaid => _paid && bodyHtml.trim().isEmpty;
+  bool get isPaid => _paid;
   final int? price;
   final String currency;
   final String purchaseUrl;
@@ -50,7 +50,7 @@ class ThreadDetail {
     this.likedByMe = false,
   })  : _bodyHtml = bodyHtml,
         _commentsHtml = commentsHtml,
-        _paid = isPaid || (bodyHtml.trim().isEmpty && purchaseUrl.isNotEmpty);
+        _paid = isPaid;
 }
 
 String _sanitizeForumHtml(String html) {
