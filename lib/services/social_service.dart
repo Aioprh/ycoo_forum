@@ -34,32 +34,121 @@ class SocialService {
     return html;
   }
 
-  Future<List<SocialUser>> fetchFriends() => _fetch('home.php?mod=space&do=friend&view=me&mobile=2');
-  Future<List<SocialUser>> fetchFollowing() => _fetch('home.php?mod=space&do=follow&view=following&mobile=2');
-  Future<List<SocialUser>> fetchFollowers() => _fetch('home.php?mod=space&do=follow&view=follower&mobile=2');
+  Future<List<SocialUser>> fetchFriends() => _fetchCandidates([
+        'home.php?mod=space&do=friend&view=me&mobile=2',
+        'home.php?mod=space&do=friend&view=me',
+        'home.php?mod=space&do=friend&mobile=2',
+        'home.php?mod=space&do=friend',
+      ]);
 
-  Future<List<SocialUser>> _fetch(String path) async {
-    final doc = parser.parse(await _get(path));
-    for (final node in doc.querySelectorAll('script,style,noscript,template')) { node.remove(); }
+  Future<List<SocialUser>> fetchFollowing() => _fetchCandidates([
+        'home.php?mod=space&do=follow&view=following&mobile=2',
+        'home.php?mod=space&do=follow&view=following',
+        'home.php?mod=follow&view=following&mobile=2',
+        'home.php?mod=follow&view=following',
+      ]);
+
+  Future<List<SocialUser>> fetchFollowers() => _fetchCandidates([
+        'home.php?mod=space&do=follow&view=follower&mobile=2',
+        'home.php?mod=space&do=follow&view=follower',
+        'home.php?mod=follow&view=follower&mobile=2',
+        'home.php?mod=follow&view=follower',
+      ]);
+
+  Future<List<SocialUser>> _fetchCandidates(List<String> paths) async {
+    Object? last;
+    List<SocialUser> best = const [];
+    var bestScore = -1;
+    for (final path in paths) {
+      try {
+        final users = await _parseUsers(await _get(path));
+        final score = _qualityScore(users);
+        if (score > bestScore) {
+          best = users;
+          bestScore = score;
+        }
+        if (users.isNotEmpty && score >= users.length * 4) return users;
+      } catch (e) {
+        last = e;
+      }
+    }
+    if (best.isNotEmpty) return best;
+    if (last != null) throw last!;
+    return const [];
+  }
+
+  Future<List<SocialUser>> _parseUsers(String html) async {
+    final doc = parser.parse(html);
+    for (final node in doc.querySelectorAll('script,style,noscript,template')) {
+      node.remove();
+    }
+
     final result = <SocialUser>[];
     final seen = <int>{};
-    for (final a in doc.querySelectorAll('a[href*="uid="],a[href*="space-uid-"]')) {
-      final uid = _uidFrom(a.attributes['href'] ?? '');
+    final links = doc.querySelectorAll('a[href*="uid="],a[href*="space-uid-"]');
+    for (final a in links) {
+      final href = a.attributes['href'] ?? '';
+      final uid = _uidFrom(href);
       if (uid <= 0 || seen.contains(uid)) continue;
-      final name = _clean(a.text);
-      if (name.isEmpty || name.length > 40 || _isNavigation(name)) continue;
-      final root = a.parent;
-      final text = _clean(root?.text ?? '');
-      var subtitle = text.replaceFirst(name, '').trim();
-      if (subtitle.isEmpty || subtitle.length > 120) subtitle = 'UID $uid';
+
+      var name = _clean(a.text);
+      if (_badName(name)) name = _clean(a.attributes['title'] ?? a.attributes['aria-label'] ?? '');
+      if (_badName(name)) name = _clean(a.querySelector('img')?.attributes['alt'] ?? '');
+      if (_badName(name)) {
+        final parent = a.parent;
+        final candidates = <String>[
+          _clean(parent?.querySelector('.xw1,.xi2,.name,.username,.title')?.text ?? ''),
+          _clean(parent?.attributes['title'] ?? ''),
+        ];
+        for (final candidate in candidates) {
+          if (!_badName(candidate)) {
+            name = candidate;
+            break;
+          }
+        }
+      }
+      if (_badName(name)) continue;
+
+      final container = _userContainer(a);
+      final containerText = _clean(container?.text ?? '');
+      var subtitle = containerText.replaceFirst(name, '').trim();
+      if (subtitle.length > 120 || _isNavigation(subtitle)) subtitle = '';
+      if (subtitle.isEmpty) subtitle = 'UID $uid';
+
       var avatar = '';
-      final img = root?.querySelector('img');
-      if (img != null) avatar = _absolute((img.attributes['data-src'] ?? img.attributes['src'] ?? '').trim());
+      final image = a.querySelector('img') ?? container?.querySelector('img');
+      if (image != null) {
+        avatar = _absolute((image.attributes['data-src'] ?? image.attributes['data-original'] ?? image.attributes['src'] ?? '').trim());
+      }
+
       seen.add(uid);
       result.add(SocialUser(uid: uid, name: name, avatar: avatar, subtitle: subtitle));
       if (result.length >= 200) break;
     }
     return result;
+  }
+
+  dynamic _userContainer(dynamic anchor) {
+    var node = anchor.parent;
+    for (var i = 0; i < 4 && node != null; i++) {
+      final text = _clean(node.text ?? '');
+      final hasUserAction = node.querySelector('a[href*="space"],a[href*="uid="],img') != null;
+      if (hasUserAction && text.length <= 240) return node;
+      node = node.parent;
+    }
+    return anchor.parent;
+  }
+
+  int _qualityScore(List<SocialUser> users) {
+    if (users.isEmpty) return 0;
+    var score = users.length * 2;
+    for (final user in users) {
+      if (user.name.contains('�')) score -= 5;
+      if (user.name.length >= 2) score += 2;
+      if (RegExp(r'[\u4e00-\u9fffA-Za-z0-9]').hasMatch(user.name)) score += 1;
+      if (user.avatar.isNotEmpty) score += 1;
+    }
+    return score;
   }
 
   Future<String?> toggleFollow({required int uid, required bool follow}) async {
@@ -110,8 +199,15 @@ class SocialService {
     return (input?.attributes['value'] ?? '').trim();
   }
 
-  static String _clean(String value) => value.replaceAll('\uFFFD', '').replaceAll(RegExp(r'\s+'), ' ').trim();
-  static bool _isNavigation(String value) => const {'首页', '下一页', '上一页', '更多', '关注', '粉丝', '好友', '删除'}.contains(value);
+  static bool _badName(String value) {
+    if (value.isEmpty || value.length > 40) return true;
+    if (const {'首页', '下一页', '上一页', '更多', '关注', '粉丝', '好友', '删除'}.contains(value)) return true;
+    return value.replaceAll('�', '').trim().isEmpty;
+  }
+
+  static String _clean(String value) => value.replaceAll('\uFFFD', '�').replaceAll(RegExp(r'\s+'), ' ').trim();
+
+  static bool _isNavigation(String value) => const {'首页', '下一页', '上一页', '更多', '关注', '粉丝', '好友', '删除', '取消关注'}.contains(value);
 
   static bool _looksLikeLogin(String html) {
     final doc = parser.parse(html);
