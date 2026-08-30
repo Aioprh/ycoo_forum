@@ -84,13 +84,10 @@ class ProfileIdentityService {
         points ??= _findNumberByLabels(doc, ['积分', '总积分']);
         coins ??= _findNumberByLabels(doc, ['星币', '源币']);
 
-        // 页面已经给出全部关键字段时无需继续请求备用页面。
         if (username != null && level != null && rank != null && (points != null || coins != null)) break;
       } catch (_) {}
     }
 
-    // 星币/积分菜单通常由 Discuz 的 extcredits 页面单独提供，
-    // 这里读取真实余额，避免从 UID、等级等无关数字误匹配。
     try {
       final response = await client.get(
         Uri.parse('${_base}home.php?mod=spacecp&ac=credit&showcredit=1&inajax=1&ajaxtarget=extcreditmenu_menu'),
@@ -105,6 +102,7 @@ class ProfileIdentityService {
     } catch (_) {}
 
     if (username == null && nickname == null && avatar == null) return null;
+    nickname = _stripAccountMeta(nickname, level: level, rank: rank, points: points);
     return ProfileIdentity(
       username: username,
       uid: uid,
@@ -115,6 +113,26 @@ class ProfileIdentityService {
       points: points,
       coins: coins,
     );
+  }
+
+  String? _stripAccountMeta(String? value, {String? level, String? rank, int? points}) {
+    if (value == null) return null;
+    var text = _clean(value);
+    if (level != null && level.isNotEmpty) {
+      text = text.replaceAll(RegExp(RegExp.escape(level), caseSensitive: false), ' ');
+    }
+    // 兼容网页把等级直接拼成 Lv.1 / LV1 的情况。
+    text = text.replaceAll(RegExp(r'Lv\.?\s*\d+', caseSensitive: false), ' ');
+    if (rank != null && rank.isNotEmpty) {
+      text = text.replaceAll(RegExp(RegExp.escape(rank)), ' ');
+    }
+    // 兼容“积分:123”“积分：123”“积分 123”等拼接形式。
+    text = text.replaceAll(RegExp(r'积分\s*[:：]?\s*\d+'), ' ');
+    if (points != null) {
+      text = text.replaceAll(RegExp(r'积分\s*[:：]?\s*' + points.toString()), ' ');
+    }
+    text = _clean(text);
+    return text.isEmpty ? null : text;
   }
 
   String? _findLevel(dynamic doc) {
