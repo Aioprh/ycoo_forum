@@ -92,9 +92,7 @@ class ProfileIdentityService {
       ).timeout(const Duration(seconds: 15));
       if (response.statusCode == 200) {
         final doc = parser.parse(NetClient.decode(response.bodyBytes));
-        // 按标签匹配 hcredit（兼容不同论坛把星币放在不同的 hcredit 下）。
         coins ??= _findNumericByLabelsInCreditMenu(doc, ['星币', '源币']);
-        // 页面正文（该论坛用“星币:82 经验:84 贡献:25”这种行）的正则兜底。
         coins ??= _firstNumericByLabelRegex(_clean(doc.body?.text ?? ''), ['星币', '源币']);
         points ??= _findNumberByLabels(doc, ['积分', '总积分']);
         points ??= _elementNumber(doc, 'hcredit_1');
@@ -118,14 +116,10 @@ class ProfileIdentityService {
   String? _stripAccountMeta(String? value, {String? level, String? rank, int? points}) {
     if (value == null) return null;
     var text = _clean(value);
-
-    // 网页某些主题会把昵称、等级、品级、积分全部放在同一个节点：
-    // “烟雨客Lv.1 童生 积分:138”。昵称只取前面的真实昵称。
     final metaStart = RegExp(r'Lv\.?\s*\d+', caseSensitive: false).firstMatch(text);
     if (metaStart != null) {
       text = text.substring(0, metaStart.start).trim();
     } else {
-      // 没有 Lv 标记时，也处理“昵称 童生 积分:138”的主题结构。
       final pointsStart = RegExp(r'积分\s*[:：]?\s*\d+', caseSensitive: false).firstMatch(text);
       if (pointsStart != null) text = text.substring(0, pointsStart.start).trim();
       if (rank != null && rank.isNotEmpty) {
@@ -194,19 +188,19 @@ class ProfileIdentityService {
     return m == null ? null : int.tryParse(m.group(1)!);
   }
 
-  // 在扩展积分菜单里按名称标签（如“星币/源币”）匹配真正的 hcredit 元素，
-  // 而不是写死 hcredit_2（该论坛 hcredit_2 可能是“经验”）。
   int? _findNumericByLabelsInCreditMenu(dynamic doc, List<String> labels) {
     for (final node in doc.querySelectorAll('[id^="hcredit_"]')) {
       final text = _clean(node.text);
       if (!labels.any(text.contains)) continue;
-      final m = RegExp(r'([0-9]{1,12})').lastMatch(text);
-      if (m != null) return int.tryParse(m.group(1)!);
+      final matches = RegExp(r'([0-9]{1,12})').allMatches(text).toList();
+      if (matches.isNotEmpty) {
+        final m = matches.last;
+        return int.tryParse(m.group(1)!);
+      }
     }
     return null;
   }
 
-  // 在纯文本里按“标签:数字”抓取，如 “星币:82 经验:84 贡献:25”。
   int? _firstNumericByLabelRegex(String text, List<String> labels) {
     for (final label in labels) {
       final m = RegExp(RegExp.escape(label) + r'\s*[:：]\s*([0-9]{1,12})').firstMatch(text);
