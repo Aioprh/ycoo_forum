@@ -96,24 +96,76 @@ class _NativeProfilePageState extends State<NativeProfilePage> with SingleTicker
 }
 
 class _Header extends StatelessWidget {
-  final ProfileData profile; final String username; final VoidCallback onFollow, onChat; final bool busy;
+  final ProfileData profile;
+  final String username;
+  final VoidCallback onFollow, onChat;
+  final bool busy;
   const _Header({required this.profile, required this.username, required this.onFollow, required this.onChat, required this.busy});
-  @override Widget build(BuildContext context) {
+
+  List<String> _badges() {
+    final value = profile.group.trim();
+    if (value.isEmpty) return const [];
+    final result = <String>[];
+    final level = RegExp(r'Lv[.]?\s*\d+', caseSensitive: false).firstMatch(value)?.group(0);
+    if (level != null && level.isNotEmpty) result.add(level.replaceAll(RegExp(r'\s+'), ''));
+    const ranks = ['童生','秀才','举人','进士','探花','榜眼','状元','九品','八品','七品','六品','五品','四品','三品','二品','一品'];
+    for (final rank in ranks) {
+      if (value.contains(rank)) { result.add(rank); break; }
+    }
+    return result;
+  }
+
+  Widget _badge(BuildContext context, String text, IconData icon) {
     final s = Theme.of(context).colorScheme;
     return Container(
+      padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
+      decoration: BoxDecoration(
+        color: s.surface.withValues(alpha: 0.78),
+        borderRadius: BorderRadius.circular(8),
+        border: Border.all(color: s.outlineVariant.withValues(alpha: 0.65)),
+      ),
+      child: Row(mainAxisSize: MainAxisSize.min, children: [
+        Icon(icon, size: 13, color: s.primary),
+        const SizedBox(width: 4),
+        Text(text, style: TextStyle(fontSize: 11, fontWeight: FontWeight.w700, color: s.onSurface)),
+      ]),
+    );
+  }
+
+  @override Widget build(BuildContext context) {
+    final s = Theme.of(context).colorScheme;
+    final badges = _badges();
+    return Container(
       decoration: BoxDecoration(gradient: LinearGradient(begin: Alignment.topLeft, end: Alignment.bottomRight, colors: [s.primaryContainer, s.surface])),
-      child: SafeArea(bottom: false, child: Padding(padding: const EdgeInsets.fromLTRB(20, 70, 20, 18), child: Row(crossAxisAlignment: CrossAxisAlignment.end, children: [
-        CircleAvatar(radius: 38, backgroundColor: s.surface, backgroundImage: profile.avatar.isNotEmpty ? NetworkImage(profile.avatar) : null, child: profile.avatar.isEmpty ? Text(username.isEmpty ? '?' : username.characters.first, style: const TextStyle(fontSize: 28, fontWeight: FontWeight.w700)) : null),
-        const SizedBox(width: 14),
-        Expanded(child: Column(mainAxisAlignment: MainAxisAlignment.end, crossAxisAlignment: CrossAxisAlignment.start, children: [
-          Text(username, maxLines: 1, overflow: TextOverflow.ellipsis, style: const TextStyle(fontSize: 22, fontWeight: FontWeight.w800)),
-          const SizedBox(height: 3),
-          Text('UID ${profile.uid}', style: TextStyle(fontSize: 13, color: s.onSurfaceVariant, fontWeight: FontWeight.w600)),
-          if (profile.group.isNotEmpty) Text(profile.group, style: TextStyle(color: s.primary, fontWeight: FontWeight.w600)),
-          if (profile.signature.isNotEmpty) Padding(padding: const EdgeInsets.only(top: 4), child: Text(profile.signature, maxLines: 2, overflow: TextOverflow.ellipsis, style: TextStyle(color: s.onSurfaceVariant)))
-        ])),
-        Column(mainAxisSize: MainAxisSize.min, children: [FilledButton.tonalIcon(onPressed: busy ? null : onFollow, icon: Icon(profile.followedByMe ? Icons.check : Icons.person_add_alt_1), label: Text(profile.followedByMe ? '已关注' : '关注')), const SizedBox(height: 6), OutlinedButton.icon(onPressed: onChat, icon: const Icon(Icons.chat_bubble_outline, size: 18), label: const Text('聊天'))]),
-      ]))));
+      child: SafeArea(bottom: false, child: Padding(
+        padding: const EdgeInsets.fromLTRB(20, 70, 20, 18),
+        child: Row(crossAxisAlignment: CrossAxisAlignment.end, children: [
+          CircleAvatar(
+            radius: 38,
+            backgroundColor: s.surface,
+            backgroundImage: profile.avatar.isNotEmpty ? NetworkImage(profile.avatar) : null,
+            child: profile.avatar.isEmpty ? Text(username.isEmpty ? '?' : username.characters.first, style: const TextStyle(fontSize: 28, fontWeight: FontWeight.w700)) : null,
+          ),
+          const SizedBox(width: 14),
+          Expanded(child: Column(mainAxisAlignment: MainAxisAlignment.end, crossAxisAlignment: CrossAxisAlignment.start, children: [
+            Text(username, maxLines: 1, overflow: TextOverflow.ellipsis, style: const TextStyle(fontSize: 22, fontWeight: FontWeight.w800)),
+            const SizedBox(height: 3),
+            Text('UID ${profile.uid}', style: TextStyle(fontSize: 13, color: s.onSurfaceVariant, fontWeight: FontWeight.w600)),
+            if (badges.isNotEmpty) ...[
+              const SizedBox(height: 7),
+              Wrap(spacing: 5, runSpacing: 5, children: [
+                for (var i = 0; i < badges.length; i++) _badge(context, badges[i], i == 0 && badges[i].toLowerCase().startsWith('lv') ? Icons.diamond_outlined : Icons.school_outlined),
+              ]),
+            ],
+          ])),
+          Column(mainAxisSize: MainAxisSize.min, children: [
+            FilledButton.tonalIcon(onPressed: busy ? null : onFollow, icon: Icon(profile.followedByMe ? Icons.check : Icons.person_add_alt_1), label: Text(profile.followedByMe ? '已关注' : '关注')),
+            const SizedBox(height: 6),
+            OutlinedButton.icon(onPressed: onChat, icon: const Icon(Icons.chat_bubble_outline, size: 18), label: const Text('聊天')),
+          ]),
+        ]),
+      )),
+    );
   }
 }
 
