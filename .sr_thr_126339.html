@@ -1,0 +1,3042 @@
+<!DOCTYPE html><html>
+<head>
+<meta charset="utf-8" />
+<meta name="renderer" content="webkit" />
+<meta http-equiv="X-UA-Compatible" content="IE=edge" />
+<title>pixiv直连源，自动翻译修复版-书源发布</title>
+<link href="https://www.ycoo.net/thread-126339-1-1.html" rel="canonical" /><meta name="keywords" content="pixiv直连源，自动翻译修复版" />
+<meta name="description" content="直接在源仓库pixiv小喵书源的基础上修复直连pixiv+自动翻译原来的翻译功能失效了，已修复，并额外加了腾讯翻译，AI翻译现在有三种翻译模式：1。必应网页接口（默认）， ... " />
+<meta name="generator" content="Discuz! X3.5" />
+<meta name="author" content="Discuz! Team and Comsenz UI Team" />
+<meta name="copyright" content="2001-2026 Discuz! Team." />
+<meta name="MSSmartTagsPreventParsing" content="True" />
+<meta http-equiv="MSThemeCompatible" content="Yes" />
+<base href="https://www.ycoo.net/" /><link rel="stylesheet" type="text/css" href="data/cache/style_5_common.css?x18" /><link rel="stylesheet" type="text/css" href="data/cache/style_5_forum_viewthread.css?x18" /><!--[if IE]><link rel="stylesheet" type="text/css" href="data/cache/style_5_iefix.css?x18" /><![endif]--><script type="text/javascript">var STYLEID = '5', STATICURL = 'static/', IMGDIR = 'template/discuz_theme_n7/image', VERHASH = 'x18', charset = 'utf-8', discuz_uid = '0', cookiepre = 'YPSa_2132_', cookiedomain = '', cookiepath = '/', showusercard = '1', attackevasive = '0', disallowfloat = '', creditnotice = '2|经验|,3|贡献|,4|星币|', defaultstyle = '', REPORTURL = 'aHR0cHM6Ly93d3cueWNvby5uZXQvZm9ydW0ucGhwP21vZD12aWV3dGhyZWFkJnRpZD0xMjYzMzk=', SITEURL = 'https://www.ycoo.net/', JSPATH = 'static/js/', CSSPATH = 'data/cache/style_', DYNAMICURL = '';</script>
+<script src="static/js/common.js?x18" type="text/javascript"></script>
+<style>
+body .comiis_home_share dl .kmfoot .kmdj, .comiis_reply_box .km_foot .y {display:none}.comiis_grouplist .sd, .comiis_wide .comiis_grouplist .sd {float:right}
+.comiis_grouplist .mn {float:left;margin-right:0}
+.comiis_forumlist .sd, .comiis_wide .comiis_forumlist .sd {float:right}
+.comiis_forumlist .mn {float:left;margin-right:0}
+.comiis_forumdisplay .sd, .comiis_wide .comiis_forumdisplay .sd {float:right}
+.comiis_forumdisplay .mn {float:left;margin-right:0}
+.comiis_viewthread .sd, .comiis_wide .comiis_viewthread .sd {float:right}
+.comiis_viewthread .mn {float:left;margin-right:0}
+.comiis_uhd_box .sd, .comiis_wide .comiis_uhd_box .sd {float:right}
+.comiis_uhd_box .mn {float:left;margin-right:0}
+.comiis_portal_view .sd , .comiis_wide .comiis_portal_view .sd, .comiis_portal_list .sd , .comiis_wide .comiis_portal_list .sd {float:right}
+.comiis_portal_view .mn, .comiis_portal_list .mn {float:left;margin-right:0}
+.ct2_a .mn, #nv_userapp .ct2_a .mn, .ct2_a_r .mn, .pg_post #postform #ct div.bm {padding-top:20px}
+.ct2_a .tb {margin-top:0}
+.ct2_a h1.mt, .comiis_guide_bm_h {display:none}
+.ct2_a .mt_tbkjz .bm_h {background:none}
+</style><meta name="application-name" content="源论坛" />
+<meta name="msapplication-tooltip" content="源论坛" />
+<meta name="msapplication-task" content="name=源首页;action-uri=https://www.ycoo.net/portal.php;icon-uri=https://www.ycoo.net/template/discuz_theme_n7/image/portal.ico" /><meta name="msapplication-task" content="name=源论坛;action-uri=https://www.ycoo.net/forum.php;icon-uri=https://www.ycoo.net/template/discuz_theme_n7/image/bbs.ico" />
+<meta name="msapplication-task" content="name=源圈子;action-uri=https://www.ycoo.net/group.php;icon-uri=https://www.ycoo.net/template/discuz_theme_n7/image/group.ico" /><meta name="msapplication-task" content="name=源动态;action-uri=https://www.ycoo.net/home.php;icon-uri=https://www.ycoo.net/template/discuz_theme_n7/image/home.ico" /><link rel="archives" title="源论坛" href="https://www.ycoo.net/archiver/" />
+<script src="static/js/forum.js?x18" type="text/javascript"></script>
+<script src="template/discuz_theme_n7/image/jquery.min.js?x18" type="text/javascript" type="text/javascript"></script>
+
+
+</head>
+<body id="nv_forum" class="pg_viewthread comiis_pg_viewthread comiis_kmbox comiis_tbnva comiis_wide qifei_n7 sdyxgg" onkeydown="if(event.keyCode==27) return false;">
+<div id="append_parent"></div><div id="ajaxwaitid"></div>
+<div id="toptb" class="comiis_headb_toptb cl">
+<div class="wp">
+<div class="z"><a href="javascript:;"  onclick="setHomepage('https://ycoo.net/');">设为首页</a><a href="https://ycoo.net/"  onclick="addFavorite(this.href, '源论坛');return false;">收藏本站</a></div>
+<div class="y">
+<a id="switchblind" href="javascript:;" onclick="toggleBlind(this)" title="开启辅助访问" class="switchblind"></a>
+<a href="javascript:;" id="switchwidth" onclick="widthauto(this)" title="切换到宽版" class="switchwidth">切换到宽版</a>
+</div>
+</div>
+</div><div class="comiis_head_b">
+<div id="comiis_tnv" class="comiis_headb">
+<div class="comiis_headb_box wp">
+<div class="comiis_headb_l"><a href="./" title="源论坛" class="kmlogo"><img src="data/attachment/common/template/boardimg_20241216d6f4lsl6.png" alt="源论坛" class="boardlogo" id="boardlogo" border="0" /></a></div>
+<div class="comiis_headb_nv"><li id="mn_Nac60" ><a href="k_misign-sign.html" hidefocus="true"  >源签到</a></li>
+					
+				
+<li id="mn_N3cec" ><a href="plugin.php?id=jnfarm" hidefocus="true"  >明日农场</a></li>
+					
+				
+<li id="mn_N8a5d" ><a href="api" hidefocus="true"  ></a></li>
+					
+				
+<li id="mn_portal" ><a href="portal.php" hidefocus="true" title="Portal"  >源首页<span>Portal</span></a></li>
+					
+				
+<li class="kmon" id="mn_forum" ><a href="forum.php" hidefocus="true" title="BBS"  >源论坛<span>BBS</span></a></li>
+					
+				
+<li id="mn_forum_10" ><a href="forum.php?mod=guide" hidefocus="true" title="Guide"  >源导读<span>Guide</span></a></li>
+					
+				
+<li id="mn_group" ><a href="group.php" hidefocus="true" title="Group"  >源圈子<span>Group</span></a></li>
+					
+				
+				
+				
+				
+<li id="mn_N6666" onmouseover="showMenu({'ctrlid':this.id,'ctrlclass':'hover','duration':2})"><a href="/" hidefocus="true"  >娱乐</a></li>
+					
+				
+<li id="mn_N39f8" ><a href="misc.php?mod=ranklist&type=member&view=onlinetime" hidefocus="true"  >排行榜</a></li>
+					
+				
+				
+				
+				
+				
+				
+				
+				
+</div>
+<div class="comiis_headb_r">
+<div class="comiis_headb_tico"><a href="search.php?mod=forum" id="mysearch" onmouseover="showMenu({'ctrlid':'mysearch','pos':'34!','ctrlclass':'','duration':2});" class="kmico" title="搜索" target="_blank"></a></div>
+<a href="member.php?mod=logging&amp;action=login" onclick="showWindow('login', this.href);return false;" class="comiis_headb_login">登录</a>
+<a href="member.php?mod=register" class="comiis_headb_reg">立即注册</a>	
+</div>
+</div>
+</div>
+<div id="comiis_user_menu" style="display:none">
+<div class="comiis_user_info">
+<a href="member.php?mod=logging&amp;action=login" onclick="showWindow('login', this.href);return false;" class="nvtx" title="立即登录"><img src="./data/avatar/noavatar.svg" class="user_avatar"></a>		
+<div class="kmuser">
+<div class="kmname">请 <a href="member.php?mod=logging&amp;action=login" onclick="showWindow('login', this.href);return false;" title="登录" class="xi2 km_r0">登录</a> 或 <a href="member.php?mod=register" class="xi2 km_r0">立即注册</a></div>		
+</div>	
+<div class="kmtxt xg1">登录后即可体验更多功能...</div>	
+</div>
+</div>
+<ul id="mysearch_menu" class="comiis_mysearch" style="display: none;">
+<form method="post" autocomplete="off" action="search.php?searchsubmit=yes" class="comiis_flex" target="_blank">
+<input type="hidden" name="mod" value="forum">
+<input type="text" name="srchtxt" placeholder="请输入搜索内容..." value="" class="flex kmtxt"><button type="submit" name="searchsubmit" sc="1" class="kmbtn" value="true">搜索</button>
+</form>
+<div class="comiis_mysearch_hot cl">
+</div>
+</ul>
+<div id="qmenu_menu" class="p_pop blk" style="display: none;">
+<div class="ptm pbw hm">
+请 <a href="javascript:;" class="xi2" onclick="lsSubmit()"><strong>登录</strong></a> 后使用快捷导航<br />没有账号？<a href="member.php?mod=register" class="xi2 xw1">立即注册</a>
+</div>
+<div id="fjump_menu" class="btda"></div></div></div>
+<div class="wp comiis_km_memu cl">
+<ul class="p_pop h_pop" id="mn_N6666_menu" style="display: none"><li><a href="plugin.php?id=viewui_lottery" hidefocus="true" >幸运抽奖</a></li><li><a href="plugin.php?id=boan_buycode&frame=yes&mobile=2" hidefocus="true" >买邀请码</a></li><li><a href="plugin.php?id=boan_group&frame=yes" hidefocus="true" >繁星达人</a></li><li><a href="home.php?mod=spacecp&ac=plugin&op=credit&id=boan_buycredit:buycredit" hidefocus="true" >源币充值</a></li></ul></div>
+<style>
+.pob em a.fastre{display:none;}
+</style>
+
+         <script type="text/javascript">
+           if (typeof jQuery != 'undefined'){
+              var boan_old_jq = jQuery;
+           } 
+         </script><script type="text/javascript" src="source/plugin/boan_h5upload/js/jquery.min.js?x18" charset="utf-8"></script>
+          <script type="text/javascript">
+             var boan_jq=$.noConflict();
+             if (typeof  boan_old_jq != 'undefined'){
+               jQuery = boan_old_jq;
+              }
+         </script><link href="./source/plugin/boan_h5upload/css/webuploader_fast.css" rel="stylesheet" type="text/css" />        <script>
+            var SWFUpload;
+        	SWFUpload = function(settings) {
+        		this.initUpload(settings);
+       	    };
+           
+            SWFUpload.prototype.initUpload = function(userSettings) {
+            	try {
+            		this.customSettings = {};	
+            		this.settings = {};
+            		this.eventQueue = [];
+            		this.initSettings1(userSettings);
+            	} catch (ex) {
+            		throw ex;
+            	}
+            };
+            SWFUpload.prototype.initSettings1 = function (userSettings) {
+            	this.ensureDefault = function(settingName, defaultValue) {
+            		var setting = userSettings[settingName];
+            		if (setting != undefined) {
+            			this.settings[settingName] = setting;
+            		} else {
+            			this.settings[settingName] = defaultValue;
+            		}
+            	};
+            
+            	this.ensureDefault("upload_url", "");
+            	this.ensureDefault("file_post_name", "Filedata");
+            	this.ensureDefault("post_params", {});
+            
+            	this.ensureDefault("file_types", "*.*");
+            	this.ensureDefault("file_types_description", "All Files");
+            	this.ensureDefault("file_size_limit", 0);	
+            	this.ensureDefault("file_upload_limit", 0);
+            	this.ensureDefault("file_queue_limit", 0); 
+                this.ensureDefault("custom_settings", {});
+	            this.customSettings = this.settings.custom_settings;
+            }
+        </script><link rel="stylesheet" type="text/css" href="template/comiis_app/comiis/comiis_flxx/comiis_pcflxx.css" /><div id="wp" class="wp"><style>.comiis_dianping .pstl {background:var(--comiis-bgc);padding:0 15px 15px;border-radius:var(--comiis-radius-m)}.comiis_dianping .pstl:first-child, .comiis_dianping h3 + div {padding-top:15px !important}</style>
+<script type="text/javascript">var fid = parseInt('2'), tid = parseInt('126339');</script>
+<script src="static/js/forum_viewthread.js?x18" type="text/javascript"></script>
+<script type="text/javascript">zoomstatus = parseInt(1);var imagemaxwidth = '600';var aimgcount = new Array();</script>
+<style id="diy_style" type="text/css"></style>
+<!--[diy=diynavtop]--><div id="diynavtop" class="area"><div id="frameBIwS99" class="cl_frame_bm frame move-span cl frame-1"><div id="frameBIwS99_left" class="column frame-1-c"><div id="frameBIwS99_left_temp" class="move-span temp"></div></div></div></div><!--[/diy]-->
+<div id="pt" class="bm cl">
+<div class="z">
+<a href="./" class="nvhm" title="首页">源论坛</a><em>&raquo;</em><a href="forum.php">源论坛</a> <em>&rsaquo;</em> <a href="forum.php?gid=1">书源交流</a> <em>&rsaquo;</em> <a href="forum-2-1.html">书源发布</a> <em>&rsaquo;</em> <a href="thread-126339-1-1.html">pixiv直连源，自动翻译修复版</a>
+</div>
+</div>
+
+<link rel="stylesheet" type="text/css" href="source/plugin/replyfloor/static/css/style2.css?x18" />
+
+<style id="diy_style" type="text/css"></style>
+<div class="wp">
+<!--[diy=diy1]--><div id="diy1" class="area"></div><!--[/diy]-->
+</div>
+<div id="pgt" class="pgs mbm pbn km_view_swle cl">
+<div class="pgt"><div class="pg"><strong>1</strong><a href="thread-126339-2-1.html">2</a><a href="thread-126339-3-1.html">3</a><a href="thread-126339-4-1.html">4</a><a href="thread-126339-5-1.html">5</a><a href="thread-126339-6-1.html">6</a><label><input type="text" name="custompage" class="px" size="2" title="输入页码，按回车快速跳转" value="1" onkeydown="if(event.keyCode==13) {window.location='forum.php?mod=viewthread&tid=126339&amp;extra=&amp;page='+this.value;; doane(event);}" /><span title="共 6 页"> / 6 页</span></label><a href="thread-126339-2-1.html" class="nxt">下一页</a></div></div>
+<span class="y pgb"><a href="forum-2-1.html">返回列表</a></span>
+<a id="newspecial" onmouseover="$('newspecial').id = 'newspecialtmp';this.id = 'newspecial';showMenu({'ctrlid':this.id})" onclick="showWindow('newthread', 'forum.php?mod=post&action=newthread&fid=2')" href="javascript:;" title="发布新帖" class="pgsbtn showmenu">发布新帖</a></div>	
+<div id="ct" class="wp ct2 comiis_viewthread cl">
+<div class="mn">
+<div class="bm">
+<div id="postlist" class="pl comiis_postlist">
+<table class="comiis_posthead" cellspacing="0" cellpadding="0">
+<tr>
+<td class="plc vwthd">
+<span class="xg1 side_btn">
+<a onclick="setcookie('close_leftinfo', 2);location.reload();" title="开启左侧" class="btn_s_open" href="javascript:;"><svg viewBox="0 0 7 38"><path fill="#fff" d="M0 14v9l5-4z"/><path d="M2 0v13.5l5 5-5 5V38H0V22.5l4-4-4-4V0z"/></svg></a>
+</span>
+<h1 class="ts">				
+<a href="forum.php?mod=forumdisplay&amp;fid=2&amp;filter=typeid&amp;typeid=27">[单个]</a>
+<span id="thread_subject">pixiv直连源，自动翻译修复版</span>
+</h1>
+<span class="xg1">
+&nbsp;<span class="tbox theatlevel" title="热度: 105">火..</span>
+<a href="thread-126339-1-1.html" onclick="return comiis_copyThreadUrl(this, '源论坛')" title="复制链接"><i class="fico-copy"></i></a>
+</span>
+
+<style>
+#postlist .vwthd{position:relative;overflow:visible;padding-right:115px !important;display:block;z-index:99;}
+#ct .comiis_snvbt,#ct .kmn19vbt{position:relative;overflow:visible;padding-right:55px;}
+.kmfz{height:38px;line-height:38px;}
+.comiis_viewtop{overflow:visible;}
+.comiis_code{position:absolute;top:0px;right:0px;}
+.comiis_code .comiis_code_img{width:38px;height:38px;background:url(source/plugin/comiis_code/comiis_img/comiis_code.png) no-repeat;}
+.comiis_code .comiis_code_img1 {width:45px;height:38px;background:url(source/plugin/comiis_code/comiis_img/comiis_code1.png) no-repeat;}
+.ie6 .comiis_code .comiis_code_img1{background:url(source/plugin/comiis_code/comiis_img/comiis_code1.gif) no-repeat;}
+#comiis_code_menu{z-index:301;border:#eeeeee 1px solid;padding:15px 10px;position:absolute;width:190px;background:#fafafa;height:252px;top:-1px;right:-1px;cursor:pointer;}
+.ie6 #comiis_code_menu{right:-2px;}
+.comiis_viewtop #comiis_code_menu{top:0px;right:0px;}
+#comiis_code_menu p{text-align:center;}
+#comiis_code_menu p img{width:168px;height:168px;}
+#comiis_code_menu li{text-align:center;line-height:26px;height:26px;}
+#comiis_code_menu .comiis_txt1gzra{font:500 16px/38px "Microsoft Yahei";COLOR:#333;}
+#comiis_code_menu .comiis_txt2vuba{font:500 12px/38px "Microsoft Yahei";COLOR:#666;}
+#comiis_code_menu .comiis_txt2vuba EM{margin:0px 2px;}
+#comiis_code_menu .comiis_txt2vuba IMG{margin-top:-3px;vertical-align:middle;}
+#comiis_code_menu .comiis_txt3hhig{font:500 12px/38px "Microsoft Yahei";}
+#comiis_code_menu .comiis_txt3hhig A{color:#bebebe;}
+</style>
+<span class="comiis_code"><div class="comiis_code_img" id="comiis_code" onmouseover="showMenu({'ctrlid':this.id,'pos':'*'});" /></div></span>
+
+<div id="comiis_code_menu" style="display:none;">
+<p id="comiis_code_image">	
+
+</p>
+<ul>
+<li class="comiis_txt1gzra">微信扫一扫  分享朋友圈</li>
+<li class="comiis_txt2vuba">已有<em>301649</em>人穿越成功<img src="source/plugin/comiis_code/comiis_img/comiis_smile.gif"></li>
+<li class="comiis_txt3hhig"><A href="plugin.php?id=comiis_code" target="_blank">教程：手机怎么扫描二维码</A></li>
+</ul>
+
+<img src="source/plugin/comiis_code/comiis_img/comiis_logo.gif" style="width:30px;height:30px;position:absolute;top:84px;left:90px;" />
+
+</div>
+
+<script src="./source/plugin/comiis_code/comiis_img/qrcode.min.js" type="text/javascript"></script>
+<script>new QRCode(document.getElementById('comiis_code_image'), 'https://www.ycoo.net/thread-126339-1-1.html?code=aab0f94ac28022bf');</script>
+
+</td>
+</tr>
+</table>
+<table cellspacing="0" cellpadding="0" class="ad">
+<tr>
+<td class="pls">
+</td>
+</tr>
+</table><div id="post_2634962" class="comiis_vpost comiis_vone"><table id="pid2634962" class="plhin" summary="pid2634962" cellspacing="0" cellpadding="0">
+<tr>
+<a name="newpost"></a> <td class="plc" style="width:100%">
+<div class="pi" style="height:30px">
+<em class="kmrtxt kmrview">864</em>
+<em class="kmrtxt kmrhfs">101</em>
+<strong>
+<a href="thread-126339-1-1.html"   id="postnum2634962" onclick="setCopy(this.href, '帖子地址复制成功');return false;" class="km1">
+楼主</a>
+</strong>
+<div class="pti">
+<div class="pdbt">		
+</div>
+<div class="authi">		
+<a href="space-uid-264.html" target="_blank" c="1" class="xi2 z avt km_avt" style="display:none"><img src="./data/avatar/000/00/02/64_avatar_small.jpg" class="user_avatar"></a>
+<a href="space-uid-264.html" target="_blank" c="1" class="km_name" style="display:none">绯想天</a><a href="home.php?mod=spacecp&amp;ac=usergroup&amp;gid=14" target="_blank" class="km_verifys" style="display:none"><img src="data/attachment/common/aa/common_14_usergroup_icon.png" alt="" class="vm" /></a><span class="km_verifys" style="display:none">
+</span>
+<em id="authorposton2634962" class="km_time" style="margin-left:1px">发表于 <span title="2026-8-30 15:12:06">昨天&nbsp;15:12</span></em>
+<span class="km_from">来自手机</span>
+<span class="pipe">|</span>
+<a href="forum.php?mod=viewthread&amp;tid=126339&amp;page=1&amp;authorid=264" rel="nofollow" class="km_showzz">只看楼主</a>
+<a href="javascript:;" onclick="readmode($('thread_subject').innerHTML, 2634962);" class="km_read">阅读模式</a>
+<div class="comiis_lnbox">
+<span class="pipe" style="margin-right:8px">|</span><a href="forum.php?mod=viewthread&amp;action=printable&amp;tid=126339" title="打印" class="kmico" target="_blank"><i class="fico-print fic4 fc-s vm"></i></a><a href="forum.php?mod=redirect&amp;goto=nextoldset&amp;tid=126339" title="上一主题" class="kmico"><i class="fico-left fic4 fc-s vm"></i></a>
+<a href="forum.php?mod=redirect&amp;goto=nextnewset&amp;tid=126339" title="下一主题" class="kmico"><i class="fico-right fic4 fc-s vm"></i></a>
+</div>
+</div>
+</div>
+</div><div class="pct"><style type="text/css">.pcb{margin-right:0}</style><div class="pcb">
+ 
+<div class="t_fsz"><table cellspacing="0" cellpadding="0"><tr><td class="t_f" id="postmessage_2634962">
+<script type="text/javascript">replyreload += ',' + 2634962;</script><i class="pstatus"> 本帖最后由 绯想天 于 2026-8-30 15:13 编辑 </i><br />
+<br />
+直接在源仓库pixiv小喵书源的基础上修复<br />
+直连pixiv+自动翻译<br />
+原来的翻译功能失效了，已修复，并额外加了腾讯翻译，AI翻译<br />
+现在有三种翻译模式：<br />
+1。必应网页接口（默认），最快甚至比腾讯翻译快，效果好无限制，注意用量太大可能风控<br />
+<br />
+2。腾讯+微软密钥模式，这个模式下，没填微软密钥默认腾讯翻译，测试过腾讯翻译很烂仅作为兜底。<br />
+微软密钥本人没有无法测试，有的自测（有问题让AI给你修）<br />
+<br />
+3。AI翻译，支持OpenAI模式的接口，效果看你用什么模型。接口地址：模型平台给的baseurl，密钥一般要填，看平台有的平台不填也可用例如OpenCode。AI模型，填模型型号，不填默认gpt-4o（注意模型选择，⚠️pixiv大多是18加内容，模型不一定支持）<br />
+PS：AI翻译，填完接口URL密钥，可点AI翻译测试，输出中文（你好，世界）即为成功，其它内容为错，看你URL，密钥，模型型号是否有错，以及保证有TOKEN。<br />
+附带一个看pixiv图和漫画的源<br />
+<div class="locked">游客，如果您要查看本帖隐藏内容请<a href="forum.php?mod=post&amp;action=reply&amp;fid=2&amp;tid=126339" onclick="replyfloor_reply(this.href)">回复</a></div><br />
+<br />
+</td></tr></table>
+
+<style type="text/css">
+.bphp_clouds{
+overflow:hidden;
+display:block;
+margin-top:4px;
+margin-bottom: -16px;
+}
+.bphp_clouds a{
+display:block;
+border:1px solid #ddd;
+overflow:hidden;
+text-decoration:none !important;
+padding:0px 10px;
+float:left;
+height:36px;
+line-height:36px;
+border-radius:3px;
+color:#666 !important;
+box-shadow:0 0 0px #eee;
+font-size:14px;
+-webkit-transition: all .2s ease;-moz-transition: all .2s ease;-o-transition: all .3s ease;transition: all .2s ease;
+font-family: "PingFang SC","Microsoft YaHei",arial,"Hiragino Sans GB","Hiragino Sans GB W3";
+}
+.bphp_clouds a img{
+display:block;
+float:left;
+margin-right:5px;
+position:relative;
+top:5px;
+height:24px;
+pointer-events: none;
+}
+.bphp_clouds a:hover{
+box-shadow:0 0 10px #eee;
+color:#1e9fff !important;
+border-color:#1e9fff;
+}
+
+</style>
+<script src="source/plugin/bphp_clouds/static/jquery-2.1.1.min.js" type="text/javascript"></script>
+<script src="source/plugin/bphp_clouds/static/layer/layer.js" type="text/javascript"></script>
+
+<script type="text/javascript">
+var bphpJQ = jQuery.noConflict();
+(function($){
+$(function(){
+$('.t_f a').each(function(){
+var href = $(this).attr('href');
+var patt = new RegExp("bphp_clouds");
+var ossPatt = new RegExp("bphpClouds");
+
+if(patt.test(href) || ossPatt.test(href)){
+var source_patt = /show&key/;
+
+//纯链接不加样式
+if($(this).find('img').length == 0){
+return false;
+}
+
+
+if(source_patt.test(href)){
+$(this).attr('href','javascript:;');
+$(this).attr('dialogUrl',href);
+$(this).removeAttr('target');
+$(this).wrap('<div title="点击打开" class="bphp_clouds source"></div>');
+}else{
+var name = $(this).text();
+$(this).attr('download',name);
+$(this).wrap('<div title="点击下载" class="bphp_clouds"></div>');
+}
+}
+});
+
+$('.bphp_clouds.source a').click(function(){
+var href = $(this).attr('dialogUrl');
+var w_h = $(window).height();
+var title =  $(this).text();
+w_h_s = w_h>485?'485px':'95%';
+layer.closeAll();
+layer.open({
+type: 2,
+title:title,
+content: href,
+area: ['748px', w_h_s],
+skin:'cloudTag-dialog',
+maxmin: true,
+shade:false,
+});
+
+});
+
+});
+})(bphpJQ);
+</script>
+<div class="attach_nopermission attach_tips">
+<div>
+<h3><strong>本帖子中包含更多资源</strong></h3>
+<p>您需要 <a href="member.php?mod=logging&amp;action=login" onclick="showWindow('login', this.href);return false;">登录</a> 才可以下载或查看，没有账号？<a href="member.php?mod=register" title="注册账号">立即注册</a> </p>
+</div>
+<span class="atips_close" onclick="this.parentNode.style.display='none'">&#215;</span>
+</div>
+		
+		
+</div>	
+<div id="comment_2634962" class="cm comiis_dianping">
+	
+</div>
+<div class="comiis_pingfen_va">
+<div id="post_rate_div_2634962"></div>
+</div>
+
+<style>
+#copyright {
+margin-top: 10px;
+padding: 10px;
+background: #E5EDF2;
+
+border-radius: 5px;
+
+}
+
+#copyright .copyright-title {
+padding: 5px;
+text-align: center;
+color : #333333;
+}
+
+#copyright .copyright-text {
+font-size: 15px;
+color: #666666;
+}
+</style>
+<div id="copyright">
+    <div class="copyright-title"><h3>版权声明</h3></div>
+    <div class="copyright-text">
+        <p>1.本文内容及相关资源来源于网络，由网友自主上传发布，版权归版权方所有！</p>
+<p>2.本文内容仅代表作者本人观点，不代表本网站立场，作者文责自负，本站资源仅供学习研究，请勿非法使用，否则后果自负！请下载后24小时内删除！</p>
+<p>3.本文内容，包括但不限于源码、文字、图片等，仅供参考使用，本站不对其安全性，正确性等作出保证。但本站会尽量审核会员发表的内容</p>
+<p>4.如您认为本文内容侵犯了您的权益，请与我们联系ycoo2024@163.com！我们将在5个工作日内做出处理！本站保留全部修改、解释、更新本声明的权利.</p>
+
+        <p>本帖地址: <a href = 'https://www.ycoo.net/thread-126339-1-1.html' target='_blank'>https://www.ycoo.net/thread-126339-1-1.html</a></p>
+
+    </div>
+</div>
+</div></div>
+</td></tr>
+<tr><td class="plc plm">
+<div id="p_btn" class="mtw mbm hm comiis_p_btna cl">
+<a href="home.php?mod=spacecp&amp;ac=favorite&amp;type=thread&amp;id=126339&amp;formhash=a83caa01" id="k_favorite" onclick="showWindow(this.id, this.href, 'get', 0);" onmouseover="this.title = $('favoritenumber').innerHTML + ' 人收藏'" title="收藏本帖"><i><em class="fico-star fc-l" title="收藏"></em>收藏<span id="favoritenumber">5</span></i></a>
+<a class="followp" href="home.php?mod=spacecp&amp;ac=follow&amp;op=relay&amp;tid=126339&amp;from=forum" onclick="showWindow('relaythread', this.href, 'get', 0);" title="转播求扩散"><i><em class="fico-launch fc-p" title="转播"></em>转播</i></a>
+<a class="sharep" href="home.php?mod=spacecp&amp;ac=share&amp;type=thread&amp;id=126339" onclick="showWindow('sharethread', this.href, 'get', 0);" title="分享推精华"><i><em class="fico-share fc-p" title="分享"></em>分享</i></a>
+<a href="forum.php?mod=collection&amp;action=edit&amp;op=addthread&amp;tid=126339" id="k_collect" onclick="showWindow(this.id, this.href);return false;" onmouseover="this.title = $('collectionnumber').innerHTML + ' 人淘帖'" title="淘好帖进专辑"><i><em class="fico-collection fc-p" alt="淘帖"></em>淘帖<span id="collectionnumber" style="display:none">0</span></i></a>
+<a id="recommend_add" href="forum.php?mod=misc&amp;action=recommend&amp;do=add&amp;tid=126339&amp;hash=a83caa01&amp;handlekey=recommend"  onclick="showWindow('login', this.href)" onmouseover="this.title = $('recommendv_add').innerHTML + ' 人支持'" title="顶一下"><i><em class="fico-thumbup fc-l" title="支持"></em>支持<span id="recommendv_add">4</span></i></a>
+<a id="recommend_subtract" href="forum.php?mod=misc&amp;action=recommend&amp;do=subtract&amp;tid=126339&amp;hash=a83caa01"  onclick="showWindow('login', this.href)" onmouseover="this.title = $('recommendv_subtract').innerHTML + ' 人反对'" title="踩一下"><i><em class="fico-thumbdown fc-n" title="反对"></em>反对<span id="recommendv_subtract" style="display:none">0</span></i></a>
+</div>
+<div class="a_pb"><a href="https://nb.baitufacai.com/#/register?code=3dEOA7MG" target="_blank"><img src="https://ycoo.net/data/attachment/common/cf/211102pcgr9kwfhhgkkcp6.jpg" height="100" width="800" border="0"></a></div></td>
+</tr>
+<tr id="_postposition2634962"></tr>
+<tr>
+<td class="plc" style="overflow:visible; width:100%">
+<div class="po hin">
+<div class="pob cl">
+<em>
+<a href="forum.php?mod=post&amp;action=reply&amp;fid=2&amp;tid=126339&amp;reppost=2634962&amp;extra=&amp;page=1" onclick="replyfloor_reply(this.href)" class="fastre">回复</a>
+</em>			
+<p>
+<a href="javascript:;" id="mgc_post_2634962" onmouseover="showMenu(this.id)" class="showmenu">使用道具</a>
+<a href="javascript:;" onclick="showWindow('miscreport2634962', 'misc.php?mod=report&rtype=post&rid=2634962&tid=126339&fid=2', 'get', -1);return false;">举报</a>
+</p>
+<ul id="mgc_post_2634962_menu" class="p_pop mgcmn" style="display: none;">
+<li><a href="home.php?mod=magic&amp;mid=bump&amp;idtype=tid&amp;id=126339" id="a_bump" onclick="showWindow(this.id, this.href)"><img src="static/image/magic/bump.small.gif" />提升卡</a></li>
+<li><a href="home.php?mod=magic&amp;mid=stick&amp;idtype=tid&amp;id=126339" id="a_stick" onclick="showWindow(this.id, this.href)"><img src="static/image/magic/stick.small.gif" />置顶卡</a></li>
+<li><a href="home.php?mod=magic&amp;mid=close&amp;idtype=tid&amp;id=126339" id="a_stick" onclick="showWindow(this.id, this.href)"><img src="static/image/magic/close.small.gif" />沉默卡</a></li>
+<li><a href="home.php?mod=magic&amp;mid=open&amp;idtype=tid&amp;id=126339" id="a_stick" onclick="showWindow(this.id, this.href)"><img src="static/image/magic/open.small.gif" />喧嚣卡</a></li>
+<li><a href="home.php?mod=magic&amp;mid=highlight&amp;idtype=tid&amp;id=126339" id="a_stick" onclick="showWindow(this.id, this.href)"><img src="static/image/magic/highlight.small.gif" />变色卡</a></li>
+<li><a href="home.php?mod=magic&amp;mid=jack&amp;idtype=tid&amp;id=126339" id="a_jack" onclick="showWindow(this.id, this.href)"><img src="static/image/magic/jack.small.gif" />千斤顶</a></li>
+<li><a href="home.php?mod=magic&amp;mid=namepost&amp;idtype=pid&amp;id=2634962:126339" id="a_namepost_2634962" onclick="showWindow(this.id, this.href)"><img src="static/image/magic/namepost.small.gif" />照妖镜</a><li>
+</ul>
+<script type="text/javascript" reload="1">checkmgcmn('post_2634962')</script>
+</div>
+</div>
+</td>
+</tr>
+<tr class="ad">
+<td class="pls">
+</td>
+</tr>
+</table>
+</div>
+</div></div>
+<div class="bm">
+<div class="pl comiis_postlist">
+<div id="post_2635129" class="comiis_vpost"><div id="comiis_allreplies" class="comiis_viewtitle cl">
+<h2>
+<div class="y comiis_hfpx"><a onmouseover="showMenu(this.id)" class="showmenu" href="javascript:;" id="comiis_hfpx">正序浏览</a></div><div id="fj" class="y">
+<label class="z">电梯直达</label>
+<input type="text" class="px p_fre z" size="2" onkeyup="$('fj_btn').href='forum.php?mod=redirect&ptid=126339&authorid=0&postno='+this.value" onkeydown="if(event.keyCode==13) {window.location=$('fj_btn').href;return false;}" title="跳转到指定楼层" />
+<a href="javascript:;" id="fj_btn" class="z fico-down fc-n" title="跳转到指定楼层"></a>
+</div>
+评论<em>101</em></h2>
+</div>
+<div style="display:none" class="p_pop" id="comiis_hfpx_menu">
+<ul>
+<li><a href="forum.php?mod=viewthread&amp;tid=126339&amp;extra=&amp;ordertype=2#comiis_allreplies">正序浏览</a></li>
+<li><a href="forum.php?mod=viewthread&amp;tid=126339&amp;extra=&amp;ordertype=1#comiis_allreplies">倒序浏览</a></li>
+</ul>          
+</div>
+<table id="pid2635129" class="plhin" summary="pid2635129" cellspacing="0" cellpadding="0">
+<tr>
+ <td class="plc" style="width:100%">
+<div class="pi" style="height:30px">
+<strong>
+<a href="forum.php?mod=redirect&goto=findpost&ptid=126339&pid=2635129"   id="postnum2635129" onclick="setCopy(this.href, '帖子地址复制成功');return false;" class="km2">
+沙发</a>
+</strong>
+<div class="pti">
+<div class="pdbt">		
+</div>
+<div class="authi">		
+<a href="space-uid-43579.html" target="_blank" c="1" class="xi2 z avt km_avt"><img src="./data/avatar/000/04/35/79_avatar_small.jpg" class="user_avatar"></a>
+<a href="space-uid-43579.html" target="_blank" c="1" class="km_name">13378220083</a><a href="home.php?mod=spacecp&amp;ac=usergroup&amp;gid=12" target="_blank" class="km_verifys"><img src="data/attachment/common/c2/common_12_usergroup_icon.png" alt="" class="vm" /></a><span class="km_verifys">
+</span>
+<em id="authorposton2635129" class="km_time" style="margin-left:1px">发表于 <span title="2026-8-30 15:27:02">昨天&nbsp;15:27</span></em>
+<span class="km_from">来自手机</span>
+<span class="pipe">|</span>
+<a href="forum.php?mod=viewthread&amp;tid=126339&amp;page=1&amp;authorid=43579" rel="nofollow" class="km_showzz">只看Ta</a>
+</div>
+</div>
+</div><div class="pct"><div class="pcb">
+<div class="t_fsz"><table cellspacing="0" cellpadding="0"><tr><td class="t_f" id="postmessage_2635129">
+感谢分享(❁´ω`❁)</td></tr></table>
+		
+		
+</div>	
+<div id="comment_2635129" class="cm comiis_dianping">
+	
+</div>
+<div class="comiis_pingfen_va">
+<div id="post_rate_div_2635129"></div>
+</div>
+
+<div class="replyfloor_box" id="replyfloor_box_2635129">
+
+<div class="replyfloor_hd">
+
+<span class="replyfloor_tail_floor">
+
+沙发
+
+</span>
+<span class="replyfloor_tail_time"><span title="2026-8-30 15:27:02">昨天&nbsp;15:27</span></span>
+<span class="replyfloor_link_unfold" id="replyfloor_link_unfold_2635129" onclick="replyfloor_fold('2635129', 1);" title="">回复<span class="replyfloor_count" style="display:none;">(<span id="replyfloor_count_2635129">0</span>)</span></span>
+<span class="replyfloor_link_fold" id="replyfloor_link_fold_2635129" onclick="replyfloor_fold('2635129', 0);">收起回复</span>
+</div>
+
+<div class="replyfloor_bd" id="replyfloor_bd_2635129">
+<div class="replyfloor_content" id="replyfloor_content_2635129">
+
+<div id="replyfloor_newbox_2635129" class="replyfloor_content_ul"></div>
+
+<div class="replyfloor_content_pager" style="display:none;">
+
+<div class="replyfloor_content_btn" id="replyfloor_content_btn_2635129">
+<a href="javascript:;" onclick="replyfloor_editor('2635129', 0, '');">我要说一句</a>
+</div>
+
+</div>
+
+</div>
+
+<div id="replyfloor_editor_2635129"></div>
+
+</div>
+</div>
+</div></div>
+</td></tr>
+<tr><td class="plc plm">
+</td>
+</tr>
+<tr id="_postposition2635129"></tr>
+<tr>
+<td class="plc" style="overflow:visible; width:100%">
+<div class="po hin">
+<div class="pob cl">
+<em>
+<a href="forum.php?mod=post&amp;action=reply&amp;fid=2&amp;tid=126339&amp;repquote=2635129&amp;extra=&amp;page=1" onclick="replyfloor_reply(this.href)" class="fastre">回复</a>
+</em>			
+<p>
+<a href="javascript:;" id="mgc_post_2635129" onmouseover="showMenu(this.id)" class="showmenu">使用道具</a>
+<a href="javascript:;" onclick="showWindow('miscreport2635129', 'misc.php?mod=report&rtype=post&rid=2635129&tid=126339&fid=2', 'get', -1);return false;">举报</a>
+</p>
+<ul id="mgc_post_2635129_menu" class="p_pop mgcmn" style="display: none;">
+<li><a href="home.php?mod=magic&amp;mid=namepost&amp;idtype=pid&amp;id=2635129:126339" id="a_namepost_2635129" onclick="showWindow(this.id, this.href)"><img src="static/image/magic/namepost.small.gif" />照妖镜</a><li>
+</ul>
+<script type="text/javascript" reload="1">checkmgcmn('post_2635129')</script>
+</div>
+</div>
+</td>
+</tr>
+<tr class="ad">
+<td class="pls">
+</td>
+</tr>
+</table>
+</div>
+<div id="post_2635133" class="comiis_vpost"><table id="pid2635133" class="plhin" summary="pid2635133" cellspacing="0" cellpadding="0">
+<tr>
+ <td class="plc" style="width:100%">
+<div class="pi" style="height:30px">
+<strong>
+<a href="forum.php?mod=redirect&goto=findpost&ptid=126339&pid=2635133"   id="postnum2635133" onclick="setCopy(this.href, '帖子地址复制成功');return false;" class="km3">
+板凳</a>
+</strong>
+<div class="pti">
+<div class="pdbt">		
+</div>
+<div class="authi">		
+<a href="space-uid-35372.html" target="_blank" c="1" class="xi2 z avt km_avt"><img src="./data/avatar/000/03/53/72_avatar_small.jpg" class="user_avatar"></a>
+<a href="space-uid-35372.html" target="_blank" c="1" class="km_name">落月</a><a href="home.php?mod=spacecp&amp;ac=usergroup&amp;gid=34" target="_blank" class="km_lvs">Lv.7</a><span class="km_verifys">
+</span>
+<em id="authorposton2635133" class="km_time" style="margin-left:1px">发表于 <span title="2026-8-30 15:27:22">昨天&nbsp;15:27</span></em>
+<span class="km_from">来自手机</span>
+<span class="pipe">|</span>
+<a href="forum.php?mod=viewthread&amp;tid=126339&amp;page=1&amp;authorid=35372" rel="nofollow" class="km_showzz">只看Ta</a>
+</div>
+</div>
+</div><div class="pct"><div class="pcb">
+<div class="t_fsz"><table cellspacing="0" cellpadding="0"><tr><td class="t_f" id="postmessage_2635133">
+谢谢</td></tr></table>
+		
+		
+</div>	
+<div id="comment_2635133" class="cm comiis_dianping">
+	
+</div>
+<div class="comiis_pingfen_va">
+<div id="post_rate_div_2635133"></div>
+</div>
+
+<div class="replyfloor_box" id="replyfloor_box_2635133">
+
+<div class="replyfloor_hd">
+
+<span class="replyfloor_tail_floor">
+
+板凳
+
+</span>
+<span class="replyfloor_tail_time"><span title="2026-8-30 15:27:22">昨天&nbsp;15:27</span></span>
+<span class="replyfloor_link_unfold" id="replyfloor_link_unfold_2635133" onclick="replyfloor_fold('2635133', 1);" title="">回复<span class="replyfloor_count" style="display:none;">(<span id="replyfloor_count_2635133">0</span>)</span></span>
+<span class="replyfloor_link_fold" id="replyfloor_link_fold_2635133" onclick="replyfloor_fold('2635133', 0);">收起回复</span>
+</div>
+
+<div class="replyfloor_bd" id="replyfloor_bd_2635133">
+<div class="replyfloor_content" id="replyfloor_content_2635133">
+
+<div id="replyfloor_newbox_2635133" class="replyfloor_content_ul"></div>
+
+<div class="replyfloor_content_pager" style="display:none;">
+
+<div class="replyfloor_content_btn" id="replyfloor_content_btn_2635133">
+<a href="javascript:;" onclick="replyfloor_editor('2635133', 0, '');">我要说一句</a>
+</div>
+
+</div>
+
+</div>
+
+<div id="replyfloor_editor_2635133"></div>
+
+</div>
+</div>
+</div></div>
+</td></tr>
+<tr><td class="plc plm">
+<div class="sign" style="max-height:100px;">落月</div>
+</td>
+</tr>
+<tr id="_postposition2635133"></tr>
+<tr>
+<td class="plc" style="overflow:visible; width:100%">
+<div class="po hin">
+<div class="pob cl">
+<em>
+<a href="forum.php?mod=post&amp;action=reply&amp;fid=2&amp;tid=126339&amp;repquote=2635133&amp;extra=&amp;page=1" onclick="replyfloor_reply(this.href)" class="fastre">回复</a>
+</em>			
+<p>
+<a href="javascript:;" id="mgc_post_2635133" onmouseover="showMenu(this.id)" class="showmenu">使用道具</a>
+<a href="javascript:;" onclick="showWindow('miscreport2635133', 'misc.php?mod=report&rtype=post&rid=2635133&tid=126339&fid=2', 'get', -1);return false;">举报</a>
+</p>
+<ul id="mgc_post_2635133_menu" class="p_pop mgcmn" style="display: none;">
+<li><a href="home.php?mod=magic&amp;mid=namepost&amp;idtype=pid&amp;id=2635133:126339" id="a_namepost_2635133" onclick="showWindow(this.id, this.href)"><img src="static/image/magic/namepost.small.gif" />照妖镜</a><li>
+</ul>
+<script type="text/javascript" reload="1">checkmgcmn('post_2635133')</script>
+</div>
+</div>
+</td>
+</tr>
+<tr class="ad">
+<td class="pls">
+</td>
+</tr>
+</table>
+</div>
+<div id="post_2635164" class="comiis_vpost"><table id="pid2635164" class="plhin" summary="pid2635164" cellspacing="0" cellpadding="0">
+<tr>
+ <td class="plc" style="width:100%">
+<div class="pi" style="height:30px">
+<strong>
+<a href="forum.php?mod=redirect&goto=findpost&ptid=126339&pid=2635164"   id="postnum2635164" onclick="setCopy(this.href, '帖子地址复制成功');return false;" class="km4">
+地板</a>
+</strong>
+<div class="pti">
+<div class="pdbt">		
+</div>
+<div class="authi">		
+<a href="space-uid-27151.html" target="_blank" c="1" class="xi2 z avt km_avt"><img src="./data/avatar/noavatar.svg" class="user_avatar"></a>
+<a href="space-uid-27151.html" target="_blank" c="1" class="km_name">1315222699</a><a href="home.php?mod=spacecp&amp;ac=usergroup&amp;gid=14" target="_blank" class="km_verifys"><img src="data/attachment/common/aa/common_14_usergroup_icon.png" alt="" class="vm" /></a><span class="km_verifys">
+</span>
+<em id="authorposton2635164" class="km_time" style="margin-left:1px">发表于 <span title="2026-8-30 15:30:00">昨天&nbsp;15:30</span></em>
+<span class="km_from">来自手机</span>
+<span class="pipe">|</span>
+<a href="forum.php?mod=viewthread&amp;tid=126339&amp;page=1&amp;authorid=27151" rel="nofollow" class="km_showzz">只看Ta</a>
+</div>
+</div>
+</div><div class="pct"><div class="pcb">
+<div class="t_fsz"><table cellspacing="0" cellpadding="0"><tr><td class="t_f" id="postmessage_2635164">
+感谢分享</td></tr></table>
+		
+		
+</div>	
+<div id="comment_2635164" class="cm comiis_dianping">
+	
+</div>
+<div class="comiis_pingfen_va">
+<div id="post_rate_div_2635164"></div>
+</div>
+
+<div class="replyfloor_box" id="replyfloor_box_2635164">
+
+<div class="replyfloor_hd">
+
+<span class="replyfloor_tail_floor">
+
+地板
+
+</span>
+<span class="replyfloor_tail_time"><span title="2026-8-30 15:30:00">昨天&nbsp;15:30</span></span>
+<span class="replyfloor_link_unfold" id="replyfloor_link_unfold_2635164" onclick="replyfloor_fold('2635164', 1);" title="">回复<span class="replyfloor_count" style="display:none;">(<span id="replyfloor_count_2635164">0</span>)</span></span>
+<span class="replyfloor_link_fold" id="replyfloor_link_fold_2635164" onclick="replyfloor_fold('2635164', 0);">收起回复</span>
+</div>
+
+<div class="replyfloor_bd" id="replyfloor_bd_2635164">
+<div class="replyfloor_content" id="replyfloor_content_2635164">
+
+<div id="replyfloor_newbox_2635164" class="replyfloor_content_ul"></div>
+
+<div class="replyfloor_content_pager" style="display:none;">
+
+<div class="replyfloor_content_btn" id="replyfloor_content_btn_2635164">
+<a href="javascript:;" onclick="replyfloor_editor('2635164', 0, '');">我要说一句</a>
+</div>
+
+</div>
+
+</div>
+
+<div id="replyfloor_editor_2635164"></div>
+
+</div>
+</div>
+</div></div>
+</td></tr>
+<tr><td class="plc plm">
+</td>
+</tr>
+<tr id="_postposition2635164"></tr>
+<tr>
+<td class="plc" style="overflow:visible; width:100%">
+<div class="po hin">
+<div class="pob cl">
+<em>
+<a href="forum.php?mod=post&amp;action=reply&amp;fid=2&amp;tid=126339&amp;repquote=2635164&amp;extra=&amp;page=1" onclick="replyfloor_reply(this.href)" class="fastre">回复</a>
+</em>			
+<p>
+<a href="javascript:;" id="mgc_post_2635164" onmouseover="showMenu(this.id)" class="showmenu">使用道具</a>
+<a href="javascript:;" onclick="showWindow('miscreport2635164', 'misc.php?mod=report&rtype=post&rid=2635164&tid=126339&fid=2', 'get', -1);return false;">举报</a>
+</p>
+<ul id="mgc_post_2635164_menu" class="p_pop mgcmn" style="display: none;">
+<li><a href="home.php?mod=magic&amp;mid=namepost&amp;idtype=pid&amp;id=2635164:126339" id="a_namepost_2635164" onclick="showWindow(this.id, this.href)"><img src="static/image/magic/namepost.small.gif" />照妖镜</a><li>
+</ul>
+<script type="text/javascript" reload="1">checkmgcmn('post_2635164')</script>
+</div>
+</div>
+</td>
+</tr>
+<tr class="ad">
+<td class="pls">
+</td>
+</tr>
+</table>
+</div>
+<div id="post_2635236" class="comiis_vpost"><table id="pid2635236" class="plhin" summary="pid2635236" cellspacing="0" cellpadding="0">
+<tr>
+ <td class="plc" style="width:100%">
+<div class="pi" style="height:30px">
+<strong>
+<a href="forum.php?mod=redirect&goto=findpost&ptid=126339&pid=2635236"   id="postnum2635236" onclick="setCopy(this.href, '帖子地址复制成功');return false;">
+<em>5</em><sup>#</sup></a>
+</strong>
+<div class="pti">
+<div class="pdbt">		
+</div>
+<div class="authi">		
+<a href="space-uid-230.html" target="_blank" c="1" class="xi2 z avt km_avt"><img src="./data/avatar/000/00/02/30_avatar_small.jpg" class="user_avatar"></a>
+<a href="space-uid-230.html" target="_blank" c="1" class="km_name">时光的微笑～</a><a href="home.php?mod=spacecp&amp;ac=usergroup&amp;gid=34" target="_blank" class="km_lvs">Lv.7</a><span class="km_verifys">
+</span>
+<em id="authorposton2635236" class="km_time" style="margin-left:1px">发表于 <span title="2026-8-30 15:36:54">昨天&nbsp;15:36</span></em>
+<span class="km_from">来自手机</span>
+<span class="pipe">|</span>
+<a href="forum.php?mod=viewthread&amp;tid=126339&amp;page=1&amp;authorid=230" rel="nofollow" class="km_showzz">只看Ta</a>
+</div>
+</div>
+</div><div class="pct"><div class="pcb">
+<div class="t_fsz"><table cellspacing="0" cellpadding="0"><tr><td class="t_f" id="postmessage_2635236">
+感谢分享</td></tr></table>
+		
+		
+</div>	
+<div id="comment_2635236" class="cm comiis_dianping">
+	
+</div>
+<div class="comiis_pingfen_va">
+<div id="post_rate_div_2635236"></div>
+</div>
+
+<div class="replyfloor_box" id="replyfloor_box_2635236">
+
+<div class="replyfloor_hd">
+
+<span class="replyfloor_tail_floor">
+
+<em>5</em><sup>#</sup>
+
+</span>
+<span class="replyfloor_tail_time"><span title="2026-8-30 15:36:54">昨天&nbsp;15:36</span></span>
+<span class="replyfloor_link_unfold" id="replyfloor_link_unfold_2635236" onclick="replyfloor_fold('2635236', 1);" title="">回复<span class="replyfloor_count" style="display:none;">(<span id="replyfloor_count_2635236">0</span>)</span></span>
+<span class="replyfloor_link_fold" id="replyfloor_link_fold_2635236" onclick="replyfloor_fold('2635236', 0);">收起回复</span>
+</div>
+
+<div class="replyfloor_bd" id="replyfloor_bd_2635236">
+<div class="replyfloor_content" id="replyfloor_content_2635236">
+
+<div id="replyfloor_newbox_2635236" class="replyfloor_content_ul"></div>
+
+<div class="replyfloor_content_pager" style="display:none;">
+
+<div class="replyfloor_content_btn" id="replyfloor_content_btn_2635236">
+<a href="javascript:;" onclick="replyfloor_editor('2635236', 0, '');">我要说一句</a>
+</div>
+
+</div>
+
+</div>
+
+<div id="replyfloor_editor_2635236"></div>
+
+</div>
+</div>
+</div></div>
+</td></tr>
+<tr><td class="plc plm">
+</td>
+</tr>
+<tr id="_postposition2635236"></tr>
+<tr>
+<td class="plc" style="overflow:visible; width:100%">
+<div class="po hin">
+<div class="pob cl">
+<em>
+<a href="forum.php?mod=post&amp;action=reply&amp;fid=2&amp;tid=126339&amp;repquote=2635236&amp;extra=&amp;page=1" onclick="replyfloor_reply(this.href)" class="fastre">回复</a>
+</em>			
+<p>
+<a href="javascript:;" id="mgc_post_2635236" onmouseover="showMenu(this.id)" class="showmenu">使用道具</a>
+<a href="javascript:;" onclick="showWindow('miscreport2635236', 'misc.php?mod=report&rtype=post&rid=2635236&tid=126339&fid=2', 'get', -1);return false;">举报</a>
+</p>
+<ul id="mgc_post_2635236_menu" class="p_pop mgcmn" style="display: none;">
+<li><a href="home.php?mod=magic&amp;mid=namepost&amp;idtype=pid&amp;id=2635236:126339" id="a_namepost_2635236" onclick="showWindow(this.id, this.href)"><img src="static/image/magic/namepost.small.gif" />照妖镜</a><li>
+</ul>
+<script type="text/javascript" reload="1">checkmgcmn('post_2635236')</script>
+</div>
+</div>
+</td>
+</tr>
+<tr class="ad">
+<td class="pls">
+</td>
+</tr>
+</table>
+</div>
+<div id="post_2635265" class="comiis_vpost"><table id="pid2635265" class="plhin" summary="pid2635265" cellspacing="0" cellpadding="0">
+<tr>
+ <td class="plc" style="width:100%">
+<div class="pi" style="height:30px">
+<strong>
+<a href="forum.php?mod=redirect&goto=findpost&ptid=126339&pid=2635265"   id="postnum2635265" onclick="setCopy(this.href, '帖子地址复制成功');return false;">
+<em>6</em><sup>#</sup></a>
+</strong>
+<div class="pti">
+<div class="pdbt">		
+</div>
+<div class="authi">		
+<a href="space-uid-48008.html" target="_blank" c="1" class="xi2 z avt km_avt"><img src="./data/avatar/noavatar.svg" class="user_avatar"></a>
+<a href="space-uid-48008.html" target="_blank" c="1" class="km_name">55735</a><a href="home.php?mod=spacecp&amp;ac=usergroup&amp;gid=13" target="_blank" class="km_verifys"><img src="data/attachment/common/c5/common_13_usergroup_icon.png" alt="" class="vm" /></a><span class="km_verifys">
+</span>
+<em id="authorposton2635265" class="km_time" style="margin-left:1px">发表于 <span title="2026-8-30 15:39:49">昨天&nbsp;15:39</span></em>
+<span class="km_from">来自手机</span>
+<span class="pipe">|</span>
+<a href="forum.php?mod=viewthread&amp;tid=126339&amp;page=1&amp;authorid=48008" rel="nofollow" class="km_showzz">只看Ta</a>
+</div>
+</div>
+</div><div class="pct"><div class="pcb">
+<div class="t_fsz"><table cellspacing="0" cellpadding="0"><tr><td class="t_f" id="postmessage_2635265">
+感谢大佬</td></tr></table>
+		
+		
+</div>	
+<div id="comment_2635265" class="cm comiis_dianping">
+	
+</div>
+<div class="comiis_pingfen_va">
+<div id="post_rate_div_2635265"></div>
+</div>
+
+<div class="replyfloor_box" id="replyfloor_box_2635265">
+
+<div class="replyfloor_hd">
+
+<span class="replyfloor_tail_floor">
+
+<em>6</em><sup>#</sup>
+
+</span>
+<span class="replyfloor_tail_time"><span title="2026-8-30 15:39:49">昨天&nbsp;15:39</span></span>
+<span class="replyfloor_link_unfold" id="replyfloor_link_unfold_2635265" onclick="replyfloor_fold('2635265', 1);" title="">回复<span class="replyfloor_count" style="display:none;">(<span id="replyfloor_count_2635265">0</span>)</span></span>
+<span class="replyfloor_link_fold" id="replyfloor_link_fold_2635265" onclick="replyfloor_fold('2635265', 0);">收起回复</span>
+</div>
+
+<div class="replyfloor_bd" id="replyfloor_bd_2635265">
+<div class="replyfloor_content" id="replyfloor_content_2635265">
+
+<div id="replyfloor_newbox_2635265" class="replyfloor_content_ul"></div>
+
+<div class="replyfloor_content_pager" style="display:none;">
+
+<div class="replyfloor_content_btn" id="replyfloor_content_btn_2635265">
+<a href="javascript:;" onclick="replyfloor_editor('2635265', 0, '');">我要说一句</a>
+</div>
+
+</div>
+
+</div>
+
+<div id="replyfloor_editor_2635265"></div>
+
+</div>
+</div>
+</div></div>
+</td></tr>
+<tr><td class="plc plm">
+</td>
+</tr>
+<tr id="_postposition2635265"></tr>
+<tr>
+<td class="plc" style="overflow:visible; width:100%">
+<div class="po hin">
+<div class="pob cl">
+<em>
+<a href="forum.php?mod=post&amp;action=reply&amp;fid=2&amp;tid=126339&amp;repquote=2635265&amp;extra=&amp;page=1" onclick="replyfloor_reply(this.href)" class="fastre">回复</a>
+</em>			
+<p>
+<a href="javascript:;" id="mgc_post_2635265" onmouseover="showMenu(this.id)" class="showmenu">使用道具</a>
+<a href="javascript:;" onclick="showWindow('miscreport2635265', 'misc.php?mod=report&rtype=post&rid=2635265&tid=126339&fid=2', 'get', -1);return false;">举报</a>
+</p>
+<ul id="mgc_post_2635265_menu" class="p_pop mgcmn" style="display: none;">
+<li><a href="home.php?mod=magic&amp;mid=namepost&amp;idtype=pid&amp;id=2635265:126339" id="a_namepost_2635265" onclick="showWindow(this.id, this.href)"><img src="static/image/magic/namepost.small.gif" />照妖镜</a><li>
+</ul>
+<script type="text/javascript" reload="1">checkmgcmn('post_2635265')</script>
+</div>
+</div>
+</td>
+</tr>
+<tr class="ad">
+<td class="pls">
+</td>
+</tr>
+</table>
+</div>
+<div id="post_2635291" class="comiis_vpost"><table id="pid2635291" class="plhin" summary="pid2635291" cellspacing="0" cellpadding="0">
+<tr>
+ <td class="plc" style="width:100%">
+<div class="pi" style="height:30px">
+<strong>
+<a href="forum.php?mod=redirect&goto=findpost&ptid=126339&pid=2635291"   id="postnum2635291" onclick="setCopy(this.href, '帖子地址复制成功');return false;">
+<em>7</em><sup>#</sup></a>
+</strong>
+<div class="pti">
+<div class="pdbt">		
+</div>
+<div class="authi">		
+<a href="space-uid-42226.html" target="_blank" c="1" class="xi2 z avt km_avt"><img src="./data/avatar/noavatar.svg" class="user_avatar"></a>
+<a href="space-uid-42226.html" target="_blank" c="1" class="km_name">kami66</a><a href="home.php?mod=spacecp&amp;ac=usergroup&amp;gid=12" target="_blank" class="km_verifys"><img src="data/attachment/common/c2/common_12_usergroup_icon.png" alt="" class="vm" /></a><span class="km_verifys">
+</span>
+<em id="authorposton2635291" class="km_time" style="margin-left:1px">发表于 <span title="2026-8-30 15:42:15">昨天&nbsp;15:42</span></em>
+<span class="km_from">来自手机</span>
+<span class="pipe">|</span>
+<a href="forum.php?mod=viewthread&amp;tid=126339&amp;page=1&amp;authorid=42226" rel="nofollow" class="km_showzz">只看Ta</a>
+</div>
+</div>
+</div><div class="pct"><div class="pcb">
+<div class="t_fsz"><table cellspacing="0" cellpadding="0"><tr><td class="t_f" id="postmessage_2635291">
+谢谢</td></tr></table>
+		
+		
+</div>	
+<div id="comment_2635291" class="cm comiis_dianping">
+	
+</div>
+<div class="comiis_pingfen_va">
+<div id="post_rate_div_2635291"></div>
+</div>
+
+<div class="replyfloor_box" id="replyfloor_box_2635291">
+
+<div class="replyfloor_hd">
+
+<span class="replyfloor_tail_floor">
+
+<em>7</em><sup>#</sup>
+
+</span>
+<span class="replyfloor_tail_time"><span title="2026-8-30 15:42:15">昨天&nbsp;15:42</span></span>
+<span class="replyfloor_link_unfold" id="replyfloor_link_unfold_2635291" onclick="replyfloor_fold('2635291', 1);" title="">回复<span class="replyfloor_count" style="display:none;">(<span id="replyfloor_count_2635291">0</span>)</span></span>
+<span class="replyfloor_link_fold" id="replyfloor_link_fold_2635291" onclick="replyfloor_fold('2635291', 0);">收起回复</span>
+</div>
+
+<div class="replyfloor_bd" id="replyfloor_bd_2635291">
+<div class="replyfloor_content" id="replyfloor_content_2635291">
+
+<div id="replyfloor_newbox_2635291" class="replyfloor_content_ul"></div>
+
+<div class="replyfloor_content_pager" style="display:none;">
+
+<div class="replyfloor_content_btn" id="replyfloor_content_btn_2635291">
+<a href="javascript:;" onclick="replyfloor_editor('2635291', 0, '');">我要说一句</a>
+</div>
+
+</div>
+
+</div>
+
+<div id="replyfloor_editor_2635291"></div>
+
+</div>
+</div>
+</div></div>
+</td></tr>
+<tr><td class="plc plm">
+</td>
+</tr>
+<tr id="_postposition2635291"></tr>
+<tr>
+<td class="plc" style="overflow:visible; width:100%">
+<div class="po hin">
+<div class="pob cl">
+<em>
+<a href="forum.php?mod=post&amp;action=reply&amp;fid=2&amp;tid=126339&amp;repquote=2635291&amp;extra=&amp;page=1" onclick="replyfloor_reply(this.href)" class="fastre">回复</a>
+</em>			
+<p>
+<a href="javascript:;" id="mgc_post_2635291" onmouseover="showMenu(this.id)" class="showmenu">使用道具</a>
+<a href="javascript:;" onclick="showWindow('miscreport2635291', 'misc.php?mod=report&rtype=post&rid=2635291&tid=126339&fid=2', 'get', -1);return false;">举报</a>
+</p>
+<ul id="mgc_post_2635291_menu" class="p_pop mgcmn" style="display: none;">
+<li><a href="home.php?mod=magic&amp;mid=namepost&amp;idtype=pid&amp;id=2635291:126339" id="a_namepost_2635291" onclick="showWindow(this.id, this.href)"><img src="static/image/magic/namepost.small.gif" />照妖镜</a><li>
+</ul>
+<script type="text/javascript" reload="1">checkmgcmn('post_2635291')</script>
+</div>
+</div>
+</td>
+</tr>
+<tr class="ad">
+<td class="pls">
+</td>
+</tr>
+</table>
+</div>
+<div id="post_2635307" class="comiis_vpost"><table id="pid2635307" class="plhin" summary="pid2635307" cellspacing="0" cellpadding="0">
+<tr>
+ <td class="plc" style="width:100%">
+<div class="pi" style="height:30px">
+<strong>
+<a href="forum.php?mod=redirect&goto=findpost&ptid=126339&pid=2635307"   id="postnum2635307" onclick="setCopy(this.href, '帖子地址复制成功');return false;">
+<em>8</em><sup>#</sup></a>
+</strong>
+<div class="pti">
+<div class="pdbt">		
+</div>
+<div class="authi">		
+<a href="space-uid-42193.html" target="_blank" c="1" class="xi2 z avt km_avt"><img src="./data/avatar/000/04/21/93_avatar_small.jpg" class="user_avatar"></a>
+<a href="space-uid-42193.html" target="_blank" c="1" class="km_name">m369258</a><a href="home.php?mod=spacecp&amp;ac=usergroup&amp;gid=13" target="_blank" class="km_verifys"><img src="data/attachment/common/c5/common_13_usergroup_icon.png" alt="" class="vm" /></a><span class="km_verifys">
+</span>
+<em id="authorposton2635307" class="km_time" style="margin-left:1px">发表于 <span title="2026-8-30 15:43:39">昨天&nbsp;15:43</span></em>
+<span class="km_from">来自手机</span>
+<span class="pipe">|</span>
+<a href="forum.php?mod=viewthread&amp;tid=126339&amp;page=1&amp;authorid=42193" rel="nofollow" class="km_showzz">只看Ta</a>
+</div>
+</div>
+</div><div class="pct"><div class="pcb">
+<div class="t_fsz"><table cellspacing="0" cellpadding="0"><tr><td class="t_f" id="postmessage_2635307">
+感谢分享</td></tr></table>
+		
+		
+</div>	
+<div id="comment_2635307" class="cm comiis_dianping">
+	
+</div>
+<div class="comiis_pingfen_va">
+<div id="post_rate_div_2635307"></div>
+</div>
+
+<div class="replyfloor_box" id="replyfloor_box_2635307">
+
+<div class="replyfloor_hd">
+
+<span class="replyfloor_tail_floor">
+
+<em>8</em><sup>#</sup>
+
+</span>
+<span class="replyfloor_tail_time"><span title="2026-8-30 15:43:39">昨天&nbsp;15:43</span></span>
+<span class="replyfloor_link_unfold" id="replyfloor_link_unfold_2635307" onclick="replyfloor_fold('2635307', 1);" title="">回复<span class="replyfloor_count" style="display:none;">(<span id="replyfloor_count_2635307">0</span>)</span></span>
+<span class="replyfloor_link_fold" id="replyfloor_link_fold_2635307" onclick="replyfloor_fold('2635307', 0);">收起回复</span>
+</div>
+
+<div class="replyfloor_bd" id="replyfloor_bd_2635307">
+<div class="replyfloor_content" id="replyfloor_content_2635307">
+
+<div id="replyfloor_newbox_2635307" class="replyfloor_content_ul"></div>
+
+<div class="replyfloor_content_pager" style="display:none;">
+
+<div class="replyfloor_content_btn" id="replyfloor_content_btn_2635307">
+<a href="javascript:;" onclick="replyfloor_editor('2635307', 0, '');">我要说一句</a>
+</div>
+
+</div>
+
+</div>
+
+<div id="replyfloor_editor_2635307"></div>
+
+</div>
+</div>
+</div></div>
+</td></tr>
+<tr><td class="plc plm">
+</td>
+</tr>
+<tr id="_postposition2635307"></tr>
+<tr>
+<td class="plc" style="overflow:visible; width:100%">
+<div class="po hin">
+<div class="pob cl">
+<em>
+<a href="forum.php?mod=post&amp;action=reply&amp;fid=2&amp;tid=126339&amp;repquote=2635307&amp;extra=&amp;page=1" onclick="replyfloor_reply(this.href)" class="fastre">回复</a>
+</em>			
+<p>
+<a href="javascript:;" id="mgc_post_2635307" onmouseover="showMenu(this.id)" class="showmenu">使用道具</a>
+<a href="javascript:;" onclick="showWindow('miscreport2635307', 'misc.php?mod=report&rtype=post&rid=2635307&tid=126339&fid=2', 'get', -1);return false;">举报</a>
+</p>
+<ul id="mgc_post_2635307_menu" class="p_pop mgcmn" style="display: none;">
+<li><a href="home.php?mod=magic&amp;mid=namepost&amp;idtype=pid&amp;id=2635307:126339" id="a_namepost_2635307" onclick="showWindow(this.id, this.href)"><img src="static/image/magic/namepost.small.gif" />照妖镜</a><li>
+</ul>
+<script type="text/javascript" reload="1">checkmgcmn('post_2635307')</script>
+</div>
+</div>
+</td>
+</tr>
+<tr class="ad">
+<td class="pls">
+</td>
+</tr>
+</table>
+</div>
+<div id="post_2635403" class="comiis_vpost"><table id="pid2635403" class="plhin" summary="pid2635403" cellspacing="0" cellpadding="0">
+<tr>
+ <td class="plc" style="width:100%">
+<div class="pi" style="height:30px">
+<strong>
+<a href="forum.php?mod=redirect&goto=findpost&ptid=126339&pid=2635403"   id="postnum2635403" onclick="setCopy(this.href, '帖子地址复制成功');return false;">
+<em>9</em><sup>#</sup></a>
+</strong>
+<div class="pti">
+<div class="pdbt">		
+</div>
+<div class="authi">		
+<a href="space-uid-15798.html" target="_blank" c="1" class="xi2 z avt km_avt"><img src="./data/avatar/000/01/57/98_avatar_small.jpg" class="user_avatar"></a>
+<a href="space-uid-15798.html" target="_blank" c="1" class="km_name">long369</a><a href="home.php?mod=spacecp&amp;ac=usergroup&amp;gid=12" target="_blank" class="km_verifys"><img src="data/attachment/common/c2/common_12_usergroup_icon.png" alt="" class="vm" /></a><span class="km_verifys">
+</span>
+<em id="authorposton2635403" class="km_time" style="margin-left:1px">发表于 <span title="2026-8-30 15:52:00">昨天&nbsp;15:52</span></em>
+<span class="km_from">来自手机</span>
+<span class="pipe">|</span>
+<a href="forum.php?mod=viewthread&amp;tid=126339&amp;page=1&amp;authorid=15798" rel="nofollow" class="km_showzz">只看Ta</a>
+</div>
+</div>
+</div><div class="pct"><div class="pcb">
+<div class="t_fsz"><table cellspacing="0" cellpadding="0"><tr><td class="t_f" id="postmessage_2635403">
+看看</td></tr></table>
+		
+		
+</div>	
+<div id="comment_2635403" class="cm comiis_dianping">
+	
+</div>
+<div class="comiis_pingfen_va">
+<div id="post_rate_div_2635403"></div>
+</div>
+
+<div class="replyfloor_box" id="replyfloor_box_2635403">
+
+<div class="replyfloor_hd">
+
+<span class="replyfloor_tail_floor">
+
+<em>9</em><sup>#</sup>
+
+</span>
+<span class="replyfloor_tail_time"><span title="2026-8-30 15:52:00">昨天&nbsp;15:52</span></span>
+<span class="replyfloor_link_unfold" id="replyfloor_link_unfold_2635403" onclick="replyfloor_fold('2635403', 1);" title="">回复<span class="replyfloor_count" style="display:none;">(<span id="replyfloor_count_2635403">0</span>)</span></span>
+<span class="replyfloor_link_fold" id="replyfloor_link_fold_2635403" onclick="replyfloor_fold('2635403', 0);">收起回复</span>
+</div>
+
+<div class="replyfloor_bd" id="replyfloor_bd_2635403">
+<div class="replyfloor_content" id="replyfloor_content_2635403">
+
+<div id="replyfloor_newbox_2635403" class="replyfloor_content_ul"></div>
+
+<div class="replyfloor_content_pager" style="display:none;">
+
+<div class="replyfloor_content_btn" id="replyfloor_content_btn_2635403">
+<a href="javascript:;" onclick="replyfloor_editor('2635403', 0, '');">我要说一句</a>
+</div>
+
+</div>
+
+</div>
+
+<div id="replyfloor_editor_2635403"></div>
+
+</div>
+</div>
+</div></div>
+</td></tr>
+<tr><td class="plc plm">
+</td>
+</tr>
+<tr id="_postposition2635403"></tr>
+<tr>
+<td class="plc" style="overflow:visible; width:100%">
+<div class="po hin">
+<div class="pob cl">
+<em>
+<a href="forum.php?mod=post&amp;action=reply&amp;fid=2&amp;tid=126339&amp;repquote=2635403&amp;extra=&amp;page=1" onclick="replyfloor_reply(this.href)" class="fastre">回复</a>
+</em>			
+<p>
+<a href="javascript:;" id="mgc_post_2635403" onmouseover="showMenu(this.id)" class="showmenu">使用道具</a>
+<a href="javascript:;" onclick="showWindow('miscreport2635403', 'misc.php?mod=report&rtype=post&rid=2635403&tid=126339&fid=2', 'get', -1);return false;">举报</a>
+</p>
+<ul id="mgc_post_2635403_menu" class="p_pop mgcmn" style="display: none;">
+<li><a href="home.php?mod=magic&amp;mid=namepost&amp;idtype=pid&amp;id=2635403:126339" id="a_namepost_2635403" onclick="showWindow(this.id, this.href)"><img src="static/image/magic/namepost.small.gif" />照妖镜</a><li>
+</ul>
+<script type="text/javascript" reload="1">checkmgcmn('post_2635403')</script>
+</div>
+</div>
+</td>
+</tr>
+<tr class="ad">
+<td class="pls">
+</td>
+</tr>
+</table>
+</div>
+<div id="post_2635418" class="comiis_vpost"><table id="pid2635418" class="plhin" summary="pid2635418" cellspacing="0" cellpadding="0">
+<tr>
+ <td class="plc" style="width:100%">
+<div class="pi" style="height:30px">
+<strong>
+<a href="forum.php?mod=redirect&goto=findpost&ptid=126339&pid=2635418"   id="postnum2635418" onclick="setCopy(this.href, '帖子地址复制成功');return false;">
+<em>10</em><sup>#</sup></a>
+</strong>
+<div class="pti">
+<div class="pdbt">		
+</div>
+<div class="authi">		
+<a href="space-uid-47949.html" target="_blank" c="1" class="xi2 z avt km_avt"><img src="./data/avatar/noavatar.svg" class="user_avatar"></a>
+<a href="space-uid-47949.html" target="_blank" c="1" class="km_name">woyaoyuedu</a><a href="home.php?mod=spacecp&amp;ac=usergroup&amp;gid=13" target="_blank" class="km_verifys"><img src="data/attachment/common/c5/common_13_usergroup_icon.png" alt="" class="vm" /></a><span class="km_verifys">
+</span>
+<em id="authorposton2635418" class="km_time" style="margin-left:1px">发表于 <span title="2026-8-30 15:53:04">昨天&nbsp;15:53</span></em>
+<span class="km_from">来自手机</span>
+<span class="pipe">|</span>
+<a href="forum.php?mod=viewthread&amp;tid=126339&amp;page=1&amp;authorid=47949" rel="nofollow" class="km_showzz">只看Ta</a>
+</div>
+</div>
+</div><div class="pct"><div class="pcb">
+<div class="t_fsz"><table cellspacing="0" cellpadding="0"><tr><td class="t_f" id="postmessage_2635418">
+谢谢</td></tr></table>
+		
+		
+</div>	
+<div id="comment_2635418" class="cm comiis_dianping">
+	
+</div>
+<div class="comiis_pingfen_va">
+<div id="post_rate_div_2635418"></div>
+</div>
+
+<div class="replyfloor_box" id="replyfloor_box_2635418">
+
+<div class="replyfloor_hd">
+
+<span class="replyfloor_tail_floor">
+
+<em>10</em><sup>#</sup>
+
+</span>
+<span class="replyfloor_tail_time"><span title="2026-8-30 15:53:04">昨天&nbsp;15:53</span></span>
+<span class="replyfloor_link_unfold" id="replyfloor_link_unfold_2635418" onclick="replyfloor_fold('2635418', 1);" title="">回复<span class="replyfloor_count" style="display:none;">(<span id="replyfloor_count_2635418">0</span>)</span></span>
+<span class="replyfloor_link_fold" id="replyfloor_link_fold_2635418" onclick="replyfloor_fold('2635418', 0);">收起回复</span>
+</div>
+
+<div class="replyfloor_bd" id="replyfloor_bd_2635418">
+<div class="replyfloor_content" id="replyfloor_content_2635418">
+
+<div id="replyfloor_newbox_2635418" class="replyfloor_content_ul"></div>
+
+<div class="replyfloor_content_pager" style="display:none;">
+
+<div class="replyfloor_content_btn" id="replyfloor_content_btn_2635418">
+<a href="javascript:;" onclick="replyfloor_editor('2635418', 0, '');">我要说一句</a>
+</div>
+
+</div>
+
+</div>
+
+<div id="replyfloor_editor_2635418"></div>
+
+</div>
+</div>
+</div></div>
+</td></tr>
+<tr><td class="plc plm">
+</td>
+</tr>
+<tr id="_postposition2635418"></tr>
+<tr>
+<td class="plc" style="overflow:visible; width:100%">
+<div class="po hin">
+<div class="pob cl">
+<em>
+<a href="forum.php?mod=post&amp;action=reply&amp;fid=2&amp;tid=126339&amp;repquote=2635418&amp;extra=&amp;page=1" onclick="replyfloor_reply(this.href)" class="fastre">回复</a>
+</em>			
+<p>
+<a href="javascript:;" id="mgc_post_2635418" onmouseover="showMenu(this.id)" class="showmenu">使用道具</a>
+<a href="javascript:;" onclick="showWindow('miscreport2635418', 'misc.php?mod=report&rtype=post&rid=2635418&tid=126339&fid=2', 'get', -1);return false;">举报</a>
+</p>
+<ul id="mgc_post_2635418_menu" class="p_pop mgcmn" style="display: none;">
+<li><a href="home.php?mod=magic&amp;mid=namepost&amp;idtype=pid&amp;id=2635418:126339" id="a_namepost_2635418" onclick="showWindow(this.id, this.href)"><img src="static/image/magic/namepost.small.gif" />照妖镜</a><li>
+</ul>
+<script type="text/javascript" reload="1">checkmgcmn('post_2635418')</script>
+</div>
+</div>
+</td>
+</tr>
+<tr class="ad">
+<td class="pls">
+</td>
+</tr>
+</table>
+</div>
+<div id="post_2635459" class="comiis_vpost"><table id="pid2635459" class="plhin" summary="pid2635459" cellspacing="0" cellpadding="0">
+<tr>
+ <td class="plc" style="width:100%">
+<div class="pi" style="height:30px">
+<strong>
+<a href="forum.php?mod=redirect&goto=findpost&ptid=126339&pid=2635459"   id="postnum2635459" onclick="setCopy(this.href, '帖子地址复制成功');return false;">
+<em>11</em><sup>#</sup></a>
+</strong>
+<div class="pti">
+<div class="pdbt">		
+</div>
+<div class="authi">		
+<a href="space-uid-52421.html" target="_blank" c="1" class="xi2 z avt km_avt"><img src="./data/avatar/000/05/24/21_avatar_small.jpg" class="user_avatar"></a>
+<a href="space-uid-52421.html" target="_blank" c="1" class="km_name">上杉绘梨衣</a><a href="home.php?mod=spacecp&amp;ac=usergroup&amp;gid=33" target="_blank" class="km_verifys"><img src="data/attachment/common/18/common_33_usergroup_icon.gif" alt="" class="vm" /></a><span class="km_verifys">
+</span>
+<em id="authorposton2635459" class="km_time" style="margin-left:1px">发表于 <span title="2026-8-30 15:56:02">昨天&nbsp;15:56</span></em>
+<span class="km_from">来自手机</span>
+<span class="pipe">|</span>
+<a href="forum.php?mod=viewthread&amp;tid=126339&amp;page=1&amp;authorid=52421" rel="nofollow" class="km_showzz">只看Ta</a>
+</div>
+</div>
+</div><div class="pct"><div class="pcb">
+<div class="t_fsz"><table cellspacing="0" cellpadding="0"><tr><td class="t_f" id="postmessage_2635459">
+感谢分享</td></tr></table>
+		
+		
+</div>	
+<div id="comment_2635459" class="cm comiis_dianping">
+	
+</div>
+<div class="comiis_pingfen_va">
+<div id="post_rate_div_2635459"></div>
+</div>
+
+<div class="replyfloor_box" id="replyfloor_box_2635459">
+
+<div class="replyfloor_hd">
+
+<span class="replyfloor_tail_floor">
+
+<em>11</em><sup>#</sup>
+
+</span>
+<span class="replyfloor_tail_time"><span title="2026-8-30 15:56:02">昨天&nbsp;15:56</span></span>
+<span class="replyfloor_link_unfold" id="replyfloor_link_unfold_2635459" onclick="replyfloor_fold('2635459', 1);" title="">回复<span class="replyfloor_count" style="display:none;">(<span id="replyfloor_count_2635459">0</span>)</span></span>
+<span class="replyfloor_link_fold" id="replyfloor_link_fold_2635459" onclick="replyfloor_fold('2635459', 0);">收起回复</span>
+</div>
+
+<div class="replyfloor_bd" id="replyfloor_bd_2635459">
+<div class="replyfloor_content" id="replyfloor_content_2635459">
+
+<div id="replyfloor_newbox_2635459" class="replyfloor_content_ul"></div>
+
+<div class="replyfloor_content_pager" style="display:none;">
+
+<div class="replyfloor_content_btn" id="replyfloor_content_btn_2635459">
+<a href="javascript:;" onclick="replyfloor_editor('2635459', 0, '');">我要说一句</a>
+</div>
+
+</div>
+
+</div>
+
+<div id="replyfloor_editor_2635459"></div>
+
+</div>
+</div>
+</div></div>
+</td></tr>
+<tr><td class="plc plm">
+</td>
+</tr>
+<tr id="_postposition2635459"></tr>
+<tr>
+<td class="plc" style="overflow:visible; width:100%">
+<div class="po hin">
+<div class="pob cl">
+<em>
+<a href="forum.php?mod=post&amp;action=reply&amp;fid=2&amp;tid=126339&amp;repquote=2635459&amp;extra=&amp;page=1" onclick="replyfloor_reply(this.href)" class="fastre">回复</a>
+</em>			
+<p>
+<a href="javascript:;" id="mgc_post_2635459" onmouseover="showMenu(this.id)" class="showmenu">使用道具</a>
+<a href="javascript:;" onclick="showWindow('miscreport2635459', 'misc.php?mod=report&rtype=post&rid=2635459&tid=126339&fid=2', 'get', -1);return false;">举报</a>
+</p>
+<ul id="mgc_post_2635459_menu" class="p_pop mgcmn" style="display: none;">
+<li><a href="home.php?mod=magic&amp;mid=namepost&amp;idtype=pid&amp;id=2635459:126339" id="a_namepost_2635459" onclick="showWindow(this.id, this.href)"><img src="static/image/magic/namepost.small.gif" />照妖镜</a><li>
+</ul>
+<script type="text/javascript" reload="1">checkmgcmn('post_2635459')</script>
+</div>
+</div>
+</td>
+</tr>
+<tr class="ad">
+<td class="pls">
+</td>
+</tr>
+</table>
+</div>
+<div id="post_2635467" class="comiis_vpost"><table id="pid2635467" class="plhin" summary="pid2635467" cellspacing="0" cellpadding="0">
+<tr>
+ <td class="plc" style="width:100%">
+<div class="pi" style="height:30px">
+<strong>
+<a href="forum.php?mod=redirect&goto=findpost&ptid=126339&pid=2635467"   id="postnum2635467" onclick="setCopy(this.href, '帖子地址复制成功');return false;">
+<em>12</em><sup>#</sup></a>
+</strong>
+<div class="pti">
+<div class="pdbt">		
+</div>
+<div class="authi">		
+<a href="space-uid-21402.html" target="_blank" c="1" class="xi2 z avt km_avt"><img src="./data/avatar/000/02/14/02_avatar_small.jpg" class="user_avatar"></a>
+<a href="space-uid-21402.html" target="_blank" c="1" class="km_name">ytktxtct</a><a href="home.php?mod=spacecp&amp;ac=usergroup&amp;gid=13" target="_blank" class="km_verifys"><img src="data/attachment/common/c5/common_13_usergroup_icon.png" alt="" class="vm" /></a><span class="km_verifys">
+</span>
+<em id="authorposton2635467" class="km_time" style="margin-left:1px">发表于 <span title="2026-8-30 15:56:29">昨天&nbsp;15:56</span></em>
+<span class="km_from">来自手机</span>
+<span class="pipe">|</span>
+<a href="forum.php?mod=viewthread&amp;tid=126339&amp;page=1&amp;authorid=21402" rel="nofollow" class="km_showzz">只看Ta</a>
+</div>
+</div>
+</div><div class="pct"><div class="pcb">
+<div class="t_fsz"><table cellspacing="0" cellpadding="0"><tr><td class="t_f" id="postmessage_2635467">
+感谢</td></tr></table>
+		
+		
+</div>	
+<div id="comment_2635467" class="cm comiis_dianping">
+	
+</div>
+<div class="comiis_pingfen_va">
+<div id="post_rate_div_2635467"></div>
+</div>
+
+<div class="replyfloor_box" id="replyfloor_box_2635467">
+
+<div class="replyfloor_hd">
+
+<span class="replyfloor_tail_floor">
+
+<em>12</em><sup>#</sup>
+
+</span>
+<span class="replyfloor_tail_time"><span title="2026-8-30 15:56:29">昨天&nbsp;15:56</span></span>
+<span class="replyfloor_link_unfold" id="replyfloor_link_unfold_2635467" onclick="replyfloor_fold('2635467', 1);" title="">回复<span class="replyfloor_count" style="display:none;">(<span id="replyfloor_count_2635467">0</span>)</span></span>
+<span class="replyfloor_link_fold" id="replyfloor_link_fold_2635467" onclick="replyfloor_fold('2635467', 0);">收起回复</span>
+</div>
+
+<div class="replyfloor_bd" id="replyfloor_bd_2635467">
+<div class="replyfloor_content" id="replyfloor_content_2635467">
+
+<div id="replyfloor_newbox_2635467" class="replyfloor_content_ul"></div>
+
+<div class="replyfloor_content_pager" style="display:none;">
+
+<div class="replyfloor_content_btn" id="replyfloor_content_btn_2635467">
+<a href="javascript:;" onclick="replyfloor_editor('2635467', 0, '');">我要说一句</a>
+</div>
+
+</div>
+
+</div>
+
+<div id="replyfloor_editor_2635467"></div>
+
+</div>
+</div>
+</div></div>
+</td></tr>
+<tr><td class="plc plm">
+</td>
+</tr>
+<tr id="_postposition2635467"></tr>
+<tr>
+<td class="plc" style="overflow:visible; width:100%">
+<div class="po hin">
+<div class="pob cl">
+<em>
+<a href="forum.php?mod=post&amp;action=reply&amp;fid=2&amp;tid=126339&amp;repquote=2635467&amp;extra=&amp;page=1" onclick="replyfloor_reply(this.href)" class="fastre">回复</a>
+</em>			
+<p>
+<a href="javascript:;" id="mgc_post_2635467" onmouseover="showMenu(this.id)" class="showmenu">使用道具</a>
+<a href="javascript:;" onclick="showWindow('miscreport2635467', 'misc.php?mod=report&rtype=post&rid=2635467&tid=126339&fid=2', 'get', -1);return false;">举报</a>
+</p>
+<ul id="mgc_post_2635467_menu" class="p_pop mgcmn" style="display: none;">
+<li><a href="home.php?mod=magic&amp;mid=namepost&amp;idtype=pid&amp;id=2635467:126339" id="a_namepost_2635467" onclick="showWindow(this.id, this.href)"><img src="static/image/magic/namepost.small.gif" />照妖镜</a><li>
+</ul>
+<script type="text/javascript" reload="1">checkmgcmn('post_2635467')</script>
+</div>
+</div>
+</td>
+</tr>
+<tr class="ad">
+<td class="pls">
+</td>
+</tr>
+</table>
+</div>
+<div id="post_2635523" class="comiis_vpost"><table id="pid2635523" class="plhin" summary="pid2635523" cellspacing="0" cellpadding="0">
+<tr>
+ <td class="plc" style="width:100%">
+<div class="pi" style="height:30px">
+<strong>
+<a href="forum.php?mod=redirect&goto=findpost&ptid=126339&pid=2635523"   id="postnum2635523" onclick="setCopy(this.href, '帖子地址复制成功');return false;">
+<em>13</em><sup>#</sup></a>
+</strong>
+<div class="pti">
+<div class="pdbt">		
+</div>
+<div class="authi">		
+<a href="space-uid-13088.html" target="_blank" c="1" class="xi2 z avt km_avt"><img src="./data/avatar/000/01/30/88_avatar_small.jpg" class="user_avatar"></a>
+<a href="space-uid-13088.html" target="_blank" c="1" class="km_name">啊呀呀</a><a href="home.php?mod=spacecp&amp;ac=usergroup&amp;gid=14" target="_blank" class="km_verifys"><img src="data/attachment/common/aa/common_14_usergroup_icon.png" alt="" class="vm" /></a><span class="km_verifys">
+</span>
+<em id="authorposton2635523" class="km_time" style="margin-left:1px">发表于 <span title="2026-8-30 16:02:50">昨天&nbsp;16:02</span></em>
+<span class="km_from">来自手机</span>
+<span class="pipe">|</span>
+<a href="forum.php?mod=viewthread&amp;tid=126339&amp;page=1&amp;authorid=13088" rel="nofollow" class="km_showzz">只看Ta</a>
+</div>
+</div>
+</div><div class="pct"><div class="pcb">
+<div class="t_fsz"><table cellspacing="0" cellpadding="0"><tr><td class="t_f" id="postmessage_2635523">
+感谢分享</td></tr></table>
+		
+		
+</div>	
+<div id="comment_2635523" class="cm comiis_dianping">
+	
+</div>
+<div class="comiis_pingfen_va">
+<div id="post_rate_div_2635523"></div>
+</div>
+
+<div class="replyfloor_box" id="replyfloor_box_2635523">
+
+<div class="replyfloor_hd">
+
+<span class="replyfloor_tail_floor">
+
+<em>13</em><sup>#</sup>
+
+</span>
+<span class="replyfloor_tail_time"><span title="2026-8-30 16:02:50">昨天&nbsp;16:02</span></span>
+<span class="replyfloor_link_unfold" id="replyfloor_link_unfold_2635523" onclick="replyfloor_fold('2635523', 1);" title="">回复<span class="replyfloor_count" style="display:none;">(<span id="replyfloor_count_2635523">0</span>)</span></span>
+<span class="replyfloor_link_fold" id="replyfloor_link_fold_2635523" onclick="replyfloor_fold('2635523', 0);">收起回复</span>
+</div>
+
+<div class="replyfloor_bd" id="replyfloor_bd_2635523">
+<div class="replyfloor_content" id="replyfloor_content_2635523">
+
+<div id="replyfloor_newbox_2635523" class="replyfloor_content_ul"></div>
+
+<div class="replyfloor_content_pager" style="display:none;">
+
+<div class="replyfloor_content_btn" id="replyfloor_content_btn_2635523">
+<a href="javascript:;" onclick="replyfloor_editor('2635523', 0, '');">我要说一句</a>
+</div>
+
+</div>
+
+</div>
+
+<div id="replyfloor_editor_2635523"></div>
+
+</div>
+</div>
+</div></div>
+</td></tr>
+<tr><td class="plc plm">
+</td>
+</tr>
+<tr id="_postposition2635523"></tr>
+<tr>
+<td class="plc" style="overflow:visible; width:100%">
+<div class="po hin">
+<div class="pob cl">
+<em>
+<a href="forum.php?mod=post&amp;action=reply&amp;fid=2&amp;tid=126339&amp;repquote=2635523&amp;extra=&amp;page=1" onclick="replyfloor_reply(this.href)" class="fastre">回复</a>
+</em>			
+<p>
+<a href="javascript:;" id="mgc_post_2635523" onmouseover="showMenu(this.id)" class="showmenu">使用道具</a>
+<a href="javascript:;" onclick="showWindow('miscreport2635523', 'misc.php?mod=report&rtype=post&rid=2635523&tid=126339&fid=2', 'get', -1);return false;">举报</a>
+</p>
+<ul id="mgc_post_2635523_menu" class="p_pop mgcmn" style="display: none;">
+<li><a href="home.php?mod=magic&amp;mid=namepost&amp;idtype=pid&amp;id=2635523:126339" id="a_namepost_2635523" onclick="showWindow(this.id, this.href)"><img src="static/image/magic/namepost.small.gif" />照妖镜</a><li>
+</ul>
+<script type="text/javascript" reload="1">checkmgcmn('post_2635523')</script>
+</div>
+</div>
+</td>
+</tr>
+<tr class="ad">
+<td class="pls">
+</td>
+</tr>
+</table>
+</div>
+<div id="post_2635524" class="comiis_vpost"><table id="pid2635524" class="plhin" summary="pid2635524" cellspacing="0" cellpadding="0">
+<tr>
+ <td class="plc" style="width:100%">
+<div class="pi" style="height:30px">
+<strong>
+<a href="forum.php?mod=redirect&goto=findpost&ptid=126339&pid=2635524"   id="postnum2635524" onclick="setCopy(this.href, '帖子地址复制成功');return false;">
+<em>14</em><sup>#</sup></a>
+</strong>
+<div class="pti">
+<div class="pdbt">		
+</div>
+<div class="authi">		
+<a href="space-uid-12687.html" target="_blank" c="1" class="xi2 z avt km_avt"><img src="./data/avatar/noavatar.svg" class="user_avatar"></a>
+<a href="space-uid-12687.html" target="_blank" c="1" class="km_name">13972826058</a><a href="home.php?mod=spacecp&amp;ac=usergroup&amp;gid=12" target="_blank" class="km_verifys"><img src="data/attachment/common/c2/common_12_usergroup_icon.png" alt="" class="vm" /></a><span class="km_verifys">
+</span>
+<em id="authorposton2635524" class="km_time" style="margin-left:1px">发表于 <span title="2026-8-30 16:03:32">昨天&nbsp;16:03</span></em>
+<span class="km_from">来自手机</span>
+<span class="pipe">|</span>
+<a href="forum.php?mod=viewthread&amp;tid=126339&amp;page=1&amp;authorid=12687" rel="nofollow" class="km_showzz">只看Ta</a>
+</div>
+</div>
+</div><div class="pct"><div class="pcb">
+<div class="t_fsz"><table cellspacing="0" cellpadding="0"><tr><td class="t_f" id="postmessage_2635524">
+感谢分享</td></tr></table>
+		
+		
+</div>	
+<div id="comment_2635524" class="cm comiis_dianping">
+	
+</div>
+<div class="comiis_pingfen_va">
+<div id="post_rate_div_2635524"></div>
+</div>
+
+<div class="replyfloor_box" id="replyfloor_box_2635524">
+
+<div class="replyfloor_hd">
+
+<span class="replyfloor_tail_floor">
+
+<em>14</em><sup>#</sup>
+
+</span>
+<span class="replyfloor_tail_time"><span title="2026-8-30 16:03:32">昨天&nbsp;16:03</span></span>
+<span class="replyfloor_link_unfold" id="replyfloor_link_unfold_2635524" onclick="replyfloor_fold('2635524', 1);" title="">回复<span class="replyfloor_count" style="display:none;">(<span id="replyfloor_count_2635524">0</span>)</span></span>
+<span class="replyfloor_link_fold" id="replyfloor_link_fold_2635524" onclick="replyfloor_fold('2635524', 0);">收起回复</span>
+</div>
+
+<div class="replyfloor_bd" id="replyfloor_bd_2635524">
+<div class="replyfloor_content" id="replyfloor_content_2635524">
+
+<div id="replyfloor_newbox_2635524" class="replyfloor_content_ul"></div>
+
+<div class="replyfloor_content_pager" style="display:none;">
+
+<div class="replyfloor_content_btn" id="replyfloor_content_btn_2635524">
+<a href="javascript:;" onclick="replyfloor_editor('2635524', 0, '');">我要说一句</a>
+</div>
+
+</div>
+
+</div>
+
+<div id="replyfloor_editor_2635524"></div>
+
+</div>
+</div>
+</div></div>
+</td></tr>
+<tr><td class="plc plm">
+</td>
+</tr>
+<tr id="_postposition2635524"></tr>
+<tr>
+<td class="plc" style="overflow:visible; width:100%">
+<div class="po hin">
+<div class="pob cl">
+<em>
+<a href="forum.php?mod=post&amp;action=reply&amp;fid=2&amp;tid=126339&amp;repquote=2635524&amp;extra=&amp;page=1" onclick="replyfloor_reply(this.href)" class="fastre">回复</a>
+</em>			
+<p>
+<a href="javascript:;" id="mgc_post_2635524" onmouseover="showMenu(this.id)" class="showmenu">使用道具</a>
+<a href="javascript:;" onclick="showWindow('miscreport2635524', 'misc.php?mod=report&rtype=post&rid=2635524&tid=126339&fid=2', 'get', -1);return false;">举报</a>
+</p>
+<ul id="mgc_post_2635524_menu" class="p_pop mgcmn" style="display: none;">
+<li><a href="home.php?mod=magic&amp;mid=namepost&amp;idtype=pid&amp;id=2635524:126339" id="a_namepost_2635524" onclick="showWindow(this.id, this.href)"><img src="static/image/magic/namepost.small.gif" />照妖镜</a><li>
+</ul>
+<script type="text/javascript" reload="1">checkmgcmn('post_2635524')</script>
+</div>
+</div>
+</td>
+</tr>
+<tr class="ad">
+<td class="pls">
+</td>
+</tr>
+</table>
+</div>
+<div id="post_2635526" class="comiis_vpost"><table id="pid2635526" class="plhin" summary="pid2635526" cellspacing="0" cellpadding="0">
+<tr>
+ <td class="plc" style="width:100%">
+<div class="pi" style="height:30px">
+<strong>
+<a href="forum.php?mod=redirect&goto=findpost&ptid=126339&pid=2635526"   id="postnum2635526" onclick="setCopy(this.href, '帖子地址复制成功');return false;">
+<em>15</em><sup>#</sup></a>
+</strong>
+<div class="pti">
+<div class="pdbt">		
+</div>
+<div class="authi">		
+<a href="space-uid-35945.html" target="_blank" c="1" class="xi2 z avt km_avt"><img src="./data/avatar/000/03/59/45_avatar_small.jpg" class="user_avatar"></a>
+<a href="space-uid-35945.html" target="_blank" c="1" class="km_name">ivy</a><a href="home.php?mod=spacecp&amp;ac=usergroup&amp;gid=34" target="_blank" class="km_lvs">Lv.7</a><span class="km_verifys">
+</span>
+<em id="authorposton2635526" class="km_time" style="margin-left:1px">发表于 <span title="2026-8-30 16:03:53">昨天&nbsp;16:03</span></em>
+<span class="km_from">来自手机</span>
+<span class="pipe">|</span>
+<a href="forum.php?mod=viewthread&amp;tid=126339&amp;page=1&amp;authorid=35945" rel="nofollow" class="km_showzz">只看Ta</a>
+</div>
+</div>
+</div><div class="pct"><div class="pcb">
+<div class="t_fsz"><table cellspacing="0" cellpadding="0"><tr><td class="t_f" id="postmessage_2635526">
+<img src="static/image/smiley/qq/jingxi.gif" smilieid="196" border="0" alt="" />谢谢分享</td></tr></table>
+		
+		
+</div>	
+<div id="comment_2635526" class="cm comiis_dianping">
+	
+</div>
+<div class="comiis_pingfen_va">
+<div id="post_rate_div_2635526"></div>
+</div>
+
+<div class="replyfloor_box" id="replyfloor_box_2635526">
+
+<div class="replyfloor_hd">
+
+<span class="replyfloor_tail_floor">
+
+<em>15</em><sup>#</sup>
+
+</span>
+<span class="replyfloor_tail_time"><span title="2026-8-30 16:03:53">昨天&nbsp;16:03</span></span>
+<span class="replyfloor_link_unfold" id="replyfloor_link_unfold_2635526" onclick="replyfloor_fold('2635526', 1);" title="">回复<span class="replyfloor_count" style="display:none;">(<span id="replyfloor_count_2635526">0</span>)</span></span>
+<span class="replyfloor_link_fold" id="replyfloor_link_fold_2635526" onclick="replyfloor_fold('2635526', 0);">收起回复</span>
+</div>
+
+<div class="replyfloor_bd" id="replyfloor_bd_2635526">
+<div class="replyfloor_content" id="replyfloor_content_2635526">
+
+<div id="replyfloor_newbox_2635526" class="replyfloor_content_ul"></div>
+
+<div class="replyfloor_content_pager" style="display:none;">
+
+<div class="replyfloor_content_btn" id="replyfloor_content_btn_2635526">
+<a href="javascript:;" onclick="replyfloor_editor('2635526', 0, '');">我要说一句</a>
+</div>
+
+</div>
+
+</div>
+
+<div id="replyfloor_editor_2635526"></div>
+
+</div>
+</div>
+</div></div>
+</td></tr>
+<tr><td class="plc plm">
+</td>
+</tr>
+<tr id="_postposition2635526"></tr>
+<tr>
+<td class="plc" style="overflow:visible; width:100%">
+<div class="po hin">
+<div class="pob cl">
+<em>
+<a href="forum.php?mod=post&amp;action=reply&amp;fid=2&amp;tid=126339&amp;repquote=2635526&amp;extra=&amp;page=1" onclick="replyfloor_reply(this.href)" class="fastre">回复</a>
+</em>			
+<p>
+<a href="javascript:;" id="mgc_post_2635526" onmouseover="showMenu(this.id)" class="showmenu">使用道具</a>
+<a href="javascript:;" onclick="showWindow('miscreport2635526', 'misc.php?mod=report&rtype=post&rid=2635526&tid=126339&fid=2', 'get', -1);return false;">举报</a>
+</p>
+<ul id="mgc_post_2635526_menu" class="p_pop mgcmn" style="display: none;">
+<li><a href="home.php?mod=magic&amp;mid=namepost&amp;idtype=pid&amp;id=2635526:126339" id="a_namepost_2635526" onclick="showWindow(this.id, this.href)"><img src="static/image/magic/namepost.small.gif" />照妖镜</a><li>
+</ul>
+<script type="text/javascript" reload="1">checkmgcmn('post_2635526')</script>
+</div>
+</div>
+</td>
+</tr>
+<tr class="ad">
+<td class="pls">
+</td>
+</tr>
+</table>
+</div>
+<div id="post_2635532" class="comiis_vpost"><table id="pid2635532" class="plhin" summary="pid2635532" cellspacing="0" cellpadding="0">
+<tr>
+ <td class="plc" style="width:100%">
+<div class="pi" style="height:30px">
+<strong>
+<a href="forum.php?mod=redirect&goto=findpost&ptid=126339&pid=2635532"   id="postnum2635532" onclick="setCopy(this.href, '帖子地址复制成功');return false;">
+<em>16</em><sup>#</sup></a>
+</strong>
+<div class="pti">
+<div class="pdbt">		
+</div>
+<div class="authi">		
+<a href="space-uid-36143.html" target="_blank" c="1" class="xi2 z avt km_avt"><img src="./data/avatar/noavatar.svg" class="user_avatar"></a>
+<a href="space-uid-36143.html" target="_blank" c="1" class="km_name">150675574</a><a href="home.php?mod=spacecp&amp;ac=usergroup&amp;gid=12" target="_blank" class="km_verifys"><img src="data/attachment/common/c2/common_12_usergroup_icon.png" alt="" class="vm" /></a><span class="km_verifys">
+</span>
+<em id="authorposton2635532" class="km_time" style="margin-left:1px">发表于 <span title="2026-8-30 16:05:41">昨天&nbsp;16:05</span></em>
+<span class="km_from">来自手机</span>
+<span class="pipe">|</span>
+<a href="forum.php?mod=viewthread&amp;tid=126339&amp;page=1&amp;authorid=36143" rel="nofollow" class="km_showzz">只看Ta</a>
+</div>
+</div>
+</div><div class="pct"><div class="pcb">
+<div class="t_fsz"><table cellspacing="0" cellpadding="0"><tr><td class="t_f" id="postmessage_2635532">
+感谢分享</td></tr></table>
+		
+		
+</div>	
+<div id="comment_2635532" class="cm comiis_dianping">
+	
+</div>
+<div class="comiis_pingfen_va">
+<div id="post_rate_div_2635532"></div>
+</div>
+
+<div class="replyfloor_box" id="replyfloor_box_2635532">
+
+<div class="replyfloor_hd">
+
+<span class="replyfloor_tail_floor">
+
+<em>16</em><sup>#</sup>
+
+</span>
+<span class="replyfloor_tail_time"><span title="2026-8-30 16:05:41">昨天&nbsp;16:05</span></span>
+<span class="replyfloor_link_unfold" id="replyfloor_link_unfold_2635532" onclick="replyfloor_fold('2635532', 1);" title="">回复<span class="replyfloor_count" style="display:none;">(<span id="replyfloor_count_2635532">0</span>)</span></span>
+<span class="replyfloor_link_fold" id="replyfloor_link_fold_2635532" onclick="replyfloor_fold('2635532', 0);">收起回复</span>
+</div>
+
+<div class="replyfloor_bd" id="replyfloor_bd_2635532">
+<div class="replyfloor_content" id="replyfloor_content_2635532">
+
+<div id="replyfloor_newbox_2635532" class="replyfloor_content_ul"></div>
+
+<div class="replyfloor_content_pager" style="display:none;">
+
+<div class="replyfloor_content_btn" id="replyfloor_content_btn_2635532">
+<a href="javascript:;" onclick="replyfloor_editor('2635532', 0, '');">我要说一句</a>
+</div>
+
+</div>
+
+</div>
+
+<div id="replyfloor_editor_2635532"></div>
+
+</div>
+</div>
+</div></div>
+</td></tr>
+<tr><td class="plc plm">
+</td>
+</tr>
+<tr id="_postposition2635532"></tr>
+<tr>
+<td class="plc" style="overflow:visible; width:100%">
+<div class="po hin">
+<div class="pob cl">
+<em>
+<a href="forum.php?mod=post&amp;action=reply&amp;fid=2&amp;tid=126339&amp;repquote=2635532&amp;extra=&amp;page=1" onclick="replyfloor_reply(this.href)" class="fastre">回复</a>
+</em>			
+<p>
+<a href="javascript:;" id="mgc_post_2635532" onmouseover="showMenu(this.id)" class="showmenu">使用道具</a>
+<a href="javascript:;" onclick="showWindow('miscreport2635532', 'misc.php?mod=report&rtype=post&rid=2635532&tid=126339&fid=2', 'get', -1);return false;">举报</a>
+</p>
+<ul id="mgc_post_2635532_menu" class="p_pop mgcmn" style="display: none;">
+<li><a href="home.php?mod=magic&amp;mid=namepost&amp;idtype=pid&amp;id=2635532:126339" id="a_namepost_2635532" onclick="showWindow(this.id, this.href)"><img src="static/image/magic/namepost.small.gif" />照妖镜</a><li>
+</ul>
+<script type="text/javascript" reload="1">checkmgcmn('post_2635532')</script>
+</div>
+</div>
+</td>
+</tr>
+<tr class="ad">
+<td class="pls">
+</td>
+</tr>
+</table>
+</div>
+<div id="post_2635537" class="comiis_vpost"><table id="pid2635537" class="plhin" summary="pid2635537" cellspacing="0" cellpadding="0">
+<tr>
+ <td class="plc" style="width:100%">
+<div class="pi" style="height:30px">
+<strong>
+<a href="forum.php?mod=redirect&goto=findpost&ptid=126339&pid=2635537"   id="postnum2635537" onclick="setCopy(this.href, '帖子地址复制成功');return false;">
+<em>17</em><sup>#</sup></a>
+</strong>
+<div class="pti">
+<div class="pdbt">		
+</div>
+<div class="authi">		
+<a href="space-uid-51781.html" target="_blank" c="1" class="xi2 z avt km_avt"><img src="./data/avatar/000/05/17/81_avatar_small.jpg" class="user_avatar"></a>
+<a href="space-uid-51781.html" target="_blank" c="1" class="km_name">2653555234</a><a href="home.php?mod=spacecp&amp;ac=usergroup&amp;gid=13" target="_blank" class="km_verifys"><img src="data/attachment/common/c5/common_13_usergroup_icon.png" alt="" class="vm" /></a><span class="km_verifys">
+</span>
+<em id="authorposton2635537" class="km_time" style="margin-left:1px">发表于 <span title="2026-8-30 16:08:01">昨天&nbsp;16:08</span></em>
+<span class="km_from">来自手机</span>
+<span class="pipe">|</span>
+<a href="forum.php?mod=viewthread&amp;tid=126339&amp;page=1&amp;authorid=51781" rel="nofollow" class="km_showzz">只看Ta</a>
+</div>
+</div>
+</div><div class="pct"><div class="pcb">
+<div class="t_fsz"><table cellspacing="0" cellpadding="0"><tr><td class="t_f" id="postmessage_2635537">
+感谢分享</td></tr></table>
+		
+		
+</div>	
+<div id="comment_2635537" class="cm comiis_dianping">
+	
+</div>
+<div class="comiis_pingfen_va">
+<div id="post_rate_div_2635537"></div>
+</div>
+
+<div class="replyfloor_box" id="replyfloor_box_2635537">
+
+<div class="replyfloor_hd">
+
+<span class="replyfloor_tail_floor">
+
+<em>17</em><sup>#</sup>
+
+</span>
+<span class="replyfloor_tail_time"><span title="2026-8-30 16:08:01">昨天&nbsp;16:08</span></span>
+<span class="replyfloor_link_unfold" id="replyfloor_link_unfold_2635537" onclick="replyfloor_fold('2635537', 1);" title="">回复<span class="replyfloor_count" style="display:none;">(<span id="replyfloor_count_2635537">0</span>)</span></span>
+<span class="replyfloor_link_fold" id="replyfloor_link_fold_2635537" onclick="replyfloor_fold('2635537', 0);">收起回复</span>
+</div>
+
+<div class="replyfloor_bd" id="replyfloor_bd_2635537">
+<div class="replyfloor_content" id="replyfloor_content_2635537">
+
+<div id="replyfloor_newbox_2635537" class="replyfloor_content_ul"></div>
+
+<div class="replyfloor_content_pager" style="display:none;">
+
+<div class="replyfloor_content_btn" id="replyfloor_content_btn_2635537">
+<a href="javascript:;" onclick="replyfloor_editor('2635537', 0, '');">我要说一句</a>
+</div>
+
+</div>
+
+</div>
+
+<div id="replyfloor_editor_2635537"></div>
+
+</div>
+</div>
+</div></div>
+</td></tr>
+<tr><td class="plc plm">
+</td>
+</tr>
+<tr id="_postposition2635537"></tr>
+<tr>
+<td class="plc" style="overflow:visible; width:100%">
+<div class="po hin">
+<div class="pob cl">
+<em>
+<a href="forum.php?mod=post&amp;action=reply&amp;fid=2&amp;tid=126339&amp;repquote=2635537&amp;extra=&amp;page=1" onclick="replyfloor_reply(this.href)" class="fastre">回复</a>
+</em>			
+<p>
+<a href="javascript:;" id="mgc_post_2635537" onmouseover="showMenu(this.id)" class="showmenu">使用道具</a>
+<a href="javascript:;" onclick="showWindow('miscreport2635537', 'misc.php?mod=report&rtype=post&rid=2635537&tid=126339&fid=2', 'get', -1);return false;">举报</a>
+</p>
+<ul id="mgc_post_2635537_menu" class="p_pop mgcmn" style="display: none;">
+<li><a href="home.php?mod=magic&amp;mid=namepost&amp;idtype=pid&amp;id=2635537:126339" id="a_namepost_2635537" onclick="showWindow(this.id, this.href)"><img src="static/image/magic/namepost.small.gif" />照妖镜</a><li>
+</ul>
+<script type="text/javascript" reload="1">checkmgcmn('post_2635537')</script>
+</div>
+</div>
+</td>
+</tr>
+<tr class="ad">
+<td class="pls">
+</td>
+</tr>
+</table>
+</div>
+<div id="post_2635550" class="comiis_vpost"><table id="pid2635550" class="plhin" summary="pid2635550" cellspacing="0" cellpadding="0">
+<tr>
+ <td class="plc" style="width:100%">
+<div class="pi" style="height:30px">
+<strong>
+<a href="forum.php?mod=redirect&goto=findpost&ptid=126339&pid=2635550"   id="postnum2635550" onclick="setCopy(this.href, '帖子地址复制成功');return false;">
+<em>18</em><sup>#</sup></a>
+</strong>
+<div class="pti">
+<div class="pdbt">		
+</div>
+<div class="authi">		
+<a href="space-uid-44675.html" target="_blank" c="1" class="xi2 z avt km_avt"><img src="./data/avatar/noavatar.svg" class="user_avatar"></a>
+<a href="space-uid-44675.html" target="_blank" c="1" class="km_name">ctt</a><a href="home.php?mod=spacecp&amp;ac=usergroup&amp;gid=12" target="_blank" class="km_verifys"><img src="data/attachment/common/c2/common_12_usergroup_icon.png" alt="" class="vm" /></a><span class="km_verifys">
+</span>
+<em id="authorposton2635550" class="km_time" style="margin-left:1px">发表于 <span title="2026-8-30 16:16:32">昨天&nbsp;16:16</span></em>
+<span class="km_from">来自手机</span>
+<span class="pipe">|</span>
+<a href="forum.php?mod=viewthread&amp;tid=126339&amp;page=1&amp;authorid=44675" rel="nofollow" class="km_showzz">只看Ta</a>
+</div>
+</div>
+</div><div class="pct"><div class="pcb">
+<div class="t_fsz"><table cellspacing="0" cellpadding="0"><tr><td class="t_f" id="postmessage_2635550">
+感谢分享</td></tr></table>
+		
+		
+</div>	
+<div id="comment_2635550" class="cm comiis_dianping">
+	
+</div>
+<div class="comiis_pingfen_va">
+<div id="post_rate_div_2635550"></div>
+</div>
+
+<div class="replyfloor_box" id="replyfloor_box_2635550">
+
+<div class="replyfloor_hd">
+
+<span class="replyfloor_tail_floor">
+
+<em>18</em><sup>#</sup>
+
+</span>
+<span class="replyfloor_tail_time"><span title="2026-8-30 16:16:32">昨天&nbsp;16:16</span></span>
+<span class="replyfloor_link_unfold" id="replyfloor_link_unfold_2635550" onclick="replyfloor_fold('2635550', 1);" title="">回复<span class="replyfloor_count" style="display:none;">(<span id="replyfloor_count_2635550">0</span>)</span></span>
+<span class="replyfloor_link_fold" id="replyfloor_link_fold_2635550" onclick="replyfloor_fold('2635550', 0);">收起回复</span>
+</div>
+
+<div class="replyfloor_bd" id="replyfloor_bd_2635550">
+<div class="replyfloor_content" id="replyfloor_content_2635550">
+
+<div id="replyfloor_newbox_2635550" class="replyfloor_content_ul"></div>
+
+<div class="replyfloor_content_pager" style="display:none;">
+
+<div class="replyfloor_content_btn" id="replyfloor_content_btn_2635550">
+<a href="javascript:;" onclick="replyfloor_editor('2635550', 0, '');">我要说一句</a>
+</div>
+
+</div>
+
+</div>
+
+<div id="replyfloor_editor_2635550"></div>
+
+</div>
+</div>
+</div></div>
+</td></tr>
+<tr><td class="plc plm">
+</td>
+</tr>
+<tr id="_postposition2635550"></tr>
+<tr>
+<td class="plc" style="overflow:visible; width:100%">
+<div class="po hin">
+<div class="pob cl">
+<em>
+<a href="forum.php?mod=post&amp;action=reply&amp;fid=2&amp;tid=126339&amp;repquote=2635550&amp;extra=&amp;page=1" onclick="replyfloor_reply(this.href)" class="fastre">回复</a>
+</em>			
+<p>
+<a href="javascript:;" id="mgc_post_2635550" onmouseover="showMenu(this.id)" class="showmenu">使用道具</a>
+<a href="javascript:;" onclick="showWindow('miscreport2635550', 'misc.php?mod=report&rtype=post&rid=2635550&tid=126339&fid=2', 'get', -1);return false;">举报</a>
+</p>
+<ul id="mgc_post_2635550_menu" class="p_pop mgcmn" style="display: none;">
+<li><a href="home.php?mod=magic&amp;mid=namepost&amp;idtype=pid&amp;id=2635550:126339" id="a_namepost_2635550" onclick="showWindow(this.id, this.href)"><img src="static/image/magic/namepost.small.gif" />照妖镜</a><li>
+</ul>
+<script type="text/javascript" reload="1">checkmgcmn('post_2635550')</script>
+</div>
+</div>
+</td>
+</tr>
+<tr class="ad">
+<td class="pls">
+</td>
+</tr>
+</table>
+</div>
+<div id="post_2635562" class="comiis_vpost"><table id="pid2635562" class="plhin" summary="pid2635562" cellspacing="0" cellpadding="0">
+<tr>
+ <td class="plc" style="width:100%">
+<div class="pi" style="height:30px">
+<strong>
+<a href="forum.php?mod=redirect&goto=findpost&ptid=126339&pid=2635562"   id="postnum2635562" onclick="setCopy(this.href, '帖子地址复制成功');return false;">
+<em>19</em><sup>#</sup></a>
+</strong>
+<div class="pti">
+<div class="pdbt">		
+</div>
+<div class="authi">		
+<a href="space-uid-24942.html" target="_blank" c="1" class="xi2 z avt km_avt"><img src="./data/avatar/noavatar.svg" class="user_avatar"></a>
+<a href="space-uid-24942.html" target="_blank" c="1" class="km_name">yueyue</a><a href="home.php?mod=spacecp&amp;ac=usergroup&amp;gid=11" target="_blank" class="km_verifys"><img src="data/attachment/common/65/common_11_usergroup_icon.png" alt="" class="vm" /></a><span class="km_verifys">
+</span>
+<em id="authorposton2635562" class="km_time" style="margin-left:1px">发表于 <span title="2026-8-30 16:19:54">昨天&nbsp;16:19</span></em>
+<span class="km_from">来自手机</span>
+<span class="pipe">|</span>
+<a href="forum.php?mod=viewthread&amp;tid=126339&amp;page=1&amp;authorid=24942" rel="nofollow" class="km_showzz">只看Ta</a>
+</div>
+</div>
+</div><div class="pct"><div class="pcb">
+<div class="t_fsz"><table cellspacing="0" cellpadding="0"><tr><td class="t_f" id="postmessage_2635562">
+谢谢</td></tr></table>
+		
+		
+</div>	
+<div id="comment_2635562" class="cm comiis_dianping">
+	
+</div>
+<div class="comiis_pingfen_va">
+<div id="post_rate_div_2635562"></div>
+</div>
+
+<div class="replyfloor_box" id="replyfloor_box_2635562">
+
+<div class="replyfloor_hd">
+
+<span class="replyfloor_tail_floor">
+
+<em>19</em><sup>#</sup>
+
+</span>
+<span class="replyfloor_tail_time"><span title="2026-8-30 16:19:54">昨天&nbsp;16:19</span></span>
+<span class="replyfloor_link_unfold" id="replyfloor_link_unfold_2635562" onclick="replyfloor_fold('2635562', 1);" title="">回复<span class="replyfloor_count" style="display:none;">(<span id="replyfloor_count_2635562">0</span>)</span></span>
+<span class="replyfloor_link_fold" id="replyfloor_link_fold_2635562" onclick="replyfloor_fold('2635562', 0);">收起回复</span>
+</div>
+
+<div class="replyfloor_bd" id="replyfloor_bd_2635562">
+<div class="replyfloor_content" id="replyfloor_content_2635562">
+
+<div id="replyfloor_newbox_2635562" class="replyfloor_content_ul"></div>
+
+<div class="replyfloor_content_pager" style="display:none;">
+
+<div class="replyfloor_content_btn" id="replyfloor_content_btn_2635562">
+<a href="javascript:;" onclick="replyfloor_editor('2635562', 0, '');">我要说一句</a>
+</div>
+
+</div>
+
+</div>
+
+<div id="replyfloor_editor_2635562"></div>
+
+</div>
+</div>
+</div></div>
+</td></tr>
+<tr><td class="plc plm">
+</td>
+</tr>
+<tr id="_postposition2635562"></tr>
+<tr>
+<td class="plc" style="overflow:visible; width:100%">
+<div class="po hin">
+<div class="pob cl">
+<em>
+<a href="forum.php?mod=post&amp;action=reply&amp;fid=2&amp;tid=126339&amp;repquote=2635562&amp;extra=&amp;page=1" onclick="replyfloor_reply(this.href)" class="fastre">回复</a>
+</em>			
+<p>
+<a href="javascript:;" id="mgc_post_2635562" onmouseover="showMenu(this.id)" class="showmenu">使用道具</a>
+<a href="javascript:;" onclick="showWindow('miscreport2635562', 'misc.php?mod=report&rtype=post&rid=2635562&tid=126339&fid=2', 'get', -1);return false;">举报</a>
+</p>
+<ul id="mgc_post_2635562_menu" class="p_pop mgcmn" style="display: none;">
+<li><a href="home.php?mod=magic&amp;mid=namepost&amp;idtype=pid&amp;id=2635562:126339" id="a_namepost_2635562" onclick="showWindow(this.id, this.href)"><img src="static/image/magic/namepost.small.gif" />照妖镜</a><li>
+</ul>
+<script type="text/javascript" reload="1">checkmgcmn('post_2635562')</script>
+</div>
+</div>
+</td>
+</tr>
+<tr class="ad">
+<td class="pls">
+</td>
+</tr>
+</table>
+</div>
+<div id="post_2635673" class="comiis_vpost"><table id="pid2635673" class="plhin" summary="pid2635673" cellspacing="0" cellpadding="0">
+<tr>
+ <td class="plc" style="width:100%">
+<div class="pi" style="height:30px">
+<strong>
+<a href="forum.php?mod=redirect&goto=findpost&ptid=126339&pid=2635673"   id="postnum2635673" onclick="setCopy(this.href, '帖子地址复制成功');return false;">
+<em>20</em><sup>#</sup></a>
+</strong>
+<div class="pti">
+<div class="pdbt">		
+</div>
+<div class="authi">		
+<a href="space-uid-16172.html" target="_blank" c="1" class="xi2 z avt km_avt"><img src="./data/avatar/000/01/61/72_avatar_small.jpg" class="user_avatar"></a>
+<a href="space-uid-16172.html" target="_blank" c="1" class="km_name">Westlos</a><a href="home.php?mod=spacecp&amp;ac=usergroup&amp;gid=12" target="_blank" class="km_verifys"><img src="data/attachment/common/c2/common_12_usergroup_icon.png" alt="" class="vm" /></a><span class="km_verifys">
+</span>
+<em id="authorposton2635673" class="km_time" style="margin-left:1px">发表于 <span title="2026-8-30 16:39:02">昨天&nbsp;16:39</span></em>
+<span class="km_from">来自手机</span>
+<span class="pipe">|</span>
+<a href="forum.php?mod=viewthread&amp;tid=126339&amp;page=1&amp;authorid=16172" rel="nofollow" class="km_showzz">只看Ta</a>
+</div>
+</div>
+</div><div class="pct"><div class="pcb">
+<div class="t_fsz"><table cellspacing="0" cellpadding="0"><tr><td class="t_f" id="postmessage_2635673">
+感谢感谢</td></tr></table>
+		
+		
+</div>	
+<div id="comment_2635673" class="cm comiis_dianping">
+	
+</div>
+<div class="comiis_pingfen_va">
+<div id="post_rate_div_2635673"></div>
+</div>
+
+<div class="replyfloor_box" id="replyfloor_box_2635673">
+
+<div class="replyfloor_hd">
+
+<span class="replyfloor_tail_floor">
+
+<em>20</em><sup>#</sup>
+
+</span>
+<span class="replyfloor_tail_time"><span title="2026-8-30 16:39:02">昨天&nbsp;16:39</span></span>
+<span class="replyfloor_link_unfold" id="replyfloor_link_unfold_2635673" onclick="replyfloor_fold('2635673', 1);" title="">回复<span class="replyfloor_count" style="display:none;">(<span id="replyfloor_count_2635673">0</span>)</span></span>
+<span class="replyfloor_link_fold" id="replyfloor_link_fold_2635673" onclick="replyfloor_fold('2635673', 0);">收起回复</span>
+</div>
+
+<div class="replyfloor_bd" id="replyfloor_bd_2635673">
+<div class="replyfloor_content" id="replyfloor_content_2635673">
+
+<div id="replyfloor_newbox_2635673" class="replyfloor_content_ul"></div>
+
+<div class="replyfloor_content_pager" style="display:none;">
+
+<div class="replyfloor_content_btn" id="replyfloor_content_btn_2635673">
+<a href="javascript:;" onclick="replyfloor_editor('2635673', 0, '');">我要说一句</a>
+</div>
+
+</div>
+
+</div>
+
+<div id="replyfloor_editor_2635673"></div>
+
+</div>
+</div>
+</div></div>
+</td></tr>
+<tr><td class="plc plm">
+</td>
+</tr>
+<tr id="_postposition2635673"></tr>
+<tr>
+<td class="plc" style="overflow:visible; width:100%">
+<div class="po hin">
+<div class="pob cl">
+<em>
+<a href="forum.php?mod=post&amp;action=reply&amp;fid=2&amp;tid=126339&amp;repquote=2635673&amp;extra=&amp;page=1" onclick="replyfloor_reply(this.href)" class="fastre">回复</a>
+</em>			
+<p>
+<a href="javascript:;" id="mgc_post_2635673" onmouseover="showMenu(this.id)" class="showmenu">使用道具</a>
+<a href="javascript:;" onclick="showWindow('miscreport2635673', 'misc.php?mod=report&rtype=post&rid=2635673&tid=126339&fid=2', 'get', -1);return false;">举报</a>
+</p>
+<ul id="mgc_post_2635673_menu" class="p_pop mgcmn" style="display: none;">
+<li><a href="home.php?mod=magic&amp;mid=namepost&amp;idtype=pid&amp;id=2635673:126339" id="a_namepost_2635673" onclick="showWindow(this.id, this.href)"><img src="static/image/magic/namepost.small.gif" />照妖镜</a><li>
+</ul>
+<script type="text/javascript" reload="1">checkmgcmn('post_2635673')</script>
+</div>
+</div>
+</td>
+</tr>
+<tr class="ad">
+<td class="pls">
+</td>
+</tr>
+</table>
+</div>
+<div id="postlistreply" class="pl comiis_vpost"><div id="post_new" class="viewthread_table" style="display: none"></div></div>
+</div>
+<form method="post" autocomplete="off" name="modactions" id="modactions">
+<input type="hidden" name="formhash" value="a83caa01" />
+<input type="hidden" name="optgroup" />
+<input type="hidden" name="operation" />
+<input type="hidden" name="listextra" value="" />
+<input type="hidden" name="page" value="1" />
+</form>
+<div class="pgbtn"><a href="thread-126339-2-1.html" hidefocus="true" class="bm_h">下一页 &raquo;</a></div>
+</div><div class="pgs mtm mbm pbn cl">
+<div class="pg"><strong>1</strong><a href="thread-126339-2-1.html">2</a><a href="thread-126339-3-1.html">3</a><a href="thread-126339-4-1.html">4</a><a href="thread-126339-5-1.html">5</a><a href="thread-126339-6-1.html">6</a><label><input type="text" name="custompage" class="px" size="2" title="输入页码，按回车快速跳转" value="1" onkeydown="if(event.keyCode==13) {window.location='forum.php?mod=viewthread&tid=126339&amp;extra=&amp;page='+this.value;; doane(event);}" /><span title="共 6 页"> / 6 页</span></label><a href="thread-126339-2-1.html" class="nxt">下一页</a></div><span class="pgb y"><a href="forum-2-1.html">返回列表</a></span>
+<a id="newspecialtmp" onmouseover="$('newspecial').id = 'newspecialtmp';this.id = 'newspecial';showMenu({'ctrlid':this.id})" onclick="showWindow('newthread', 'forum.php?mod=post&action=newthread&fid=2')" href="javascript:;" title="发布新帖" class="pgsbtn showmenu">发布新帖</a>
+</div>
+<!--[diy=diyfastposttop]--><div id="diyfastposttop" class="area"></div><!--[/diy]-->
+<script type="text/javascript">
+var postminchars = parseInt('3');
+var postmaxchars = parseInt('100000');
+var postminsubjectchars = parseInt('3');
+var postmaxsubjectchars = parseInt('200');
+var disablepostctrl = parseInt('0');
+</script>
+<div id="f_pst" class="pl bm bmw comiis_f_pstb">
+<div class="bm_h mbm"><h2>回复</h2></div><form method="post" autocomplete="off" id="fastpostform" action="forum.php?mod=post&amp;action=reply&amp;fid=2&amp;tid=126339&amp;extra=&amp;replysubmit=yes&amp;infloat=yes&amp;handlekey=fastpost" onSubmit="return fastpostvalidate(this)">
+<table cellspacing="0" cellpadding="0">
+<tr>
+<td class="pls">
+<div class="avatar avtm"><img src="./data/avatar/noavatar.svg" class="user_avatar"></div></td>
+<td class="plc">
+<span id="fastpostreturn"></span>
+<div class="cl">
+<div id="fastsmiliesdiv" class="y"><div id="fastsmiliesdiv_data"><div id="fastsmilies"></div></div></div><div class="hasfsl" id="fastposteditor">
+<div class="tedt">
+<div class="bar">
+<span class="y">
+<a href="forum.php?mod=post&amp;action=reply&amp;fid=2&amp;tid=126339" onclick="return switchAdvanceMode(this.href)">高级模式</a>
+</span><script src="static/js/seditor.js?x18" type="text/javascript"></script>
+<div class="fpd">
+<a href="javascript:;" title="文字加粗" class="fbld">B</a>
+<a href="javascript:;" title="设置文字颜色" class="fclr" id="fastpostforecolor">Color</a>
+<a id="fastpostimg" href="javascript:;" title="图片" class="fmg">Image</a>
+<a id="fastposturl" href="javascript:;" title="添加链接" class="flnk">Link</a>
+<a id="fastpostquote" href="javascript:;" title="引用" class="fqt">Quote</a>
+<a id="fastpostcode" href="javascript:;" title="代码" class="fcd">Code</a>
+<a href="javascript:;" class="fsml" id="fastpostsml">Smilies</a>
+</div></div>
+<div class="area">
+<div class="pt hm">
+您需要登录后才可以回帖 <a href="member.php?mod=logging&amp;action=login" onclick="showWindow('login', this.href)" class="xi2">登录</a> | <a href="member.php?mod=register" class="xi2">立即注册</a>
+</div>
+</div>
+</div>
+</div>
+</div>
+<div id="seccheck_fastpost">
+</div>
+<input type="hidden" name="formhash" value="a83caa01" />
+<input type="hidden" name="usesig" value="" />
+<input type="hidden" name="subject" value="  " />
+<p class="mtn ptm pnpost">
+<a href="home.php?mod=spacecp&amp;ac=credit&amp;op=rule&amp;fid=2" class="y" target="_blank">本版积分规则</a>
+<button type="button" onclick="showWindow('login', 'member.php?mod=logging&action=login&guestmessage=yes')"  onmouseover="checkpostrule('seccheck_fastpost', 'ac=reply');this.onmouseover=null" name="replysubmit" id="fastpostsubmit" class="pn pnc vm" value="replysubmit"><strong>发表回复</strong></button>
+<label class="lb"><input type="checkbox" name="adddynamic" class="pc" value="1" />回帖并转播</label>
+<label for="fastpostrefresh"><input id="fastpostrefresh" type="checkbox" class="pc" />回帖后跳转到最后一页</label>
+<script type="text/javascript">if(getcookie('fastpostrefresh') == 1) {$('fastpostrefresh').checked=true;}</script>
+</p>
+</td>
+</tr>
+</table>
+</form>
+</div><script>
+                   boan_jq("img").each(function(index,el){
+                            if(boan_jq(this).width()>=500){
+                                boan_jq(this).attr('alt','pixiv直连源，自动翻译修复版');
+                                boan_jq(this).attr('title','');
+                            }
+                    });
+           </script>
+
+<script src="source/plugin/replyfloor/static/js/cquery.js?x18" type="text/javascript"></script>
+<link rel="stylesheet" type="text/css" href="source/plugin/replyfloor/static/cwebuploader/cwebuploader.css?x18">
+<script src="source/plugin/replyfloor/static/cwebuploader/cwebuploader.js?x18" type="text/javascript"></script>
+
+<script src="source/plugin/replyfloor/static/js/common.js?x18" type="text/javascript" charset="utf-8"></script>
+
+<script src="static/js/seditor.js?x18" type="text/javascript"></script>
+<script type='text/template' id="replyfloor_editorbox">
+<div class="replyfloor_editor">
+<form id="replyfloor_messageform" name="replyfloor_messageform" onsubmit="replyfloor_onsubmit();return false;" action='plugin.php?id=replyfloor:index&ac=post&tid=126339' method="post" autocomplete="off">
+<input type="hidden" name="formhash" value="a83caa01">
+<input type="hidden" name="savesubmit" value="true" />
+<input type="hidden" name="pid" value="0" id="replyfloor_pid" />
+<input type="hidden" name="msgid" value="0" id="replyfloor_msgid" />
+<input type="hidden" name="handlekey" value="messagepost" />
+<div class="replyfloor_replyto" id="replyfloor_replyto"></div>
+<div id="replyfloor_extratedt"></div>
+<div class="tedt">
+<div class="bar">
+<div class="fpd">
+<a href="javascript:;" title="文字加粗" class="fbld" onclick="seditor_insertunit('replyfloor_', '[b]', '[/b]');doane(event);">B</a>
+<a href="javascript:;" title="设置文字颜色" class="fclr" id="replyfloor_forecolor" onclick="showColorBox(this.id, 2, 'replyfloor_');doane(event);">Color</a>
+<a href="javascript:;" class="fsml" id="replyfloor_sml" onclick="showMenu({'ctrlid':this.id,'evt':'click','layer':2});return false;">Smilies</a>
+
+<a href="javascript:;" class="fmg" id="replyfloor_img">uploadImage</a>
+
+</div>
+</div>
+<div class="area">
+<textarea name="message" placeholder="善语结善缘，恶言伤人心" rows="3" cols="80" class="pt replyfloor_editor_textarea" id="replyfloor_message" onKeyUp="replyfloor_strLenCalc(this, 'replyfloor_checklen', 2000)" onChange="replyfloor_strLenCalc(this, 'replyfloor_checklen', 2000)" onKeyDown="seditor_ctlent(event, '$(\'replyfloor_submit\').click();')"></textarea>
+</div>
+</div>
+<div class="replyfloor_upimage" id="replyfloor_upimage"></div>
+<div class="ptm pnpost">
+<div class="replyfloor_editor_right">
+<button id="replyfloor_submit" class="replyfloor_editor_btn" type="submit"><strong>发表</strong></button>
+
+<span class="replyfloor_editor_btntip">还可输入 <strong id="replyfloor_checklen">2000</strong> 个字符</span>
+</div>
+</div>
+</form>
+</div>
+</script>
+<script type="text/javascript">smilies_show('replyfloor_smiliesdiv', 8, 'replyfloor_');</script>
+
+<script type="text/javascript">
+
+function replyfloor_report(postid, msgid) {
+showWindow('reportmod', 'plugin.php?id=replyfloor:index&ac=report&tid=126339&pid='+postid+'&msgid='+msgid, 'get');
+return false;
+}
+
+function replyfloor_fold(postid, type) {
+if(type == 1){
+
+showWindow('login', 'member.php?mod=logging&action=login&guestmessage=yes');
+
+}else{
+document.getElementById('replyfloor_link_unfold_' + postid).style.display = 'inline-block';
+document.getElementById('replyfloor_link_fold_' + postid).style.display = 'none';
+document.getElementById('replyfloor_bd_' + postid).style.display = 'none';
+if(document.getElementById('replyfloor_editor')){
+document.getElementById('replyfloor_editor').parentNode.removeChild(document.getElementById('replyfloor_editor'));
+}
+}
+}
+function replyfloor_reply(url) {
+var postid = replyfloor_postid(url);
+if(postid){
+
+document.getElementById('replyfloor_editor_'+postid).innerHTML = '';
+replyfloor_fold(postid, 1);
+doane();
+
+}else{
+showWindow('reply', url);
+}
+return false;
+}
+function replyfloor_editor(postid, msgid, reply) {
+
+showWindow('login', 'member.php?mod=logging&action=login&guestmessage=yes');
+
+}
+function replyfloor_onsubmit() {
+
+showWindow('login', 'member.php?mod=logging&action=login');
+
+return false;
+}
+function succeedhandle_messagepost(url, msg, values) {
+
+document.getElementById('replyfloor_content_btn_' + values['pid']).parentNode.style.display='';
+if(document.getElementById('replyfloor_editor')){
+document.getElementById('replyfloor_message').value = '';
+document.getElementById('replyfloor_upimage').innerHTML = '';
+replyfloor_strLenCalc(document.getElementById('replyfloor_message'), 'replyfloor_checklen', 2000);
+document.getElementById('replyfloor_message').focus();
+if(document.getElementById('replyfloor_seccodeimg')){
+replyfloor_seccodeimg(document.getElementById('replyfloor_seccodeimg'));
+}
+if(typeof replyfloor_allowreply_submit == 'function') {
+replyfloor_allowreply_submit();
+}
+}
+
+var x = new Ajax();
+x.get('plugin.php?id=replyfloor:index&tid='+values['tid']+'&pid='+values['pid']+'&msgid='+values['msgid'] + '&inajax=1', function(s) {
+if(document.getElementById('replyfloor_bd_' + values['pid'])){
+document.getElementById('replyfloor_bd_' + values['pid']).style.display = 'block';
+}
+var div = document.createElement('div');
+document.getElementById('replyfloor_newbox_'+values['pid']).appendChild(div);
+div.outerHTML = s;
+if(document.getElementById('replyfloor_count_' + values['pid'])){
+var count = document.getElementById('replyfloor_count_' + values['pid']).innerHTML;
+document.getElementById('replyfloor_count_' + values['pid']).parentNode.style.display='';
+count = parseInt(count) + 1;
+document.getElementById('replyfloor_count_' + values['pid']).innerHTML = count;
+}
+});
+showCreditPrompt();
+return false;
+}
+
+</script>
+</div>
+<div class="sd">
+	
+<div id="comiis_lzinfo_timg" class="comiis_irbox comiis_lzinfo">
+<div class="comiis_lzinfo_one">
+<div class="lzinfo_txbox">
+<div class="lzinfo_img">
+<a href="space-uid-264.html" target="_blank" title="访问我的空间"><img src="./data/avatar/000/00/02/64_avatar_middle.jpg" class="user_avatar"></a>
+</div>
+<div class="km_tit">
+<a href="space-uid-264.html" target="_blank" title="访问我的空间">绯想天</a></div><div class="km_txt"><a href="home.php?mod=spacecp&amp;ac=usergroup&amp;gid=14" target="_blank" class="km_lvs" style="color:var(--comiis-ahot)"><em style="background:var(--comiis-ahot)"></em>Lv.5 探花</a></div>			
+</div>	
+
+<div class="tns"><table cellspacing="0" cellpadding="0"><th>
+主题<p><a href="home.php?mod=space&uid=264&do=thread&type=thread&view=me&from=space" class="xi2">25</a></p>
+</th><th>
+回帖<p><a href="home.php?mod=space&uid=264&do=thread&type=reply&view=me&from=space" class="xi2">1308</a></p>
+</th><td>
+星币<p><a href="home.php?mod=space&uid=264&do=profile" class="xi2">337</a></p>
+</td>		
+</table></div>
+<div class="km_btn cl">
+<a href="home.php?mod=spacecp&amp;ac=follow&amp;op=add&amp;hash=a83caa01&amp;fuid=264" id="followmod_264" title="+ 关注" onclick="showWindow('followmod', this.href, 'get', 0);">+ 关注</a>
+<a href="home.php?mod=spacecp&amp;ac=pm&amp;op=showmsg&amp;handlekey=showmsg_264&amp;touid=264&amp;pmid=0&amp;daterange=2&amp;tid=126339" class="km_msn" onclick="showWindow('sendpm', this.href);">发消息</a>
+</div>
+</div>			
+</div>
+<div id="comiis_viewthread_sidetop_div"></div>
+<!--[diy=comiis_list_r01]--><div id="comiis_list_r01" class="area"></div><!--[/diy]-->
+<div id="comiis_viewthread_sidebottom_div"></div>
+</div>
+<div id="md_87_menu" class="tip tip_4" style="display: none;">
+<div class="tip_horn"></div>
+<div class="tip_c">
+<h4>龙的传人</h4>
+<p>龙的传人勋章！免费领取，可自主领取</p>
+</div>
+</div>
+<div id="md_73_menu" class="tip tip_4" style="display: none;">
+<div class="tip_horn"></div>
+<div class="tip_c">
+<h4>帅哥</h4>
+<p>问？你身份证性别是男的，你就领取帅哥勋章</p>
+</div>
+</div>
+<div id="md_85_menu" class="tip tip_4" style="display: none;">
+<div class="tip_horn"></div>
+<div class="tip_c">
+<h4>壹万会员</h4>
+<p>源社区会员达到壹万纪念，注册会员可免费领取</p>
+</div>
+</div>
+<div id="md_74_menu" class="tip tip_4" style="display: none;">
+<div class="tip_horn"></div>
+<div class="tip_c">
+<h4>美女</h4>
+<p>问？你身份证性别是女的，你就领取美女勋章</p>
+</div>
+</div>
+<div id="md_45_menu" class="tip tip_4" style="display: none;">
+<div class="tip_horn"></div>
+<div class="tip_c">
+<h4>活跃之星</h4>
+<p>在线时间100小时</p>
+</div>
+</div>
+<div id="md_46_menu" class="tip tip_4" style="display: none;">
+<div class="tip_horn"></div>
+<div class="tip_c">
+<h4>灌水之星</h4>
+<p>发帖量1000个</p>
+</div>
+</div>
+<div id="md_48_menu" class="tip tip_4" style="display: none;">
+<div class="tip_horn"></div>
+<div class="tip_c">
+<h4>常住居民</h4>
+<p>注册源社区31天以上，可自主申请</p>
+</div>
+</div>
+<div id="md_109_menu" class="tip tip_4" style="display: none;">
+<div class="tip_horn"></div>
+<div class="tip_c">
+<h4>辰龙</h4>
+<p></p>
+</div>
+</div>
+<div id="md_117_menu" class="tip tip_4" style="display: none;">
+<div class="tip_horn"></div>
+<div class="tip_c">
+<h4>戌狗 </h4>
+<p></p>
+</div>
+</div>
+<div id="md_119_menu" class="tip tip_4" style="display: none;">
+<div class="tip_horn"></div>
+<div class="tip_c">
+<h4>酉鸡</h4>
+<p></p>
+</div>
+</div>
+<div id="md_118_menu" class="tip tip_4" style="display: none;">
+<div class="tip_horn"></div>
+<div class="tip_c">
+<h4>寅虎 </h4>
+<p></p>
+</div>
+</div>
+<div id="md_120_menu" class="tip tip_4" style="display: none;">
+<div class="tip_horn"></div>
+<div class="tip_c">
+<h4>子鼠 </h4>
+<p></p>
+</div>
+</div>
+<div id="md_113_menu" class="tip tip_4" style="display: none;">
+<div class="tip_horn"></div>
+<div class="tip_c">
+<h4>申猴 </h4>
+<p></p>
+</div>
+</div>
+<div id="md_110_menu" class="tip tip_4" style="display: none;">
+<div class="tip_horn"></div>
+<div class="tip_c">
+<h4>丑牛</h4>
+<p></p>
+</div>
+</div>
+<div id="md_115_menu" class="tip tip_4" style="display: none;">
+<div class="tip_horn"></div>
+<div class="tip_c">
+<h4>未羊</h4>
+<p></p>
+</div>
+</div>
+<div id="md_103_menu" class="tip tip_4" style="display: none;">
+<div class="tip_horn"></div>
+<div class="tip_c">
+<h4>新春祝福</h4>
+<p>2025年送祝福活动</p>
+</div>
+</div>
+<div id="md_92_menu" class="tip tip_4" style="display: none;">
+<div class="tip_horn"></div>
+<div class="tip_c">
+<h4>冬日之星</h4>
+<p>参加2024年12月活动，发布主题</p>
+</div>
+</div>
+<div id="md_81_menu" class="tip tip_4" style="display: none;">
+<div class="tip_horn"></div>
+<div class="tip_c">
+<h4>源大侠</h4>
+<p>购买源大侠，源币299个，自主申请</p>
+</div>
+</div>
+<div id="md_86_menu" class="tip tip_4" style="display: none;">
+<div class="tip_horn"></div>
+<div class="tip_c">
+<h4>抠搜之星</h4>
+<p>幸福美满，要源币99个，可自主购买</p>
+</div>
+</div>
+<div id="md_93_menu" class="tip tip_4" style="display: none;">
+<div class="tip_horn"></div>
+<div class="tip_c">
+<h4>舞动江湖</h4>
+<p></p>
+</div>
+</div>
+<div id="md_94_menu" class="tip tip_4" style="display: none;">
+<div class="tip_horn"></div>
+<div class="tip_c">
+<h4>海贼的船</h4>
+<p></p>
+</div>
+</div>
+<div id="md_95_menu" class="tip tip_4" style="display: none;">
+<div class="tip_horn"></div>
+<div class="tip_c">
+<h4>嘻嘻哈哈</h4>
+<p></p>
+</div>
+</div>
+<div id="md_96_menu" class="tip tip_4" style="display: none;">
+<div class="tip_horn"></div>
+<div class="tip_c">
+<h4>滑稽勋章</h4>
+<p></p>
+</div>
+</div>
+<div id="md_106_menu" class="tip tip_4" style="display: none;">
+<div class="tip_horn"></div>
+<div class="tip_c">
+<h4>在线之星</h4>
+<p>在线时间666小时</p>
+</div>
+</div>
+<div id="md_107_menu" class="tip tip_4" style="display: none;">
+<div class="tip_horn"></div>
+<div class="tip_c">
+<h4>在线之星</h4>
+<p>在线时间1000小时</p>
+</div>
+</div>
+<div id="md_97_menu" class="tip tip_4" style="display: none;">
+<div class="tip_horn"></div>
+<div class="tip_c">
+<h4>起源勋章</h4>
+<p>注册源社区一年以上用户申请，审核颁发</p>
+</div>
+</div>
+<div id="md_133_menu" class="tip tip_4" style="display: none;">
+<div class="tip_horn"></div>
+<div class="tip_c">
+<h4>优秀</h4>
+<p></p>
+</div>
+</div>
+<div id="md_134_menu" class="tip tip_4" style="display: none;">
+<div class="tip_horn"></div>
+<div class="tip_c">
+<h4>倾国倾城</h4>
+<p></p>
+</div>
+</div>
+<div id="md_138_menu" class="tip tip_4" style="display: none;">
+<div class="tip_horn"></div>
+<div class="tip_c">
+<h4>从零开始的异世界</h4>
+<p></p>
+</div>
+</div>
+<div id="md_82_menu" class="tip tip_4" style="display: none;">
+<div class="tip_horn"></div>
+<div class="tip_c">
+<h4>最佳新人</h4>
+<p></p>
+</div>
+</div>
+<script type="text/javascript">document.onkeyup = function(e){keyPageScroll(e, 0, 1, 'forum.php?mod=viewthread&tid=126339&amp;extra=', 1);}</script>
+</div>
+<div class="wp mtn">
+<!--[diy=diy3]--><div id="diy3" class="area"></div><!--[/diy]-->
+</div>
+<script type="text/javascript">
+function succeedhandle_followmod(url, msg, values) {
+var fObj = $('followmod_'+values['fuid']);
+if(values['type'] == 'add') {
+fObj.innerHTML = '已关注';
+fObj.href = 'home.php?mod=spacecp&ac=follow&op=del&fuid='+values['fuid'];
+} else if(values['type'] == 'del') {
+fObj.innerHTML = '+ 关注';
+fObj.href = 'home.php?mod=spacecp&ac=follow&op=add&hash=a83caa01&fuid='+values['fuid'];
+}
+}
+fixed_avatar([2634962,2635129,2635133,2635164,2635236,2635265,2635291,2635307,2635403,2635418,2635459,2635467,2635523,2635524,2635526,2635532,2635537,2635550,2635562,2635673], 1);
+</script>
+<script>
+function comiis_copyThreadUrl(obj, bbname) {
+bbname = bbname || SITEURL;
+setCopy($('thread_subject').innerHTML.replace(/&amp;/g, '&') + '\n' + obj.href + '\n' + '来自: '+bbname+'' + '\n', '链接复制成功');
+return false;
+}
+</script>
+    		  	  		  	  		     	    		     		   		     		       	   		      		   		     		       	   			     		   		     		       	  			 	    		   		     		       	  			 	    		   		     		       	   		      		   		     		       	 	   	    		   		     		       	  			      		   		     		       	  	        		   		     		       	  	  	     		 	      	  		  	  		     	</div>
+
+<style>
+@font-face {
+    font-family: "dzicon";
+    src: url('/template/discuz_theme_n7/image/dzicon.eot');
+    src: url('/template/discuz_theme_n7/image/dzicon.eot?#iefix') format('eot'),url('/template/discuz_theme_n7/image/dzicon.woff2') format('woff2'),url('/template/discuz_theme_n7/image/dzicon.woff') format('woff');
+    font-weight: normal;
+    font-style: normal;
+}
+</style>	
+<script>comiis_fixed_top_nv('comiis_tnv');</script><script> var boan_h5upload_dispose= {width:2600,height:8000,quality:50,noCompressIfLarger:false,crop:false,},boan_h5upload_ispng = 0, boan_h5upload_isbig = false,boan_h5upload_force = 0,
+        boan_h5upload_havepic = 0,
+        boan_h5upload_insertatt = 0,
+        boan_h5upload_isbasepic = 1,
+        boan_h5upload_isbasechk = 1,
+        boan_h5upload_ispic_type = 0,
+        boan_h5upload_remote = 0,
+        boan_h5upload_ispic_qrcode = 1,
+        boan_h5upload_qrcodeurl = 'https://www.ycoo.net/plugin.php?id=boan_h5upload:qrcode&uid=aedepVMAeAzAwJv7w4GgHAZbis1MV142%2BQtvqOhT';  
+        boan_h5upload_qrcodelife = '600';
+        boan_h5upload_allowdown = 0;
+        boan_h5upload_img_hlongup = 0;
+        boan_h5upload_att_hlongup = 0 ;
+        boan_h5upload_hlongurl = '';
+        boan_h5upload_ossserver = ''; 
+        </script>
+         <script type="text/javascript">
+           if (typeof boan_jq != 'undefined'){
+             boan_old_jq = jQuery; 
+             jQuery = boan_jq;
+           } 
+         </script>
+<script type="text/javascript">
+var boan_h5upload_lang = new Array();
+
+boan_h5upload_lang['F_EXCEED_SIZE'] = '单个文件大小不得超过';
+boan_h5upload_lang['Q_EXCEED_NUM_LIMIT']= '最多只能上传';
+boan_h5upload_lang['Q_EXCEED_SIZE_LIMIT'] = '上传文件总大小超出';
+boan_h5upload_lang['Q_TYPE_DENIED'] = '无效文件类型，请上传正确的文件类型';
+boan_h5upload_lang['F_DUPLICATE'] = '请不要重复上传相同文件';
+boan_h5upload_lang['up_error'] = '上传错误，请刷新重试！';
+boan_h5upload_lang['wait_up'] = '等待上传...';
+boan_h5upload_lang['cancel_up'] = '取消上传';
+boan_h5upload_lang['ok_up'] = '上传完成.';
+boan_h5upload_lang['sel_file'] = '选择文件';
+boan_h5upload_lang['explain_img'] = '文件拖到此可上传,在下方编辑器按Ctrl+V可粘贴剪切板图形';
+boan_h5upload_lang['insert_left'] = '居 左';
+boan_h5upload_lang['insert_center'] = '居中插图';
+boan_h5upload_lang['insert_right'] = '居 右';
+boan_h5upload_lang['insert_tile'] = '平 铺';
+boan_h5upload_lang['insert_old'] = '只插旧图';
+boan_h5upload_lang['insert_new'] = '只插新图';
+boan_h5upload_lang['order'] = '正 序';
+boan_h5upload_lang['set_img_order'] = '设置插图顺序';
+boan_h5upload_lang['backward'] = '倒 序';
+boan_h5upload_lang['del_img_all'] = '删全图';
+boan_h5upload_lang['confirm_del_all'] = '您真要删除所有图片吗？';
+boan_h5upload_lang['one'] = '个';
+boan_h5upload_lang['uppercent'] = '正在上传(';
+boan_h5upload_lang['uping'] = '上传中...';
+boan_h5upload_lang['upwaiting'] = '正在上传，请稍等……';
+boan_h5upload_lang['explain_file'] = '文件拖到此处可上传';
+boan_h5upload_lang['upbig'] = '上传大附件到本地';
+boan_h5upload_lang['downfile'] = '正在下载远程附件，请稍等……';
+boan_h5upload_lang['noie'] = '不支持IE核心,请更换其它内核的浏览器';
+boan_h5upload_lang['notext'] = '不支持纯文本模式';
+boan_h5upload_lang['explain_portal'] = '可将文件拖拽到此处上传,按Ctrl+V可粘贴剪切板内容。';
+boan_h5upload_lang['explain_fast'] = '按Ctrl+V可以在编辑区粘贴剪切板中的图形';
+boan_h5upload_lang['attach'] = '附件';
+boan_h5upload_lang['img_describe'] = '图片描述';
+boan_h5upload_lang['sel_img'] = '上传图片';
+boan_h5upload_lang['explain_album'] = '把图形文件拖拽到此处也可以上传哦';
+boan_h5upload_lang['explain_gif'] = 'GIF图片不能裁剪且必须于小于';
+boan_h5upload_lang['examine'] = '您的头像已经提交审核，请等待管理员批准,';
+boan_h5upload_lang['sel_bigfile'] = '选择大文件';
+boan_h5upload_lang['explain_insert'] = '你有未插入的图片, 请插入或者删除不需要的图片再继续！';
+boan_h5upload_lang['explain_must_insert'] = '您必须插入图片才能发贴，单击上传界面的图片即可插入。';
+boan_h5upload_lang['qrcodetoimg'] = '扫码传图';
+boan_h5upload_lang['qrcode_4'] = '温馨提示：扫描右侧的二维码可以上传手机图片到本页面。';
+boan_h5upload_lang['qrcode_5'] = '二维码已失效';
+boan_h5upload_lang['qrcode_6'] = '点击刷新';
+boan_h5upload_lang['drop_order'] = '拖动图片可改变顺序';
+boan_h5upload_lang['base_img'] = '原图上传';
+
+
+</script>
+  
+<script src="source/plugin/boan_h5upload/js/webuploader.min.js" charset="utf-8" type="text/javascript"></script><script src="source/plugin/boan_h5upload/js/boan_h5upload_fast.js?a83caa01 " charset="utf-8" type="text/javascript"></script>
+         <script type="text/javascript">
+           if (typeof  boan_old_jq != 'undefined'){
+               jQuery = boan_old_jq;
+           }
+         </script><script type="text/javascript" src="./plugin.php?id=comiis_app_video:comiis_app_video_up"></script><div class="comiis_footb">
+<div id="ft" class="wp">
+<div class="comiis_footb_info">
+<div class="info_box info_a">
+<h2>关于我们</h2>
+<a href="#" target="_blank" class="info_li">关于我们</a>
+<a href="#" target="_blank" class="info_li">加入我们</a>
+<a href="#" target="_blank" class="info_li">新闻动态</a>
+<a href="#" target="_blank" class="info_li">联系我们</a>
+</div>
+<div class="info_box info_b">
+<h2>服务支持</h2>
+<a href="#" target="_blank" class="info_li">官方商城</a>
+<a href="https://ycoo.net/thread-61051-1-1.html" target="_blank" class="info_li">赞助商</a>
+<a href="/misc.php?mod=stat&amp;op=basic" target="_blank" class="info_li">站点统计</a>
+<a href="/forum.php?mobile=yes" target="_blank" class="info_li">手机版</a>
+</div>
+<div class="info_box info_c">
+<span class="info_li">投诉/建议联系</span>
+<h2 style="margin-top:5px">ycoo2024@163.com</h2> 
+<span class="info_li">未经授权禁止转载，复制和建立镜像，<br>如有违反，追究法律责任</span>       
+</div>
+</div>
+<div class="comiis_footb_ewm">
+<ul>        
+<li><span class="kmewm"><img src="template/discuz_theme_n7/image/ewm_b.jpg"></span>关注公众号</li>
+<li><span class="kmewm"><img src="template/discuz_theme_n7/image/ewm_a.jpg"></span>添加QQ群</li>
+</ul>
+</div>
+</div>
+</div>
+<div class="comiis_footb_copy">
+<div class="wp goai">
+<span class="z">Copyright &copy 2001-2026 <a href="" target="_blank">源论坛</a> <em>版权所有</em> All Rights Reserved.</span>
+<span class="y"><a href="https://beian.miit.gov.cn/" rel="nofollow" target="_blank">皖ICP备2025103846号-2</a></span>
+</div>
+</div><script src="home.php?mod=misc&ac=sendmail&rand=1788133699" type="text/javascript"></script>
+	
+<div class="comiis_rnav" id="comiis_rnav">
+<a href="javascript:" onclick="comiis_app_setcolor_mode();" class="comiis_light" id="comiis_add_css" rel="nofollow"><span class="comiis_tip_text">关灯</span></a>
+<a href="forum.php?mod=post&amp;action=newthread&amp;fid=2" class="comiis_rpost" rel="nofollow"><span class="comiis_tip_text">在本版发帖</span></a><a href="javascript:;" class="comiis_rwx" title="微信客服" rel="nofollow"><div class="comiis_rewm_box"><div class="comiis_rewm"><img src="template/discuz_theme_n7/image/ewm_a.jpg"><span>扫一扫添加QQ群</span></div></div></a>
+<a href="javascript:;" onclick="jQuery('body,html').animate({scrollTop:0}, 600);" title="返回顶部" id="comiis_rtop" class="comiis_rtop ogfizdw" rel="nofollow"><span class="comiis_tip_text">返回顶部</span></a>
+</div>
+<div id="scrolltop">
+<span><a href="forum.php?mod=post&amp;action=reply&amp;fid=2&amp;tid=126339&amp;extra=&amp;page=1" onclick="replyfloor_reply(this.href)" class="replyfast" title="快速回复"><b>快速回复</b></a></span>
+<span hidefocus="true"><a title="返回顶部" onclick="window.scrollTo('0','0')" class="scrolltopa" ><b>返回顶部</b></a></span>
+<span>
+<a href="forum-2-1.html" hidefocus="true" class="returnlist" title="返回列表"><b>返回列表</b></a>
+</span>
+</div>
+<script type="text/javascript">_attachEvent(window, 'scroll', function () { new_showTopLink(); });
+_attachEvent(window, 'resize', function(){ new_showTopLink(); });checkBlind();</script>
+<script type="text/javascript">
+function new_showTopLink() {
+var ft = $('ft');
+if(ft){
+var scrolltop = $('comiis_rnav');
+var viewPortHeight = parseInt(document.documentElement.clientHeight);
+var scrollHeight = parseInt(document.body.getBoundingClientRect().top);
+var basew = parseInt(ft.clientWidth);
+var sw = scrolltop.clientWidth;
+if (basew < 1500) {
+var left = parseInt(fetchOffset(ft)['left']);
+left = left < sw ? left * 2 - sw : left;
+scrolltop.style.left = ( basew + left ) + 'px';
+} else {
+scrolltop.style.left = 'auto';
+scrolltop.style.right = 0;
+}
+if (scrollHeight < -100) {
+jQuery(".comiis_rtop").slideDown();
+} else {
+jQuery(".comiis_rtop").slideUp();
+}
+}
+}
+new_showTopLink();
+var comiis_app_color_modes = !$('css_extstyle') ? 1 : 0;
+function comiis_app_setcolor_mode() {
+if (comiis_app_color_modes == 1) {
+comiis_app_color_modes = 0;
+$('comiis_add_css').className = 'comiis_light_on';
+jQuery("#comiis_add_css .comiis_tip_text").text('开灯');
+extstyle('./template/discuz_theme_n7/image/comiis_hei');
+} else {
+comiis_app_color_modes = 1;
+$('comiis_add_css').className = 'comiis_light';
+jQuery("#comiis_add_css .comiis_tip_text").text('关灯');
+extstyle('');
+}
+}
+</script></body>
+</html>
