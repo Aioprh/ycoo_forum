@@ -51,7 +51,15 @@ class _ProfilePageState extends State<ProfilePage> {
 
   Future<void> _logout() async {
     await AuthService.instance.logout();
-    if (mounted) setState(() { _username = null; _uid = null; _avatarUrl = null; _ready = true; _checkinResult = null; });
+    if (mounted) {
+      setState(() {
+        _username = null;
+        _uid = null;
+        _avatarUrl = null;
+        _ready = true;
+        _checkinResult = null;
+      });
+    }
   }
 
   Future<void> _checkIn() async {
@@ -95,7 +103,15 @@ class _ProfilePageState extends State<ProfilePage> {
       child: Padding(
         padding: const EdgeInsets.all(13),
         child: Row(children: [
-          Container(width: 42, height: 42, decoration: BoxDecoration(color: Theme.of(context).colorScheme.primaryContainer, borderRadius: BorderRadius.circular(13)), child: Icon(icon, size: 22)),
+          Container(
+            width: 42,
+            height: 42,
+            decoration: BoxDecoration(
+              color: Theme.of(context).colorScheme.primaryContainer,
+              borderRadius: BorderRadius.circular(13),
+            ),
+            child: Icon(icon, size: 22),
+          ),
           const SizedBox(width: 11),
           Expanded(child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
             Text(title, maxLines: 1, overflow: TextOverflow.ellipsis, style: const TextStyle(fontSize: 14, fontWeight: FontWeight.w700)),
@@ -123,11 +139,31 @@ class _ProfilePageState extends State<ProfilePage> {
         onTap: loggedIn ? _openMySpace : (_ready ? _openLogin : null),
         child: Container(
           padding: const EdgeInsets.all(18),
-          decoration: BoxDecoration(gradient: LinearGradient(begin: Alignment.topLeft, end: Alignment.bottomRight, colors: [scheme.primaryContainer, scheme.surface])),
+          decoration: BoxDecoration(
+            gradient: LinearGradient(
+              begin: Alignment.topLeft,
+              end: Alignment.bottomRight,
+              colors: [scheme.primaryContainer, scheme.surface],
+            ),
+          ),
           child: Row(children: [
             Stack(children: [
               _avatar(loggedIn),
-              if (loggedIn) Positioned(right: 0, bottom: 0, child: Container(width: 18, height: 18, decoration: BoxDecoration(color: scheme.primary, shape: BoxShape.circle, border: Border.all(color: scheme.surface, width: 2)), child: const Icon(Icons.check, size: 11))),
+              if (loggedIn)
+                Positioned(
+                  right: 0,
+                  bottom: 0,
+                  child: Container(
+                    width: 18,
+                    height: 18,
+                    decoration: BoxDecoration(
+                      color: scheme.primary,
+                      shape: BoxShape.circle,
+                      border: Border.all(color: scheme.surface, width: 2),
+                    ),
+                    child: const Icon(Icons.check, size: 11),
+                  ),
+                ),
             ]),
             const SizedBox(width: 15),
             Expanded(child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
@@ -152,11 +188,37 @@ class _ProfilePageState extends State<ProfilePage> {
     );
   }
 
-  Widget _miniStat(IconData icon, String text) => Row(mainAxisSize: MainAxisSize.min, children: [Icon(icon, size: 14), const SizedBox(width: 4), Text(text, style: const TextStyle(fontSize: 10, fontWeight: FontWeight.w600))]);
+  Widget _miniStat(IconData icon, String text) => Row(
+    mainAxisSize: MainAxisSize.min,
+    children: [
+      Icon(icon, size: 14),
+      const SizedBox(width: 4),
+      Text(text, style: const TextStyle(fontSize: 10, fontWeight: FontWeight.w600)),
+    ],
+  );
 
   Widget _checkinCard() {
     final scheme = Theme.of(context).colorScheme;
-    final done = _checkinResult != null && (_checkinResult!.contains('成功') || _checkinResult!.contains('已经签到') || _checkinResult!.contains('已签'));
+    final result = _checkinResult;
+    final done = result != null && (
+      result.contains('成功') ||
+      result.contains('已经签到') ||
+      result.contains('已签')
+    );
+
+    Widget trailing;
+    if (_signing) {
+      trailing = const SizedBox(
+        width: 20,
+        height: 20,
+        child: CircularProgressIndicator(strokeWidth: 2),
+      );
+    } else if (done) {
+      trailing = Icon(Icons.check_circle_rounded, color: scheme.primary);
+    } else {
+      trailing = Icon(Icons.arrow_forward_ios_rounded, size: 16, color: scheme.onSurfaceVariant);
+    }
+
     return Card(
       margin: EdgeInsets.zero,
       clipBehavior: Clip.antiAlias,
@@ -164,16 +226,60 @@ class _ProfilePageState extends State<ProfilePage> {
         onTap: _signing || done ? null : _checkIn,
         child: Container(
           padding: const EdgeInsets.all(16),
-          decoration: BoxDecoration(gradient: LinearGradient(begin: Alignment.topLeft, end: Alignment.bottomRight, colors: [scheme.secondaryContainer, scheme.surface])),
+          decoration: BoxDecoration(
+            gradient: LinearGradient(
+              begin: Alignment.topLeft,
+              end: Alignment.bottomRight,
+              colors: [scheme.secondaryContainer, scheme.surface],
+            ),
+          ),
           child: Row(children: [
-            Container(width: 50, height: 50, decoration: BoxDecoration(color: scheme.secondary, borderRadius: BorderRadius.circular(16)), child: Icon(done ? Icons.check_rounded : Icons.calendar_month_rounded, color: scheme.onSecondary, size: 27)),
+            Container(
+              width: 50,
+              height: 50,
+              decoration: BoxDecoration(
+                color: scheme.secondary,
+                borderRadius: BorderRadius.circular(16),
+              ),
+              child: Icon(
+                done ? Icons.check_rounded : Icons.calendar_month_rounded,
+                color: scheme.onSecondary,
+                size: 27,
+              ),
+            ),
             const SizedBox(width: 14),
-            Expanded(child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
-              Row(children: [const Text('每日签到', style: TextStyle(fontSize: 16, fontWeight: FontWeight.w800)), const SizedBox(width: 7), if (done) Container(padding: const EdgeInsets.symmetric(horizontal: 7, vertical: 3), decoration: BoxDecoration(color: scheme.primaryContainer, borderRadius: BorderRadius.circular(20)), child: const Text('今日已完成', style: TextStyle(fontSize: 10, fontWeight: FontWeight.w700))) ]),
-              const SizedBox(height: 4),
-              Text(_signing ? '正在签到，请稍候…' : done ? (_checkinResult ?? '今天已经签到') : '点击一次，直接完成今日签到', style: TextStyle(fontSize: 12, color: scheme.onSurfaceVariant)),
-            ])),
-            if (_signing) const SizedBox(width: 20, height: 20, child: CircularProgressIndicator(strokeWidth: 2)) else if (!done) Icon(Icons.arrow_forward_ios_rounded, size: 16, color: scheme.onSurfaceVariant),
+            Expanded(child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Row(children: [
+                  const Text('每日签到', style: TextStyle(fontSize: 16, fontWeight: FontWeight.w800)),
+                  if (done) ...[
+                    const SizedBox(width: 7),
+                    Container(
+                      padding: const EdgeInsets.symmetric(horizontal: 7, vertical: 3),
+                      decoration: BoxDecoration(
+                        color: scheme.primaryContainer,
+                        borderRadius: BorderRadius.circular(20),
+                      ),
+                      child: const Text('今日已完成', style: TextStyle(fontSize: 10, fontWeight: FontWeight.w700)),
+                    ),
+                  ],
+                ]),
+                const SizedBox(height: 4),
+                Text(
+                  _signing
+                      ? '正在签到，请稍候…'
+                      : done
+                          ? (result ?? '今天已经签到')
+                          : '点击一次，直接完成今日签到',
+                  maxLines: 2,
+                  overflow: TextOverflow.ellipsis,
+                  style: TextStyle(fontSize: 12, color: scheme.onSurfaceVariant),
+                ),
+              ],
+            )),
+            const SizedBox(width: 10),
+            trailing,
           ]),
         ),
       ),
@@ -185,7 +291,10 @@ class _ProfilePageState extends State<ProfilePage> {
     final loggedIn = _username != null && _username!.trim().isNotEmpty && AuthService.instance.isLoggedIn;
     return Scaffold(
       backgroundColor: Theme.of(context).colorScheme.surfaceContainerLowest,
-      appBar: AppBar(title: const Text('我的'), actions: [IconButton(tooltip: '刷新', onPressed: _load, icon: const Icon(Icons.refresh_rounded))]),
+      appBar: AppBar(
+        title: const Text('我的'),
+        actions: [IconButton(tooltip: '刷新', onPressed: _load, icon: const Icon(Icons.refresh_rounded))],
+      ),
       body: RefreshIndicator(
         onRefresh: _load,
         child: ListView(
@@ -197,7 +306,12 @@ class _ProfilePageState extends State<ProfilePage> {
             if (loggedIn) ...[
               _sectionHeader(context, '社区'),
               GridView.count(
-                crossAxisCount: 2, shrinkWrap: true, physics: const NeverScrollableScrollPhysics(), mainAxisSpacing: 10, crossAxisSpacing: 10, childAspectRatio: 1.9,
+                crossAxisCount: 2,
+                shrinkWrap: true,
+                physics: const NeverScrollableScrollPhysics(),
+                mainAxisSpacing: 10,
+                crossAxisSpacing: 10,
+                childAspectRatio: 1.9,
                 children: [
                   _featureTile(icon: Icons.person_outline, title: '个人主页', subtitle: '资料、主题、回帖', onTap: _openMySpace),
                   _featureTile(icon: Icons.badge_outlined, title: '资料设置', subtitle: '编辑个人资料', onTap: _openEdit),
@@ -215,7 +329,12 @@ class _ProfilePageState extends State<ProfilePage> {
               _featureTile(icon: Icons.account_balance_wallet_outlined, title: '星币 / 积分', subtitle: '余额与交易记录', onTap: () => _openNative(title: '星币 / 积分', path: 'home.php?mod=spacecp&ac=credit&mobile=2', type: MemberFeatureType.credits)),
               _sectionHeader(context, '论坛工具'),
               GridView.count(
-                crossAxisCount: 2, shrinkWrap: true, physics: const NeverScrollableScrollPhysics(), mainAxisSpacing: 10, crossAxisSpacing: 10, childAspectRatio: 1.9,
+                crossAxisCount: 2,
+                shrinkWrap: true,
+                physics: const NeverScrollableScrollPhysics(),
+                mainAxisSpacing: 10,
+                crossAxisSpacing: 10,
+                childAspectRatio: 1.9,
                 children: [
                   _featureTile(icon: Icons.search, title: '搜索', subtitle: '帖子、用户、版块', onTap: () => Navigator.of(context).push(MaterialPageRoute(builder: (_) => const SearchPage()))),
                   _featureTile(icon: Icons.public, title: '电脑版论坛', subtitle: '完整论坛入口', onTap: () => _openNativeSite('', '源论坛')),
@@ -229,7 +348,22 @@ class _ProfilePageState extends State<ProfilePage> {
               ListTile(contentPadding: const EdgeInsets.symmetric(horizontal: 14), leading: const Icon(Icons.logout), title: const Text('退出登录'), trailing: const Icon(Icons.chevron_right), onTap: _logout),
             ] else ...[
               _sectionHeader(context, '登录后可用'),
-              Card(margin: EdgeInsets.zero, child: Padding(padding: const EdgeInsets.all(18), child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [const Text('登录后使用完整论坛功能', style: TextStyle(fontWeight: FontWeight.w700)), const SizedBox(height: 6), Text('个人主页、收藏、通知、消息、签到、积分等功能都可以直接在 App 中使用。', style: TextStyle(fontSize: 13, color: Theme.of(context).colorScheme.onSurfaceVariant)), const SizedBox(height: 14), FilledButton.icon(onPressed: _ready ? _openLogin : null, icon: const Icon(Icons.login), label: const Text('立即登录'))])),
+              Card(
+                margin: EdgeInsets.zero,
+                child: Padding(
+                  padding: const EdgeInsets.all(18),
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      const Text('登录后使用完整论坛功能', style: TextStyle(fontWeight: FontWeight.w700)),
+                      const SizedBox(height: 6),
+                      Text('个人主页、收藏、通知、消息、签到、积分等功能都可以直接在 App 中使用.', style: TextStyle(fontSize: 13, color: Theme.of(context).colorScheme.onSurfaceVariant)),
+                      const SizedBox(height: 14),
+                      FilledButton.icon(onPressed: _ready ? _openLogin : null, icon: const Icon(Icons.login), label: const Text('立即登录')),
+                    ],
+                  ),
+                ),
+              ),
             ],
             _sectionHeader(context, '关于'),
             const ListTile(contentPadding: EdgeInsets.symmetric(horizontal: 4), leading: Icon(Icons.apps_rounded), title: Text('源论坛'), subtitle: Text('YcoForum · 非官方客户端')),
