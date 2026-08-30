@@ -6,6 +6,9 @@ import '../services/auth_service.dart';
 import '../services/attachment_download_service.dart';
 import '../services/thread_interaction_service.dart';
 import '../widgets/native_comment_list.dart';
+import '../widgets/resolved_user_avatar.dart';
+import '../services/comment_profile_resolver.dart';
+import 'native_profile_page.dart';
 import '../widgets/native_post_content.dart';
 import 'login_page.dart';
 import 'thread_list_page.dart';
@@ -380,6 +383,20 @@ class _DetailPageState extends State<DetailPage> {
     );
   }
 
+  Future<void> _openAuthorProfile(BuildContext context, String author) async {
+    final name = author.trim();
+    if (name.isEmpty) return;
+    final uid = await CommentProfileResolver.instance.resolveUid(name);
+    if (!context.mounted) return;
+    if (uid == null || uid <= 0) {
+      _snack('未找到该用户资料，请稍后重试');
+      return;
+    }
+    Navigator.of(context).push(
+      MaterialPageRoute(builder: (_) => NativeProfilePage(uid: uid, username: name)),
+    );
+  }
+
   Widget _hero(BuildContext context, ThreadDetail d) {
     final c = Theme.of(context).colorScheme;
     return Container(
@@ -423,15 +440,11 @@ class _DetailPageState extends State<DetailPage> {
           const SizedBox(height: 16),
           Row(
             children: [
-              CircleAvatar(
+              ResolvedUserAvatar(
+                uid: 0,
+                username: d.author,
                 radius: 22,
-                backgroundColor: c.primaryContainer,
-                backgroundImage: d.avatar.isNotEmpty
-                    ? NetworkImage(d.avatar)
-                    : null,
-                child: d.avatar.isNotEmpty
-                    ? null
-                    : Icon(Icons.person_rounded, color: c.primary),
+                onTap: () => _openAuthorProfile(context, d.author),
               ),
               const SizedBox(width: 11),
               Expanded(
