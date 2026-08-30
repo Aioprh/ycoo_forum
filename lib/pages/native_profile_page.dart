@@ -26,7 +26,7 @@ class _NativeProfilePageState extends State<NativeProfilePage> with SingleTicker
   Future<void> _load() async {
     if (mounted) setState(() { _loading = true; _error = null; });
     try {
-      final p = await ProfileService.instance.fetchProfile(widget.uid);
+      final p = await ProfileService.instance.fetchProfile(widget.uid, fallbackUsername: widget.username);
       if (mounted) setState(() => _profile = p);
       await _loadList(replies: _tabs.index == 1);
     } catch (e) { if (mounted) setState(() => _error = e.toString().replaceFirst('Exception: ', '')); }
