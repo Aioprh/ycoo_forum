@@ -453,7 +453,7 @@ class _CreateThreadPageState extends State<CreateThreadPage> {
         bottomNavigationBar: SafeArea(child: Container(padding: const EdgeInsets.fromLTRB(16, 10, 16, 10), decoration: BoxDecoration(color: scheme.surface.withOpacity(.96), boxShadow: [BoxShadow(blurRadius: 18, color: Colors.black.withOpacity(.06))]), child: Row(children: [
           Expanded(child: Text(_submitting ? '正在发布…' : (_dirty ? '草稿已自动保存' : '准备好后就可以发布了'), style: TextStyle(fontSize: 12, color: scheme.onSurfaceVariant))),
           FilledButton.icon(onPressed: _submitting || _uploading || _loadingBoards ? null : _submit, icon: _submitting ? const SizedBox(width: 18, height: 18, child: CircularProgressIndicator(strokeWidth: 2)) : const Icon(Icons.send_rounded, size: 19), label: Text(_submitting ? '发布中' : '发布帖子'), style: FilledButton.styleFrom(minimumSize: const Size(0, 48), padding: const EdgeInsets.symmetric(horizontal: 20))),
-        ])),
+        ]))),
         body: SafeArea(child: Form(key: _formKey, child: ListView(padding: const EdgeInsets.fromLTRB(16, 10, 16, 24), keyboardDismissBehavior: ScrollViewKeyboardDismissBehavior.onDrag, children: [
           Container(padding: const EdgeInsets.fromLTRB(18, 16, 18, 14), decoration: BoxDecoration(gradient: LinearGradient(colors: [scheme.primaryContainer, scheme.secondaryContainer]), borderRadius: BorderRadius.circular(24)), child: Row(children: [
             Container(width: 46, height: 46, decoration: BoxDecoration(color: scheme.surface.withOpacity(.72), borderRadius: BorderRadius.circular(15)), child: Icon(Icons.forum_rounded, color: scheme.primary)), const SizedBox(width: 13),
