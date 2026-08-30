@@ -12,29 +12,25 @@ class ThreadType {
 }
 
 /// 通过当前登录 Cookie 调用 Discuz 原生发帖接口。
+///
+/// 发帖页的能力以论坛实际返回的 HTML 为准：例如主题分类、售价、阅读权限
+/// 等只有在网页端开放对应字段时才会提交，避免向不同版块发送无效参数。
 class ThreadPublishService {
   ThreadPublishService._();
   static final instance = ThreadPublishService._();
   static const _base = 'https://www.ycoo.net/';
 
   Future<List<ThreadType>> fetchThreadTypes(int fid) async {
-    if (!AuthService.instance.isLoggedIn || (AuthService.instance.authCookie ?? '').isEmpty) {
-      return const [];
-    }
+    if (!AuthService.instance.isLoggedIn || (AuthService.instance.authCookie ?? '').isEmpty) return const [];
     try {
-      final client = await NetClient.instance.client;
-      final headers = _headers();
-      final forumUrl = '${_base}forum.php?mod=post&action=newthread&fid=$fid&mobile=2';
-      final resp = await NetClient.retry(() => client.get(Uri.parse(forumUrl), headers: headers).timeout(NetClient.timeout));
-      if (resp.statusCode != 200) return const [];
-      final doc = parser.parse(NetClient.decode(resp.bodyBytes));
+      final doc = await _postPage(fid);
       final result = <ThreadType>[];
       for (final select in doc.querySelectorAll('select[name="typeid"]')) {
         for (final opt in select.querySelectorAll('option')) {
           final id = int.tryParse(opt.attributes['value'] ?? '');
           final name = opt.text.trim();
           if (id == null || id <= 0 || name.isEmpty || name.contains('请选择')) continue;
-          result.add(ThreadType(id, name));
+          if (result.every((e) => e.id != id)) result.add(ThreadType(id, name));
         }
       }
       return result;
@@ -48,22 +44,23 @@ class ThreadPublishService {
     required String subject,
     required String message,
     int? typeid,
+    int price = 0,
+    int readperm = 0,
+    bool usesig = true,
+    bool allownoticeauthor = true,
     List<UploadedAttachment> attachments = const [],
   }) async {
-    if (!AuthService.instance.isLoggedIn || (AuthService.instance.authCookie ?? '').isEmpty) {
-      return '请先登录论坛';
-    }
+    if (!AuthService.instance.isLoggedIn || (AuthService.instance.authCookie ?? '').isEmpty) return '请先登录论坛';
     final title = subject.trim();
     final body = message.trim();
     if (title.isEmpty) return '请输入标题';
+    if (title.length > 100) return '标题不能超过 100 个字符';
     if (body.isEmpty && attachments.isEmpty) return '请输入正文或添加附件';
 
     try {
       final client = await NetClient.instance.client;
       final forumUrl = '${_base}forum.php?mod=post&action=newthread&fid=$fid&mobile=2';
       final headers = _headers();
-
-      // 每次提交前重新获取当前会话的发帖页面，避免长期缓存导致 formhash 失效。
       final page = await client.get(Uri.parse(forumUrl), headers: headers).timeout(NetClient.timeout);
       if (page.statusCode != 200) return '读取发帖页面失败 HTTP ${page.statusCode}';
       final html = NetClient.decode(page.bodyBytes);
@@ -74,23 +71,23 @@ class ThreadPublishService {
       final form = <String, String>{
         'formhash': formhash,
         'posttime': _value(doc, 'posttime'),
-        'wysiwyg': '1',
+        // 原论坛编辑器支持 BBCode 工具栏，因此移动端也使用同一语法。
+        'wysiwyg': '0',
         'subject': title,
         'message': body,
         'topicsubmit': 'yes',
-        'usesig': '1',
-        'allownoticeauthor': '1',
+        'usesig': usesig ? '1' : '0',
+        'allownoticeauthor': allownoticeauthor ? '1' : '0',
       };
       _copyIfPresent(doc, form, 'typeid');
       _copyIfPresent(doc, form, 'sortid');
       _copyIfPresent(doc, form, 'special');
       _copyIfPresent(doc, form, 'hiddenreplies');
-      _copyIfPresent(doc, form, 'readperm');
       _copyIfPresent(doc, form, 'addfeed');
-      if (typeid != null && typeid > 0) form['typeid'] = '$typeid';
+      if (typeid != null && typeid > 0 && _hasField(doc, 'typeid')) form['typeid'] = '$typeid';
+      if (price > 0 && _hasField(doc, 'price')) form['price'] = '$price';
+      if (readperm > 0 && _hasField(doc, 'readperm')) form['readperm'] = '$readperm';
 
-      // Discuz 发帖页上传成功后会生成“未使用附件”，最终通过
-      // attachnew[aid][...] 将附件绑定到主题。
       for (final attachment in attachments) {
         form['attachnew[${attachment.aid}][description]'] = '';
         form['attachnew[${attachment.aid}][readperm]'] = '';
@@ -117,6 +114,14 @@ class ThreadPublishService {
     }
   }
 
+  Future<dynamic> _postPage(int fid) async {
+    final client = await NetClient.instance.client;
+    final url = '${_base}forum.php?mod=post&action=newthread&fid=$fid&mobile=2';
+    final resp = await NetClient.retry(() => client.get(Uri.parse(url), headers: _headers()).timeout(NetClient.timeout));
+    if (resp.statusCode != 200) throw Exception('HTTP ${resp.statusCode}');
+    return parser.parse(NetClient.decode(resp.bodyBytes));
+  }
+
   Map<String, String> _headers() => {
         'User-Agent': NetClient.ua,
         'Accept': 'text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8',
@@ -127,6 +132,8 @@ class ThreadPublishService {
       };
 
   String _value(dynamic doc, String name) => (doc.querySelector('input[name="$name"]')?.attributes['value'] ?? '').trim();
+
+  bool _hasField(dynamic doc, String name) => doc.querySelector('[name="$name"]') != null;
 
   void _copyIfPresent(dynamic doc, Map<String, String> form, String name) {
     final value = _value(doc, name);
@@ -147,9 +154,13 @@ class ThreadPublishService {
   }
 
   String? _firstFailure(String text) {
-    const keys = ['禁止发帖', '发帖频率', '内容包含敏感词', '标题太长', '标题不能为空', '内容不能为空', '版块不存在', '附件'];
+    const keys = ['禁止发帖', '发帖频率', '内容包含敏感词', '标题太长', '标题不能为空', '内容不能为空', '版块不存在', '附件', '售价'];
     for (final key in keys) {
-      if (text.contains(key)) return key == '附件' ? '附件未能绑定到帖子，请重新上传后再试' : key;
+      if (text.contains(key)) {
+        if (key == '附件') return '附件未能绑定到帖子，请重新上传后再试';
+        if (key == '售价') return '当前版块不允许设置该售价';
+        return key;
+      }
     }
     return null;
   }
