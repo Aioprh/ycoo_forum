@@ -8,7 +8,7 @@ import '../services/auth_service.dart';
 import '../services/site_fallback_service.dart';
 import '../services/thread_publish_service.dart';
 
-/// 原生发帖页：对齐源论坛网页端的快速发帖/高级模式，并保留原生附件上传能力。
+/// Modern Material 3 native post composer.
 class CreateThreadPage extends StatefulWidget {
   const CreateThreadPage({super.key});
 
@@ -20,9 +20,11 @@ class _CreateThreadPageState extends State<CreateThreadPage> {
   final _formKey = GlobalKey<FormState>();
   final _title = TextEditingController();
   final _body = TextEditingController();
+  final _bodyFocus = FocusNode();
+  final List<UploadedAttachment> _attachments = [];
+
   List<ForumBoard> _boards = const [];
   List<ThreadType> _types = const [];
-  final List<UploadedAttachment> _attachments = [];
   int? _fid;
   int? _typeid;
   int _price = 0;
@@ -47,6 +49,7 @@ class _CreateThreadPageState extends State<CreateThreadPage> {
   void dispose() {
     _title.dispose();
     _body.dispose();
+    _bodyFocus.dispose();
     super.dispose();
   }
 
@@ -71,8 +74,7 @@ class _CreateThreadPageState extends State<CreateThreadPage> {
         _loadingBoards = false;
         _error = boards.isEmpty ? '暂时没有可发帖的版块' : null;
       });
-      final fid = _fid;
-      if (fid != null) _loadTypes(fid);
+      if (_fid != null) _loadTypes(_fid!);
     } catch (_) {
       if (mounted) setState(() { _loadingBoards = false; _error = '版块加载失败，请稍后重试'; });
     }
@@ -83,45 +85,22 @@ class _CreateThreadPageState extends State<CreateThreadPage> {
     setState(() { _loadingTypes = true; _types = const []; _typeid = null; });
     final types = await ThreadPublishService.instance.fetchThreadTypes(fid);
     if (!mounted) return;
-    setState(() {
-      _types = types;
-      _loadingTypes = false;
-      _typeid = types.isNotEmpty ? types.first.id : null;
-    });
+    setState(() { _types = types; _loadingTypes = false; _typeid = types.isNotEmpty ? types.first.id : null; });
   }
 
   Future<void> _pickAttachments() async {
-    if (_uploading || _submitting) return;
-    final fid = _fid;
-    if (fid == null || fid <= 0) {
-      setState(() => _error = '请先选择发布版块');
-      return;
-    }
+    if (_uploading || _submitting || _fid == null) return;
     try {
-      final picked = await FilePicker.platform.pickFiles(
-        allowMultiple: true,
-        withData: false,
-        type: FileType.any,
-      );
+      final picked = await FilePicker.platform.pickFiles(allowMultiple: true, withData: false, type: FileType.any);
       if (picked == null || picked.files.isEmpty) return;
-      setState(() {
-        _uploading = true;
-        _error = null;
-        _uploadStatus = '准备上传 0/${picked.files.length}';
-      });
+      setState(() { _uploading = true; _error = null; _uploadStatus = '准备上传 0/${picked.files.length}'; });
       for (var i = 0; i < picked.files.length; i++) {
         final file = picked.files[i];
-        if (file.path == null || file.path!.isEmpty) {
-          if (mounted) setState(() => _error = '${file.name} 无法读取');
-          continue;
-        }
-        if (file.size > AttachmentUploadService.maxBytes) {
-          if (mounted) setState(() => _error = '${file.name} 超过 10 MB，已跳过');
-          continue;
-        }
-        if (mounted) setState(() => _uploadStatus = '正在上传 ${i + 1}/${picked.files.length}：${file.name}');
+        if (file.path == null || file.path!.isEmpty) { setState(() => _error = '${file.name} 无法读取'); continue; }
+        if (file.size > AttachmentUploadService.maxBytes) { setState(() => _error = '${file.name} 超过 10 MB，已跳过'); continue; }
+        setState(() => _uploadStatus = '正在上传 ${i + 1}/${picked.files.length}：${file.name}');
         try {
-          final uploaded = await AttachmentUploadService.instance.upload(fid: fid, file: file);
+          final uploaded = await AttachmentUploadService.instance.upload(fid: _fid!, file: file);
           if (mounted) setState(() => _attachments.add(uploaded));
         } catch (e) {
           if (mounted) setState(() => _error = '${file.name}：${e.toString().replaceFirst('Exception: ', '')}');
@@ -134,53 +113,37 @@ class _CreateThreadPageState extends State<CreateThreadPage> {
     }
   }
 
-  void _removeAttachment(int aid) {
-    if (_uploading || _submitting) return;
-    setState(() => _attachments.removeWhere((e) => e.aid == aid));
-  }
+  void _removeAttachment(int aid) => setState(() => _attachments.removeWhere((e) => e.aid == aid));
 
   Future<void> _submit() async {
-    if (_submitting || _uploading || !_formKey.currentState!.validate()) return;
-    final fid = _fid;
-    if (fid == null || fid <= 0) {
-      setState(() => _error = '请选择发帖版块');
-      return;
-    }
+    if (_submitting || _uploading || !_formKey.currentState!.validate() || _fid == null) return;
     FocusScope.of(context).unfocus();
     setState(() { _submitting = true; _error = null; });
     final result = await ThreadPublishService.instance.createThread(
-      fid: fid,
-      subject: _title.text,
-      message: _body.text,
-      typeid: _typeid,
-      price: _price,
-      readperm: _readperm,
-      usesig: _usesig,
-      allownoticeauthor: _allownoticeauthor,
-      attachments: List.unmodifiable(_attachments),
+      fid: _fid!, subject: _title.text, message: _body.text, typeid: _typeid,
+      price: _price, readperm: _readperm, usesig: _usesig,
+      allownoticeauthor: _allownoticeauthor, attachments: List.unmodifiable(_attachments),
     );
     if (!mounted) return;
     setState(() => _submitting = false);
     if (result == null) {
-      ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('发帖成功')));
+      ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('帖子发布成功')));
       Navigator.of(context).pop(true);
     } else {
       setState(() => _error = result);
     }
   }
 
-  void _insert(String value, {int? selectionOffset}) {
+  void _insert(String value) {
     final text = _body.text;
     final selection = _body.selection;
-    final start = selection.isValid ? selection.start : text.length;
-    final end = selection.isValid ? selection.end : text.length;
-    final selected = text.substring(start.clamp(0, text.length), end.clamp(0, text.length));
+    final start = selection.isValid ? selection.start.clamp(0, text.length) : text.length;
+    final end = selection.isValid ? selection.end.clamp(start, text.length) : text.length;
+    final selected = text.substring(start, end);
     final replacement = value.replaceAll('{text}', selected.isEmpty ? '文字' : selected);
     final newText = text.replaceRange(start, end, replacement);
-    _body.value = TextEditingValue(
-      text: newText,
-      selection: TextSelection.collapsed(offset: (start + (selectionOffset ?? replacement.length)).clamp(0, newText.length)),
-    );
+    _body.value = TextEditingValue(text: newText, selection: TextSelection.collapsed(offset: (start + replacement.length).clamp(0, newText.length)));
+    _bodyFocus.requestFocus();
     setState(() {});
   }
 
@@ -190,17 +153,10 @@ class _CreateThreadPageState extends State<CreateThreadPage> {
       context: context,
       builder: (context) => AlertDialog(
         title: Text(title),
-        content: TextField(
-          controller: controller,
-          autofocus: true,
-          decoration: InputDecoration(hintText: hint, border: const OutlineInputBorder()),
-          keyboardType: TextInputType.url,
-          onSubmitted: (_) => Navigator.pop(context, controller.text.trim()),
-        ),
-        actions: [
-          TextButton(onPressed: () => Navigator.pop(context), child: const Text('取消')),
-          FilledButton(onPressed: () => Navigator.pop(context, controller.text.trim()), child: const Text('插入')),
-        ],
+        content: TextField(controller: controller, autofocus: true, keyboardType: TextInputType.url,
+          decoration: InputDecoration(hintText: hint, filled: true, border: OutlineInputBorder(borderRadius: BorderRadius.circular(14), borderSide: BorderSide.none)),
+          onSubmitted: (_) => Navigator.pop(context, controller.text.trim())),
+        actions: [TextButton(onPressed: () => Navigator.pop(context), child: const Text('取消')), FilledButton(onPressed: () => Navigator.pop(context, controller.text.trim()), child: const Text('插入'))],
       ),
     );
     controller.dispose();
@@ -208,7 +164,7 @@ class _CreateThreadPageState extends State<CreateThreadPage> {
   }
 
   Future<void> _insertImage() async {
-    final url = await _ask('插入图片', hint: 'https://example.com/image.jpg');
+    final url = await _ask('插入图片', hint: '图片 URL');
     if (url != null && url.isNotEmpty) _insert('[img]$url[/img]');
   }
 
@@ -218,219 +174,137 @@ class _CreateThreadPageState extends State<CreateThreadPage> {
   }
 
   Future<void> _chooseColor() async {
-    final colors = <String>['red', 'orange', 'green', 'blue', 'purple', 'gray', 'black'];
-    final color = await showModalBottomSheet<String>(
-      context: context,
-      showDragHandle: true,
-      builder: (context) => SafeArea(
-        child: Wrap(
-          children: colors.map((color) => ListTile(
-            leading: CircleAvatar(child: Text('色', style: TextStyle(fontSize: 12, color: color == 'black' ? Colors.white : Colors.black))),
-            title: Text(color),
-            onTap: () => Navigator.pop(context, color),
-          )).toList(),
-        ),
-      ),
-    );
+    const colors = ['red', 'orange', 'green', 'blue', 'purple', 'gray', 'black'];
+    final color = await showModalBottomSheet<String>(context: context, showDragHandle: true,
+      builder: (context) => SafeArea(child: Column(mainAxisSize: MainAxisSize.min, children: [
+        const ListTile(title: Text('文字颜色', style: TextStyle(fontWeight: FontWeight.w800))),
+        Wrap(spacing: 8, runSpacing: 8, children: colors.map((c) => ActionChip(label: Text(c), onPressed: () => Navigator.pop(context, c))).toList()),
+        const SizedBox(height: 20),
+      ])));
     if (color != null) _insert('[color=$color]{text}[/color]');
   }
 
-  Widget _toolbarButton(IconData icon, String tooltip, VoidCallback onPressed) {
-    return IconButton(tooltip: tooltip, onPressed: _submitting || _uploading ? null : onPressed, icon: Icon(icon, size: 20));
+  Future<void> _chooseEmoji() async {
+    const emojis = ['😀','😂','😎','👍','❤️','🎉','😅','🤔','🔥','👏','🥳','🙏','✨','💡','🌟','🤣','😭','😇'];
+    final emoji = await showModalBottomSheet<String>(context: context, showDragHandle: true,
+      builder: (context) => SafeArea(child: Padding(padding: const EdgeInsets.all(16), child: Wrap(alignment: WrapAlignment.center, spacing: 4, runSpacing: 4,
+        children: emojis.map((e) => IconButton(iconSize: 30, onPressed: () => Navigator.pop(context, e), icon: Text(e))).toList()))));
+    if (emoji != null) _insert(emoji);
   }
 
-  Widget _editorToolbar(BuildContext context) {
+  Widget _tool(IconData icon, String label, VoidCallback action) => IconButton(
+    tooltip: label, onPressed: _submitting || _uploading ? null : action,
+    style: IconButton.styleFrom(minimumSize: const Size(40, 40)), icon: Icon(icon, size: 20));
+
+  Widget _editor(BuildContext context) {
     final scheme = Theme.of(context).colorScheme;
     return Container(
-      padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
-      decoration: BoxDecoration(
-        color: scheme.surfaceContainerHighest.withOpacity(.45),
-        border: Border(bottom: BorderSide(color: scheme.outlineVariant.withOpacity(.5))),
-      ),
-      child: SingleChildScrollView(
-        scrollDirection: Axis.horizontal,
-        child: Row(children: [
-          _toolbarButton(Icons.format_bold_rounded, '粗体', () => _insert('[b]{text}[/b]')),
-          _toolbarButton(Icons.format_italic_rounded, '斜体', () => _insert('[i]{text}[/i]')),
-          _toolbarButton(Icons.palette_outlined, '颜色', _chooseColor),
-          _toolbarButton(Icons.image_outlined, '图片', _insertImage),
-          _toolbarButton(Icons.link_rounded, '链接', _insertLink),
-          _toolbarButton(Icons.format_quote_rounded, '引用', () => _insert('[quote]{text}[/quote]')),
-          _toolbarButton(Icons.code_rounded, '代码', () => _insert('[code]{text}[/code]')),
-          _toolbarButton(Icons.emoji_emotions_outlined, '表情', () async {
-            final emoji = await showModalBottomSheet<String>(
-              context: context,
-              showDragHandle: true,
-              builder: (context) => SafeArea(child: Wrap(alignment: WrapAlignment.center, children: ['😀','😂','😎','👍','❤️','🎉','😅','🤔','🔥','👏','🥳','🙏'].map((e) => IconButton(iconSize: 30, onPressed: () => Navigator.pop(context, e), icon: Text(e))).toList())),
-            );
-            if (emoji != null) _insert(emoji);
-          }),
-        ]),
-      ),
+      decoration: BoxDecoration(color: scheme.surface, borderRadius: BorderRadius.circular(24), border: Border.all(color: scheme.outlineVariant.withOpacity(.65))),
+      clipBehavior: Clip.antiAlias,
+      child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
+        Padding(padding: const EdgeInsets.fromLTRB(18, 16, 12, 8), child: Row(children: [
+          Container(width: 32, height: 32, decoration: BoxDecoration(color: scheme.primaryContainer, borderRadius: BorderRadius.circular(10)), child: Icon(Icons.edit_note_rounded, size: 19, color: scheme.onPrimaryContainer)),
+          const SizedBox(width: 10),
+          const Expanded(child: Text('正文', style: TextStyle(fontSize: 16, fontWeight: FontWeight.w800))),
+          ValueListenableBuilder<TextEditingValue>(valueListenable: _body, builder: (_, v, __) => Text('${v.text.length}/10000', style: TextStyle(fontSize: 12, color: scheme.onSurfaceVariant))),
+        ])),
+        Container(height: 1, color: scheme.outlineVariant.withOpacity(.45)),
+        SingleChildScrollView(scrollDirection: Axis.horizontal, child: Row(children: [
+          const SizedBox(width: 6), _tool(Icons.format_bold_rounded, '粗体', () => _insert('[b]{text}[/b]')),
+          _tool(Icons.format_italic_rounded, '斜体', () => _insert('[i]{text}[/i]')),
+          _tool(Icons.palette_outlined, '颜色', _chooseColor), _tool(Icons.image_outlined, '图片', _insertImage),
+          _tool(Icons.link_rounded, '链接', _insertLink), _tool(Icons.format_quote_rounded, '引用', () => _insert('[quote]{text}[/quote]')),
+          _tool(Icons.code_rounded, '代码', () => _insert('[code]{text}[/code]')), _tool(Icons.emoji_emotions_outlined, '表情', _chooseEmoji),
+          const SizedBox(width: 6),
+        ])),
+        Container(height: 1, color: scheme.outlineVariant.withOpacity(.45)),
+        TextFormField(controller: _body, focusNode: _bodyFocus, enabled: !_submitting && !_uploading,
+          minLines: 10, maxLines: 22, maxLength: 10000, buildCounter: (_, {required currentLength, required isFocused, maxLength}) => const SizedBox.shrink(),
+          textInputAction: TextInputAction.newline,
+          decoration: const InputDecoration(hintText: '写下你的想法、经验或资源分享……\n\n支持网页端常用 BBCode 格式。', border: InputBorder.none, contentPadding: EdgeInsets.fromLTRB(18, 14, 18, 18)),
+          validator: (v) => v == null || v.trim().isEmpty ? (_attachments.isEmpty ? '请输入正文或添加附件' : null) : null),
+      ]),
     );
   }
 
   Widget _attachmentCard(BuildContext context) {
     final scheme = Theme.of(context).colorScheme;
-    return Card(
-      margin: EdgeInsets.zero,
-      child: Padding(
-        padding: const EdgeInsets.fromLTRB(14, 10, 14, 8),
-        child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
-          Row(children: [
-            Icon(Icons.attach_file_rounded, color: scheme.primary),
-            const SizedBox(width: 8),
-            const Expanded(child: Text('附件', style: TextStyle(fontSize: 16, fontWeight: FontWeight.w800))),
-            TextButton.icon(onPressed: _uploading || _submitting ? null : _pickAttachments, icon: const Icon(Icons.add_rounded, size: 18), label: const Text('添加')),
-          ]),
-          Text('单个附件最大 10 MB，直接使用论坛原生上传接口。', style: TextStyle(fontSize: 12, color: scheme.onSurfaceVariant)),
-          if (_uploading) ...[
-            const SizedBox(height: 10),
-            const LinearProgressIndicator(minHeight: 3),
-            const SizedBox(height: 5),
-            Text(_uploadStatus, maxLines: 1, overflow: TextOverflow.ellipsis, style: TextStyle(fontSize: 11, color: scheme.onSurfaceVariant)),
-          ],
-          if (_attachments.isNotEmpty) ...[
-            const SizedBox(height: 6),
-            ..._attachments.map((attachment) => ListTile(
-              dense: true,
-              contentPadding: EdgeInsets.zero,
-              leading: Container(width: 38, height: 38, decoration: BoxDecoration(color: scheme.primaryContainer, borderRadius: BorderRadius.circular(10)), child: const Icon(Icons.insert_drive_file_outlined, size: 20)),
-              title: Text(attachment.name, maxLines: 1, overflow: TextOverflow.ellipsis),
-              subtitle: Text('${(attachment.size / 1024 / 1024).toStringAsFixed(2)} MB · AID ${attachment.aid}'),
-              trailing: IconButton(tooltip: '移除', onPressed: _uploading || _submitting ? null : () => _removeAttachment(attachment.aid), icon: const Icon(Icons.close_rounded)),
-            )),
-          ],
+    return Container(
+      decoration: BoxDecoration(color: scheme.surface, borderRadius: BorderRadius.circular(22), border: Border.all(color: scheme.outlineVariant.withOpacity(.65))),
+      padding: const EdgeInsets.fromLTRB(16, 14, 16, 10),
+      child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
+        Row(children: [
+          Container(width: 34, height: 34, decoration: BoxDecoration(color: scheme.secondaryContainer, borderRadius: BorderRadius.circular(10)), child: Icon(Icons.attach_file_rounded, size: 19, color: scheme.onSecondaryContainer)),
+          const SizedBox(width: 10), const Expanded(child: Text('附件', style: TextStyle(fontSize: 16, fontWeight: FontWeight.w800))),
+          FilledButton.tonalIcon(onPressed: _submitting || _uploading ? null : _pickAttachments, icon: const Icon(Icons.add_rounded, size: 18), label: const Text('添加')),
         ]),
-      ),
+        const SizedBox(height: 5), Text('单个文件最大 10 MB · 使用论坛原生上传', style: TextStyle(fontSize: 12)),
+        if (_uploading) ...[const SizedBox(height: 12), const LinearProgressIndicator(minHeight: 3), const SizedBox(height: 6), Text(_uploadStatus, maxLines: 1, overflow: TextOverflow.ellipsis, style: const TextStyle(fontSize: 11))],
+        if (_attachments.isNotEmpty) ...[
+          const SizedBox(height: 8),
+          ..._attachments.map((a) => Container(margin: const EdgeInsets.only(top: 6), padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 8), decoration: BoxDecoration(color: scheme.surfaceContainerHighest.withOpacity(.5), borderRadius: BorderRadius.circular(14)), child: Row(children: [
+            Container(width: 38, height: 38, decoration: BoxDecoration(color: scheme.primaryContainer, borderRadius: BorderRadius.circular(10)), child: Icon(Icons.insert_drive_file_outlined, color: scheme.onPrimaryContainer)),
+            const SizedBox(width: 10), Expanded(child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [Text(a.name, maxLines: 1, overflow: TextOverflow.ellipsis, style: const TextStyle(fontWeight: FontWeight.w600)), Text('${(a.size / 1024 / 1024).toStringAsFixed(2)} MB', style: const TextStyle(fontSize: 11))])),
+            IconButton(onPressed: _uploading || _submitting ? null : () => _removeAttachment(a.aid), icon: const Icon(Icons.close_rounded, size: 19)),
+          ]))),
+        ],
+      ]),
     );
   }
 
   Widget _advancedCard(BuildContext context) {
     final scheme = Theme.of(context).colorScheme;
-    return Card(
-      margin: EdgeInsets.zero,
+    return Container(
+      decoration: BoxDecoration(color: scheme.surface, borderRadius: BorderRadius.circular(22), border: Border.all(color: scheme.outlineVariant.withOpacity(.65))),
+      clipBehavior: Clip.antiAlias,
       child: Column(children: [
-        ListTile(
-          leading: Icon(Icons.tune_rounded, color: scheme.primary),
-          title: const Text('高级设置', style: TextStyle(fontWeight: FontWeight.w800)),
-          subtitle: const Text('与网页端发帖页一致，按版块权限提交'),
-          trailing: Switch(value: _advanced, onChanged: _submitting || _uploading ? null : (v) => setState(() => _advanced = v)),
-        ),
-        if (_advanced) Padding(
-          padding: const EdgeInsets.fromLTRB(14, 0, 14, 14),
-          child: Column(children: [
-            const Divider(),
-            DropdownButtonFormField<int>(
-              value: _price,
-              decoration: const InputDecoration(labelText: '主题售价（星币）', prefixIcon: Icon(Icons.monetization_on_outlined)),
-              items: [0, 1, 2, 3, 4, 5, 10, 20].map((v) => DropdownMenuItem(value: v, child: Text(v == 0 ? '免费' : '$v 星币'))).toList(),
-              onChanged: (v) => setState(() => _price = v ?? 0),
-            ),
-            const SizedBox(height: 10),
-            DropdownButtonFormField<int>(
-              value: _readperm,
-              decoration: const InputDecoration(labelText: '阅读权限', prefixIcon: Icon(Icons.lock_outline_rounded)),
-              items: [0, 10, 20, 30, 50, 80, 100].map((v) => DropdownMenuItem(value: v, child: Text(v == 0 ? '不限' : '$v 级'))).toList(),
-              onChanged: (v) => setState(() => _readperm = v ?? 0),
-            ),
-            SwitchListTile(contentPadding: EdgeInsets.zero, title: const Text('使用个人签名'), value: _usesig, onChanged: (v) => setState(() => _usesig = v)),
-            SwitchListTile(contentPadding: EdgeInsets.zero, title: const Text('允许回复提醒作者'), value: _allownoticeauthor, onChanged: (v) => setState(() => _allownoticeauthor = v)),
-          ]),
-        ),
+        ListTile(contentPadding: const EdgeInsets.fromLTRB(16, 4, 10, 4), leading: Container(width: 36, height: 36, decoration: BoxDecoration(color: scheme.tertiaryContainer, borderRadius: BorderRadius.circular(11)), child: Icon(Icons.tune_rounded, color: scheme.onTertiaryContainer)),
+          title: const Text('高级设置', style: TextStyle(fontWeight: FontWeight.w800)), subtitle: const Text('售价、阅读权限、签名与回复提醒'),
+          trailing: Switch(value: _advanced, onChanged: _submitting || _uploading ? null : (v) => setState(() => _advanced = v))),
+        if (_advanced) Padding(padding: const EdgeInsets.fromLTRB(16, 0, 16, 16), child: Column(children: [
+          const Divider(height: 1), const SizedBox(height: 14),
+          DropdownButtonFormField<int>(value: _price, decoration: const InputDecoration(labelText: '主题售价', prefixIcon: Icon(Icons.monetization_on_outlined)), items: [0,1,2,3,5,10,20].map((v) => DropdownMenuItem(value: v, child: Text(v == 0 ? '免费' : '$v 星币'))).toList(), onChanged: (v) => setState(() => _price = v ?? 0)),
+          const SizedBox(height: 12), DropdownButtonFormField<int>(value: _readperm, decoration: const InputDecoration(labelText: '阅读权限', prefixIcon: Icon(Icons.lock_outline_rounded)), items: [0,10,20,30,50,80,100].map((v) => DropdownMenuItem(value: v, child: Text(v == 0 ? '不限' : '$v 级'))).toList(), onChanged: (v) => setState(() => _readperm = v ?? 0)),
+          SwitchListTile(contentPadding: EdgeInsets.zero, title: const Text('使用个人签名'), value: _usesig, onChanged: (v) => setState(() => _usesig = v)),
+          SwitchListTile(contentPadding: EdgeInsets.zero, title: const Text('允许回复提醒作者'), value: _allownoticeauthor, onChanged: (v) => setState(() => _allownoticeauthor = v)),
+        ])),
       ]),
     );
   }
+
+  InputDecoration _field(String label, String hint, IconData icon, ColorScheme scheme) => InputDecoration(labelText: label, hintText: hint, prefixIcon: Icon(icon), filled: true, fillColor: scheme.surfaceContainerHighest.withOpacity(.48), border: OutlineInputBorder(borderRadius: BorderRadius.circular(17), borderSide: BorderSide.none), enabledBorder: OutlineInputBorder(borderRadius: BorderRadius.circular(17), borderSide: BorderSide.none), focusedBorder: OutlineInputBorder(borderRadius: BorderRadius.circular(17), borderSide: BorderSide(color: scheme.primary, width: 1.4)));
 
   @override
   Widget build(BuildContext context) {
     final scheme = Theme.of(context).colorScheme;
     return Scaffold(
-      appBar: AppBar(
-        title: const Text('发布帖子'),
-        actions: [
-          TextButton.icon(onPressed: _submitting || _uploading ? null : () => setState(() => _advanced = !_advanced), icon: Icon(_advanced ? Icons.edit_note_rounded : Icons.tune_rounded, size: 19), label: Text(_advanced ? '快速模式' : '高级模式')),
-          Padding(
-            padding: const EdgeInsets.only(right: 8),
-            child: FilledButton(onPressed: _submitting || _uploading || _loadingBoards ? null : _submit, child: _submitting ? const SizedBox(width: 18, height: 18, child: CircularProgressIndicator(strokeWidth: 2)) : const Text('发布')),
-          ),
+      backgroundColor: scheme.surfaceContainerLowest,
+      appBar: AppBar(automaticallyImplyLeading: true, titleSpacing: 4, title: const Text('发布帖子', style: TextStyle(fontWeight: FontWeight.w800)),
+        actions: [IconButton(tooltip: _advanced ? '快速模式' : '高级模式', onPressed: _submitting || _uploading ? null : () => setState(() => _advanced = !_advanced), icon: Icon(_advanced ? Icons.edit_note_rounded : Icons.tune_rounded)), const SizedBox(width: 4)]),
+      bottomNavigationBar: SafeArea(child: Container(padding: const EdgeInsets.fromLTRB(16, 10, 16, 10), decoration: BoxDecoration(color: scheme.surface.withOpacity(.96), boxShadow: [BoxShadow(blurRadius: 18, color: Colors.black.withOpacity(.06))]), child: Row(children: [
+        Expanded(child: Text(_submitting ? '正在发布…' : (_body.text.isEmpty ? '准备好后就可以发布了' : '内容已填写'), style: TextStyle(fontSize: 12, color: scheme.onSurfaceVariant))),
+        FilledButton.icon(onPressed: _submitting || _uploading || _loadingBoards ? null : _submit, icon: _submitting ? const SizedBox(width: 18, height: 18, child: CircularProgressIndicator(strokeWidth: 2)) : const Icon(Icons.send_rounded, size: 19), label: Text(_submitting ? '发布中' : '发布帖子'), style: FilledButton.styleFrom(minimumSize: const Size(0, 48), padding: const EdgeInsets.symmetric(horizontal: 20))),
+      ])),
+      body: SafeArea(child: Form(key: _formKey, child: ListView(padding: const EdgeInsets.fromLTRB(16, 10, 16, 24), keyboardDismissBehavior: ScrollViewKeyboardDismissBehavior.onDrag, children: [
+        Container(padding: const EdgeInsets.fromLTRB(18, 16, 18, 14), decoration: BoxDecoration(gradient: LinearGradient(colors: [scheme.primaryContainer, scheme.secondaryContainer]), borderRadius: BorderRadius.circular(24)), child: Row(children: [
+          Container(width: 46, height: 46, decoration: BoxDecoration(color: scheme.surface.withOpacity(.72), borderRadius: BorderRadius.circular(15)), child: Icon(Icons.forum_rounded, color: scheme.primary)), const SizedBox(width: 13),
+          const Expanded(child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [Text('分享点什么吧', style: TextStyle(fontSize: 18, fontWeight: FontWeight.w900)), SizedBox(height: 3), Text('原生编辑 · 网页端 BBCode · 附件上传', style: TextStyle(fontSize: 12))])),
+        ])),
+        const SizedBox(height: 14),
+        if (_loadingBoards) const LinearProgressIndicator(minHeight: 2),
+        if (_boards.isNotEmpty) ...[
+          DropdownButtonFormField<int>(value: _fid, decoration: _field('发布到版块', '选择一个版块', Icons.forum_outlined, scheme), items: _boards.map((b) => DropdownMenuItem(value: b.fid, child: Text(b.name))).toList(), onChanged: _submitting || _uploading ? null : (v) { setState(() => _fid = v); if (v != null) _loadTypes(v); }),
+          const SizedBox(height: 11),
         ],
-      ),
-      body: SafeArea(
-        child: Form(
-          key: _formKey,
-          child: ListView(
-            padding: const EdgeInsets.fromLTRB(16, 12, 16, 32),
-            children: [
-              if (_loadingBoards) const LinearProgressIndicator(minHeight: 2),
-              const SizedBox(height: 10),
-              if (_boards.isNotEmpty) ...[
-                DropdownButtonFormField<int>(
-                  value: _fid,
-                  decoration: InputDecoration(labelText: '发布到版块', prefixIcon: const Icon(Icons.forum_outlined), filled: true, fillColor: scheme.surfaceContainerHighest.withOpacity(.45), border: OutlineInputBorder(borderRadius: BorderRadius.circular(16), borderSide: BorderSide.none)),
-                  items: _boards.map((b) => DropdownMenuItem<int>(value: b.fid, child: Text(b.name))).toList(),
-                  onChanged: _submitting || _uploading ? null : (v) { setState(() => _fid = v); if (v != null) _loadTypes(v); },
-                ),
-                const SizedBox(height: 12),
-              ],
-              if (_types.isNotEmpty) ...[
-                DropdownButtonFormField<int>(
-                  value: _typeid,
-                  decoration: InputDecoration(labelText: '主题分类', prefixIcon: const Icon(Icons.label_outline), filled: true, fillColor: scheme.surfaceContainerHighest.withOpacity(.45), border: OutlineInputBorder(borderRadius: BorderRadius.circular(16), borderSide: BorderSide.none)),
-                  items: _types.map((t) => DropdownMenuItem<int>(value: t.id, child: Text(t.name))).toList(),
-                  onChanged: _submitting || _uploading ? null : (v) => setState(() => _typeid = v),
-                ),
-                const SizedBox(height: 12),
-              ],
-              if (_loadingTypes) const Padding(padding: EdgeInsets.only(bottom: 8), child: LinearProgressIndicator(minHeight: 2)),
-              TextFormField(
-                controller: _title,
-                enabled: !_submitting && !_uploading,
-                maxLength: 100,
-                textInputAction: TextInputAction.next,
-                decoration: InputDecoration(labelText: '标题', hintText: '请输入帖子标题', prefixIcon: const Icon(Icons.title_rounded), filled: true, fillColor: scheme.surfaceContainerHighest.withOpacity(.45), border: OutlineInputBorder(borderRadius: BorderRadius.circular(16), borderSide: BorderSide.none)),
-                validator: (v) => v == null || v.trim().isEmpty ? '请输入标题' : null,
-              ),
-              const SizedBox(height: 2),
-              Container(
-                decoration: BoxDecoration(color: scheme.surfaceContainerHighest.withOpacity(.35), borderRadius: BorderRadius.circular(18), border: Border.all(color: scheme.outlineVariant.withOpacity(.6))),
-                clipBehavior: Clip.antiAlias,
-                child: Column(children: [
-                  Row(children: [
-                    const SizedBox(width: 14),
-                    const Expanded(child: Text('正文', style: TextStyle(fontWeight: FontWeight.w700))),
-                    ValueListenableBuilder<TextEditingValue>(valueListenable: _body, builder: (_, value, __) => Padding(padding: const EdgeInsets.only(right: 12), child: Text('${value.text.length}/10000', style: TextStyle(fontSize: 11, color: scheme.onSurfaceVariant)))),
-                  ]),
-                  _editorToolbar(context),
-                  TextFormField(
-                    controller: _body,
-                    enabled: !_submitting && !_uploading,
-                    minLines: 10,
-                    maxLines: 22,
-                    maxLength: 10000,
-                    buildCounter: (_, {required currentLength, required isFocused, maxLength}) => const SizedBox.shrink(),
-                    textInputAction: TextInputAction.newline,
-                    decoration: const InputDecoration(hintText: '分享你的内容……支持网页端常用的 BBCode：粗体、颜色、图片、链接、引用、代码和表情。', alignLabelWithHint: true, border: InputBorder.none, contentPadding: EdgeInsets.fromLTRB(14, 10, 14, 12)),
-                    validator: (v) => v == null || v.trim().isEmpty ? (_attachments.isEmpty ? '请输入正文或添加附件' : null) : null,
-                  ),
-                ]),
-              ),
-              const SizedBox(height: 12),
-              _attachmentCard(context),
-              const SizedBox(height: 12),
-              _advancedCard(context),
-              if (_error != null) ...[
-                const SizedBox(height: 10),
-                Container(padding: const EdgeInsets.all(12), decoration: BoxDecoration(color: scheme.errorContainer, borderRadius: BorderRadius.circular(14)), child: Row(crossAxisAlignment: CrossAxisAlignment.start, children: [Icon(Icons.info_outline, color: scheme.onErrorContainer), const SizedBox(width: 8), Expanded(child: Text(_error!, style: TextStyle(color: scheme.onErrorContainer)))])),
-              ],
-              const SizedBox(height: 16),
-              FilledButton.icon(onPressed: _submitting || _uploading || _loadingBoards ? null : _submit, icon: const Icon(Icons.send_rounded), label: Text(_submitting ? '正在发布…' : '发布帖子'), style: FilledButton.styleFrom(minimumSize: const Size.fromHeight(52))),
-              const SizedBox(height: 10),
-              Text('网页端提供快速发帖、主题分类、BBCode 工具栏、附件及高级发帖选项；移动端现在按同一套发帖能力组织。', textAlign: TextAlign.center, style: TextStyle(fontSize: 12, color: scheme.onSurfaceVariant)),
-            ],
-          ),
-        ),
-      ),
+        if (_types.isNotEmpty) ...[
+          DropdownButtonFormField<int>(value: _typeid, decoration: _field('主题分类', '选择分类', Icons.label_outline_rounded, scheme), items: _types.map((t) => DropdownMenuItem(value: t.id, child: Text(t.name))).toList(), onChanged: _submitting || _uploading ? null : (v) => setState(() => _typeid = v)), const SizedBox(height: 11),
+        ],
+        if (_loadingTypes) const Padding(padding: EdgeInsets.only(bottom: 10), child: LinearProgressIndicator(minHeight: 2)),
+        TextFormField(controller: _title, enabled: !_submitting && !_uploading, maxLength: 100, textInputAction: TextInputAction.next, decoration: _field('标题', '一句话概括你的帖子', Icons.title_rounded, scheme), validator: (v) => v == null || v.trim().isEmpty ? '请输入标题' : null),
+        const SizedBox(height: 2), _editor(context), const SizedBox(height: 12), _attachmentCard(context), const SizedBox(height: 12), _advancedCard(context),
+        if (_error != null) ...[const SizedBox(height: 12), Container(padding: const EdgeInsets.all(13), decoration: BoxDecoration(color: scheme.errorContainer, borderRadius: BorderRadius.circular(17)), child: Row(crossAxisAlignment: CrossAxisAlignment.start, children: [Icon(Icons.error_outline_rounded, color: scheme.onErrorContainer), const SizedBox(width: 9), Expanded(child: Text(_error!, style: TextStyle(color: scheme.onErrorContainer)))]))],
+        const SizedBox(height: 12), Center(child: Text('发帖功能与论坛网页端保持兼容，移动端采用 Flutter 原生 UI。', style: TextStyle(fontSize: 11))),
+      ]))),
     );
   }
 }
