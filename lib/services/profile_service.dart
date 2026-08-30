@@ -35,6 +35,7 @@ class ProfileService {
   ProfileService._();
   static final instance = ProfileService._();
   static const _base = 'https://www.ycoo.net/';
+  final Map<int, ProfileData> _cache = <int, ProfileData>{};
 
   Future<String> _get(String path) async {
     final client = await NetClient.instance.client;
@@ -56,7 +57,12 @@ class ProfileService {
     return NetClient.decode(r.bodyBytes);
   }
 
-  Future<ProfileData> fetchProfile(int uid, {String? fallbackUsername}) async {
+  Future<ProfileData> fetchProfile(int uid, {String? fallbackUsername, bool forceRefresh = false}) async {
+    if (uid <= 0) throw Exception('无效的用户ID');
+    if (!forceRefresh) {
+      final cached = _cache[uid];
+      if (cached != null) return cached;
+    }
     final html = await _get('home.php?mod=space&uid=$uid&do=profile&mobile=2');
     final doc = parser.parse(html);
     for (final n in doc.querySelectorAll('script,style,noscript,template')) { n.remove(); }
@@ -66,7 +72,7 @@ class ProfileService {
         _labelValue(doc, ['昵称', '显示名称', '用户名']) ??
         _visibleName(doc) ??
         (fallbackUsername?.trim().isNotEmpty == true ? fallbackUsername!.trim() : '用户');
-    final avatar = _avatar(doc);
+    final avatar = _avatar(doc, uid);
     final group = _clean(doc.querySelector('.comiis_space_level, .gm, .xg1, a[href*="gid="]')?.text ?? '');
     final signature = _clean(doc.querySelector('.comiis_space_signature, .personal_signature, .spv, .sign, [class*="signature"]')?.text ?? '');
 
@@ -79,10 +85,9 @@ class ProfileService {
 
     final me = AuthService.instance.uid ?? 0;
     final followedByMe = me > 0 && RegExp(r'(?:取消关注|已关注)').hasMatch(text);
-
-    return ProfileData(
+    final result = ProfileData(
       uid: uid,
-      username: _validName(username) ? username : (fallbackUsername?.trim().isNotEmpty == true ? fallbackUsername!.trim() : '用户'),
+      username: _validName(username) ? username : (fallbackUsername?.trim().isNotEmpty == true && _validName(fallbackUsername) ? fallbackUsername!.trim() : '用户'),
       avatar: avatar,
       group: group,
       signature: signature,
@@ -95,30 +100,79 @@ class ProfileService {
       followingMe: false,
       followedByMe: followedByMe,
     );
+    _cache[uid] = result;
+    return result;
   }
 
   static String? _profileUsername(dom.Document doc, int uid) {
     final uidText = uid.toString();
+    // Only accept actual profile links. Action links such as “关注” can also
+    // live near the UID and must never become the user's display name.
     for (final a in doc.querySelectorAll('a[href]')) {
       final href = a.attributes['href'] ?? '';
-      if (!href.contains('uid=$uidText') && !href.contains('uid%3D$uidText')) continue;
+      final lower = href.toLowerCase();
+      if (!lower.contains('uid=$uidText') && !lower.contains('uid%3d$uidText')) continue;
+      if (!lower.contains('mod=space') || !lower.contains('do=profile')) continue;
       final value = _clean(a.text);
-      if (_validName(value)) return value;
+      if (_validName(value) && !_uiLabel(value)) return value;
     }
-    final title = _clean(doc.querySelector('meta[property="og:title"]')?.attributes['content'] ?? '');
-    return _validName(title) ? title : null;
+
+    // Discuz profile pages normally expose the real name in <title> or og:title.
+    final candidates = [
+      doc.querySelector('meta[property="og:title"]')?.attributes['content'] ?? '',
+      doc.querySelector('title')?.text ?? '',
+    ];
+    for (var value in candidates) {
+      value = _clean(value)
+          .replaceFirst(RegExp(r'\s*[-|｜]\s*源论坛\s*$', caseSensitive: false), '')
+          .replaceFirst(RegExp(r'\s*的个人资料\s*$', caseSensitive: false), '')
+          .trim();
+      if (_validName(value) && !_uiLabel(value)) return value;
+    }
+    return null;
   }
 
-  static String _avatar(dom.Document doc) {
-    for (final selector in ['.avatar img', '.avtm img', '.user_avatar img', '.comiis_space_avatar img', 'img[src*="avatar"]', 'img[data-src*="avatar"]']) {
+  static String _avatar(dom.Document doc, int uid) {
+    final uidText = uid.toString();
+    // Highest priority: the image attached to the exact profile URL.
+    for (final a in doc.querySelectorAll('a[href]')) {
+      final href = (a.attributes['href'] ?? '').toLowerCase();
+      if (!href.contains('uid=$uidText') || !href.contains('do=profile')) continue;
+      final img = a.querySelector('img[src], img[data-src]');
+      final src = img?.attributes['src'] ?? img?.attributes['data-src'] ?? '';
+      final value = _abs(src);
+      if (_isRealAvatar(value, uid)) return value;
+    }
+
+    for (final selector in [
+      '.comiis_space_avatar img',
+      '.comiis_space_user img.avatar',
+      '.comiis_space_user img.user_avatar',
+      '.comiis_space_box img[src*="avatar"]',
+      '.space_avatar img',
+    ]) {
       final node = doc.querySelector(selector);
       if (node == null) continue;
-      final src = node.attributes['src'] ?? node.attributes['data-src'] ?? '';
-      final value = _abs(src);
-      if (value.isNotEmpty) return value;
+      final value = _abs(node.attributes['src'] ?? node.attributes['data-src'] ?? '');
+      if (_isRealAvatar(value, uid)) return value;
     }
-    return '';
+
+    // Discuz's avatar path is deterministic from UID. This avoids accidentally
+    // selecting the site's login/sidebar avatar when the template is unusual.
+    final s = uid.toString().padLeft(8, '0');
+    final deterministic = '${_base}data/avatar/${s.substring(0, 3)}/${s.substring(3, 5)}/${s.substring(5, 7)}/${s.substring(7)}_avatar_middle.jpg';
+    return deterministic;
   }
+
+  static bool _isRealAvatar(String value, int uid) {
+    if (value.isEmpty) return false;
+    final lower = value.toLowerCase();
+    if (lower.contains('noavatar')) return false;
+    if (!lower.contains('avatar')) return false;
+    return true;
+  }
+
+  static bool _uiLabel(String value) => RegExp(r'^(?:关注|已关注|聊天|私信|回复|主题|回帖|粉丝|积分|星币|登录|注册|退出|刷新|用户|用户名|昵称)$').hasMatch(_clean(value));
 
   static int? _numberFromHref(dom.Document doc, bool Function(String href) matches) {
     for (final a in doc.querySelectorAll('a[href]')) {
@@ -141,9 +195,6 @@ class ProfileService {
         final text = _clean(candidate.text);
         if (text.isEmpty || text.length > 160) continue;
         for (final label in labelSet) {
-          // Stats are commonly rendered as "0 主题 0 回帖 ..." in one
-          // container. Prefer the number immediately before the label, then
-          // fall back to the "label: number" form.
           final before = RegExp('([0-9]{1,12})[^0-9]{0,12}${RegExp.escape(label)}').firstMatch(text);
           final after = RegExp('${RegExp.escape(label)}[^0-9]{0,12}([0-9]{1,12})').firstMatch(text);
           final match = before ?? after;
@@ -162,7 +213,7 @@ class ProfileService {
       for (final label in labels) {
         if (!text.contains(label)) continue;
         final value = _clean(text.replaceFirst(label, '').replaceFirst(':', '').replaceFirst('：', ''));
-        if (_validName(value)) return value;
+        if (_validName(value) && !_uiLabel(value)) return value;
       }
     }
     return null;
@@ -171,7 +222,7 @@ class ProfileService {
   static String? _visibleName(dom.Document doc) {
     for (final selector in ['.vwmy a', '.vwmy', '.pf_username', '.userinfo a', '.user-info a', '.member-name', '.username', '.nickname', '[class*="username"]', '[class*="nickname"]']) {
       final value = _clean(doc.querySelector(selector)?.text ?? '');
-      if (_validName(value)) return value;
+      if (_validName(value) && !_uiLabel(value)) return value;
     }
     return null;
   }
@@ -179,7 +230,10 @@ class ProfileService {
   static bool _validName(String? value) {
     if (value == null) return false;
     final v = _clean(value);
-    return v.isNotEmpty && v.length <= 32 && !RegExp(r'^(UID|用户|用户名|昵称|登录|注册|退出|主题|回帖)\s*[:：]?$', caseSensitive: false).hasMatch(v);
+    if (v.isEmpty || v.length > 32) return false;
+    if (v.contains('\uFFFD') || v.contains('�')) return false;
+    if (RegExp(r'[\x00-\x1F]').hasMatch(v)) return false;
+    return !RegExp(r'^(UID|用户|用户名|昵称|登录|注册|退出|主题|回帖)\s*[:：]?$', caseSensitive: false).hasMatch(v);
   }
 
   Future<List<ThreadItem>> fetchThreads(int uid, {bool replies = false}) {
@@ -209,6 +263,6 @@ class ProfileService {
     final e = RegExp.escape(name);
     return RegExp('name\\s*=\\s*["\\\']$e["\\\'][^>]*value\\s*=\\s*["\\\']([^"\\\']+)', caseSensitive: false).firstMatch(html)?.group(1);
   }
-  static String _clean(String s) => s.replaceAll('\uFFFD', '').replaceAll(RegExp(r'\s+'), ' ').trim();
-  static String _abs(String u) { if (u.isEmpty) return ''; if (u.startsWith('http')) return u; if (u.startsWith('//')) return 'https:$u'; if (u.startsWith('/')) return _base + u.substring(1); return _base + u; }
+  static String _clean(String s) => s.replaceAll(RegExp(r'\s+'), ' ').trim();
+  static String _abs(String u) { if (u.isEmpty) return ''; if (u.startsWith('http')) return u; if (u.startsWith('//')) return 'https:$u'; if (u.startsWith('/')) return _base + u.substring(1); return _base + u.replaceFirst(RegExp(r'^\./'), ''); }
 }
