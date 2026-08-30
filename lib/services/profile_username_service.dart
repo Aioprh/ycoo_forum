@@ -57,9 +57,11 @@ class ProfileUsernameService {
       node.remove();
     }
 
-    // 结构化锚点白名单：只信任 Discuz 标准“空间头”用户名锚点(#uhd .vwmy)，
-    // 不再用 .username/.nickname 等通配类名扫描——它们会误命中导航栏/UI 词(如“帖子”)。
+    // 结构化锚点白名单：只信任模板的真实“用户名”位置，不用通配类名(.username/.nickname)，
+    // 它们会误命中导航/UI 词。实测 ycoo comiis 模板真实昵称藏在 .comiis_space_info h2；
+    // 标准 Discuz 模板则是 #uhd .vwmy。
     const selectors = <String>[
+      '.comiis_space_info h2',
       '#uhd .vwmy a',
       '#uhd .vwmy',
       '.vwmy a',
@@ -119,7 +121,7 @@ class ProfileUsernameService {
     final v = _stripUi(value);
     if (v.isEmpty || v.length > 32 || v.contains('�') || v.contains('\uFFFD')) return false;
     final compact = v.replaceAll(RegExp(r'[\s\u2000-\u206F\u25A0-\u27BF\uE000-\uF8FF]+'), '');
-    if (RegExp(r'^(?:资料|个人资料|用户资料|用户|用户名|昵称|关注|已关注|聊天|私信|回复|主题|回帖|帖子|帖子数|粉丝|积分|星币|登录|注册|退出|刷新)$', caseSensitive: false).hasMatch(compact)) return false;
+    if (RegExp(r'^(?:资料|个人资料|用户资料|用户|用户名|昵称|关注|已关注|聊天|私信|回复|主题|回帖|帖子|帖子数|粉丝|积分|星币|登录|注册|退出|刷新|个人中心|Ta的空间|空间|我的)$', caseSensitive: false).hasMatch(compact)) return false;
     return !RegExp(r'^(?:UID|用户|用户名|昵称)\s*[:：]?$', caseSensitive: false).hasMatch(v);
   }
 

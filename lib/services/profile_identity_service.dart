@@ -259,9 +259,9 @@ class ProfileIdentityService {
   }
 
   String? _findVisibleName(dynamic doc) {
-    // 结构化锚点白名单：只信 Discuz 标准“空间头”用户名锚点(.vwmy)。
-    // 不再用 .username/[class*="username"] 等通配类名——会误命中导航/UI 词(如“帖子”)。
-    const selectors = ['.vwmy a', '.vwmy'];
+    // 只信模板真实用户名位置：ycoo comiis 模板用 .comiis_space_info h2；
+    // 标准 Discuz 用 .vwmy。不再用 .username/[class*="username"] 等通配类名。
+    const selectors = ['.comiis_space_info h2', '.vwmy a', '.vwmy'];
     for (final selector in selectors) {
       for (final node in doc.querySelectorAll(selector)) {
         final text = _clean(node.text);
@@ -293,7 +293,7 @@ class ProfileIdentityService {
     if (s == null) return false;
     final v = _clean(s);
     if (v.isEmpty || v.length > 32) return false;
-    if (const {'X', 'x', '×', '登录', '注册', '退出', '退出登录', '个人主页', '资料', '主题', '回帖', '帖子', '帖子数', '用户名', '昵称', '关注', '已关注', '聊天', '私信', '回复', '粉丝', '积分', '星币', '首页', '搜索', '设置'}.contains(v)) return false;
+    if (const {'X', 'x', '×', '登录', '注册', '退出', '退出登录', '个人主页', '个人中心', 'Ta的空间', '空间', '我的', '资料', '主题', '回帖', '帖子', '帖子数', '用户名', '昵称', '关注', '已关注', '聊天', '私信', '回复', '粉丝', '积分', '星币', '首页', '搜索', '设置'}.contains(v)) return false;
     return !v.contains('�') && !v.contains('Ã') && !v.contains('Â') && !v.contains('â');
   }
 

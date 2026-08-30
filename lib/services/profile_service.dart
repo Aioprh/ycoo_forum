@@ -106,11 +106,12 @@ class ProfileService {
   static String? _profileUsername(dom.Document doc, int uid) {
     final uidText = uid.toString();
 
-    // Prefer the username rendered by Discuz's profile header. These selectors
-    // are deliberately specific (Discuz 标准空间头锚点) so labels such as
-    // “资料/关注/帖子” cannot win. Gener-ic class scans (.username/.nickname)
-    // are avoided deliberately — they match navigation/UI labels too.
+    // Prefer the username rendered by the profile header. Only trust template's
+    // real username positions — never gener-ic class scans (.username/.nickname)
+    // which match navigation/UI labels too. 实测 ycoo comiis 模板真实昵称在
+    // .comiis_space_info h2；标准 Discuz 用 #uhd .vwmy。
     const selectors = [
+      '.comiis_space_info h2',
       '#uhd .vwmy a', '#uhd .vwmy',
       '.vwmy a', '.vwmy',
     ];
@@ -184,7 +185,7 @@ class ProfileService {
     return true;
   }
 
-  static bool _uiLabel(String value) => RegExp(r'^(?:关注|已关注|聊天|私信|回复|主题|回帖|帖子|帖子数|粉丝|积分|星币|登录|注册|退出|刷新|用户|用户名|昵称|资料|个人资料|用户资料)$').hasMatch(_clean(value));
+  static bool _uiLabel(String value) => RegExp(r'^(?:关注|已关注|聊天|私信|回复|主题|回帖|帖子|帖子数|粉丝|积分|星币|登录|注册|退出|刷新|用户|用户名|昵称|资料|个人资料|用户资料|个人中心|Ta的空间|空间|我的)$').hasMatch(_clean(value));
 
   static int? _numberFromHref(dom.Document doc, bool Function(String href) matches) {
     for (final a in doc.querySelectorAll('a[href]')) {
@@ -237,8 +238,8 @@ class ProfileService {
     if (v.isEmpty || v.length > 32) return false;
     if (v.contains('\uFFFD') || v.contains('�')) return false;
     if (RegExp(r'[\x00-\x1F]').hasMatch(v)) return false;
-    if (RegExp(r'^(?:资料|个人资料|用户资料|用户|用户名|昵称|登录|注册|退出|主题|回帖|帖子|帖子数|关注|已关注|聊天|私信|刷新)$', caseSensitive: false).hasMatch(v)) return false;
-    return !RegExp(r'^(UID|用户|用户名|昵称|登录|注册|退出|主题|回帖|帖子|帖子数)\s*[:：]?$', caseSensitive: false).hasMatch(v);
+    if (RegExp(r'^(?:资料|个人资料|用户资料|用户|用户名|昵称|登录|注册|退出|主题|回帖|帖子|帖子数|关注|已关注|聊天|私信|刷新|个人中心|Ta的空间|空间|我的)$', caseSensitive: false).hasMatch(v)) return false;
+    return !RegExp(r'^(UID|用户|用户名|昵称|登录|注册|退出|主题|回帖|帖子|帖子数|个人中心|空间|我的)\s*[:：]?$', caseSensitive: false).hasMatch(v);
   }
 
   Future<List<ThreadItem>> fetchThreads(int uid, {bool replies = false}) {
