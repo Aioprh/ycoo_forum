@@ -117,9 +117,6 @@ class _NameParts {
     }
 
     var name = raw;
-    // The Discuz mobile template may concatenate username + user-group text
-    // into one DOM node, e.g. “烟雨客Lv.1童生积分…”. Never render the group
-    // metadata as part of the username.
     name = name.replaceFirst(RegExp(r'Lv\.?\s*\d+.*$', caseSensitive: false), '').trim();
     if (name.isEmpty || _isUiLabel(name)) name = raw;
     if (name.length > 32) name = name.substring(0, 32).trim();
@@ -191,8 +188,61 @@ class _Header extends StatelessWidget {
   }
 }
 
-class _Stats extends StatelessWidget { final ProfileData profile; const _Stats({required this.profile}); @override Widget build(BuildContext context) => Padding(padding: const EdgeInsets.fromLTRB(12, 12, 12, 4), child: Card(margin: EdgeInsets.zero, child: Padding(padding: const EdgeInsets.symmetric(vertical: 16), child: Row(children: [_S('主题', '${profile.threads}'), _S('回帖', '${profile.replies}'), _S('关注', '${profile.following}'), _S('粉丝', '${profile.followers}'), _S('星币', '${profile.credits}'), _S('积分', '${profile.points}')])))); }
-class _S extends StatelessWidget { final String a,b; const _S(this.a,this.b); @override Widget build(BuildContext c)=>Expanded(child:Column(children:[Text(b,style:const TextStyle(fontWeight:FontWeight.w800,fontSize:16)),const SizedBox(height:3),Text(a,style:TextStyle(fontSize:11,color:Theme.of(c).colorScheme.onSurfaceVariant))])); }
+class _Stats extends StatelessWidget {
+  final ProfileData profile;
+  const _Stats({required this.profile});
+
+  @override Widget build(BuildContext context) => Padding(
+    padding: const EdgeInsets.fromLTRB(12, 12, 12, 4),
+    child: Card(
+      margin: EdgeInsets.zero,
+      child: Padding(
+        padding: const EdgeInsets.symmetric(vertical: 16, horizontal: 4),
+        child: Row(children: [
+          _S('主题', '${profile.threads}'),
+          _S('回帖', '${profile.replies}'),
+          _S('关注', '${profile.following}'),
+          _S('粉丝', '${profile.followers}'),
+          _S('星币', '${profile.credits}'),
+          _S('积分', '${profile.points}'),
+        ]),
+      ),
+    ),
+  );
+}
+
+class _S extends StatelessWidget {
+  final String a, b;
+  const _S(this.a, this.b);
+
+  @override Widget build(BuildContext c) => Expanded(
+    child: Column(
+      mainAxisSize: MainAxisSize.min,
+      children: [
+        SizedBox(
+          height: 24,
+          width: double.infinity,
+          child: FittedBox(
+            fit: BoxFit.scaleDown,
+            child: Text(
+              b,
+              maxLines: 1,
+              softWrap: false,
+              style: const TextStyle(fontWeight: FontWeight.w800, fontSize: 16),
+            ),
+          ),
+        ),
+        const SizedBox(height: 3),
+        Text(
+          a,
+          maxLines: 1,
+          overflow: TextOverflow.visible,
+          style: TextStyle(fontSize: 11, color: Theme.of(c).colorScheme.onSurfaceVariant),
+        ),
+      ],
+    ),
+  );
+}
 class _ThreadCard extends StatelessWidget { final ThreadItem item; const _ThreadCard({required this.item}); @override Widget build(BuildContext context)=>Card(margin:EdgeInsets.zero,clipBehavior:Clip.antiAlias,child:InkWell(onTap:()=>Navigator.of(context).push(MaterialPageRoute(builder:(_)=>DetailPage(tid:item.tid,title:item.title))),child:Padding(padding:const EdgeInsets.all(15),child:Row(children:[Container(width:42,height:42,decoration:BoxDecoration(color:Theme.of(context).colorScheme.primaryContainer,borderRadius:BorderRadius.circular(12)),child:Icon(item.replyCount>0?Icons.forum_outlined:Icons.article_outlined)),const SizedBox(width:12),Expanded(child:Column(crossAxisAlignment:CrossAxisAlignment.start,children:[Text(item.title,maxLines:2,overflow:TextOverflow.ellipsis,style:const TextStyle(fontWeight:FontWeight.w700)),const SizedBox(height:6),Row(children:[if(item.boardName.isNotEmpty)Flexible(child:Text(item.boardName,overflow:TextOverflow.ellipsis,style:TextStyle(fontSize:12,color:Theme.of(context).colorScheme.primary))),const SizedBox(width:8),Text('${item.replyCount} 回复 · ${item.viewCount} 浏览',style:TextStyle(fontSize:11,color:Theme.of(context).colorScheme.onSurfaceVariant))])])),const Icon(Icons.chevron_right)])))); }
 class _TabHeader extends SliverPersistentHeaderDelegate { final TabBar tab; _TabHeader(this.tab); @override double get minExtent=>54; @override double get maxExtent=>54; @override Widget build(BuildContext c,double s,bool o)=>Material(color:Theme.of(c).colorScheme.surface,child:tab); @override bool shouldRebuild(covariant _TabHeader oldDelegate)=>false; }
 class _Empty extends StatelessWidget { const _Empty(); @override Widget build(BuildContext c)=>Center(child:Padding(padding:const EdgeInsets.all(30),child:Column(mainAxisSize:MainAxisSize.min,children:[Icon(Icons.inbox_outlined,size:52,color:Theme.of(c).colorScheme.onSurfaceVariant),const SizedBox(height:10),const Text('暂无内容',style:TextStyle(fontWeight:FontWeight.w700)),const SizedBox(height:4),const Text('这里还没有可以展示的主题或回帖',textAlign:TextAlign.center)]))); }
