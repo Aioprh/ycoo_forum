@@ -23,7 +23,6 @@ class _ProfilePageState extends State<ProfilePage> {
   String? _level;
   String? _rank;
   int? _points;
-  int? _coins;
   bool _ready = false;
   bool _signing = false;
   String? _checkinResult;
@@ -43,7 +42,6 @@ class _ProfilePageState extends State<ProfilePage> {
         _level = identity.level;
         _rank = identity.rank;
         _points = identity.points;
-        _coins = identity.coins;
       }
     }
     _username ??= AuthService.instance.username;
@@ -67,7 +65,6 @@ class _ProfilePageState extends State<ProfilePage> {
         _level = null;
         _rank = null;
         _points = null;
-        _coins = null;
         _ready = true;
         _checkinResult = null;
       });
@@ -167,7 +164,6 @@ class _ProfilePageState extends State<ProfilePage> {
                   _accountBadge(context, icon: Icons.diamond_outlined, text: _level ?? '等级'),
                   _accountBadge(context, icon: Icons.school_outlined, text: _rank ?? '品级'),
                   _accountBadge(context, icon: Icons.stars_outlined, text: _points == null ? '积分' : '积分 $_points'),
-                  if (_coins != null) _accountBadge(context, icon: Icons.monetization_on_outlined, text: '星币 $_coins'),
                 ]),
               ] else Text('登录后解锁完整会员功能', style: TextStyle(fontSize: 12, color: scheme.onSurfaceVariant)),
             ])),
