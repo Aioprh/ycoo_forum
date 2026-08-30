@@ -82,9 +82,7 @@ class _DetailPageState extends State<DetailPage> {
     final d = _detail;
     if (d == null) return;
     try {
-      final state = await ThreadInteractionService.instance.fetchState(
-        detail: d,
-      );
+      final state = await ThreadInteractionService.instance.fetchState(detail: d);
       if (!mounted) return;
       setState(() {
         _likeCount = state.likeCount;
@@ -94,12 +92,10 @@ class _DetailPageState extends State<DetailPage> {
     } catch (_) {}
   }
 
-  void _snack(String text) =>
-      ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text(text)));
+  void _snack(String text) => ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text(text)));
 
   Future<void> _login() async {
-    final ok = await Navigator.of(context)
-        .push<bool>(MaterialPageRoute(builder: (_) => const LoginPage()));
+    final ok = await Navigator.of(context).push<bool>(MaterialPageRoute(builder: (_) => const LoginPage()));
     if (ok == true && mounted) {
       await AuthService.instance.init();
       await AuthService.instance.checkLoggedIn();
@@ -133,11 +129,7 @@ class _DetailPageState extends State<DetailPage> {
     }
     if (_interacting || d.firstPid <= 0) return;
     setState(() => _interacting = true);
-    final error = await ThreadInteractionService.instance.toggleLike(
-      tid: d.tid,
-      pid: d.firstPid,
-      like: !_liked,
-    );
+    final error = await ThreadInteractionService.instance.toggleLike(tid: d.tid, pid: d.firstPid, like: !_liked);
     if (!mounted) return;
     if (error != null) {
       setState(() => _interacting = false);
@@ -159,10 +151,7 @@ class _DetailPageState extends State<DetailPage> {
     }
     if (_interacting) return;
     setState(() => _interacting = true);
-    final error = await ThreadInteractionService.instance.toggleFavorite(
-      tid: d.tid,
-      favorite: !_favorited,
-    );
+    final error = await ThreadInteractionService.instance.toggleFavorite(tid: d.tid, favorite: !_favorited);
     if (!mounted) return;
     if (error != null) {
       setState(() => _interacting = false);
@@ -181,47 +170,43 @@ class _DetailPageState extends State<DetailPage> {
       if (!_loggedIn) return;
     }
     if (_rewarding || d.firstPid <= 0) return;
-    final input = TextEditingController(text: '10');
     final amount = await showDialog<int>(
       context: context,
       builder: (c) => AlertDialog(
         title: const Text('打赏作者'),
-        content: TextField(
-          controller: input,
-          autofocus: true,
-          keyboardType: TextInputType.number,
-          decoration: InputDecoration(
-            labelText: '打赏数量',
-            suffixText: '积分',
-            border: OutlineInputBorder(borderRadius: BorderRadius.circular(14)),
-          ),
+        content: Column(
+          mainAxisSize: MainAxisSize.min,
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            const Text('请选择打赏数量（星币）'),
+            const SizedBox(height: 14),
+            Row(
+              children: [
+                for (final value in const [1, 2, 3]) ...[
+                  Expanded(
+                    child: OutlinedButton.icon(
+                      onPressed: () => Navigator.pop(c, value),
+                      icon: const Icon(Icons.star_rounded, size: 18),
+                      label: Text('$value 星币'),
+                    ),
+                  ),
+                  if (value != 3) const SizedBox(width: 8),
+                ],
+              ],
+            ),
+          ],
         ),
         actions: [
-          TextButton(
-            onPressed: () => Navigator.pop(c),
-            child: const Text('取消'),
-          ),
-          FilledButton(
-            onPressed: () {
-              final v = int.tryParse(input.text.trim()) ?? 0;
-              if (v > 0) Navigator.pop(c, v);
-            },
-            child: const Text('确认打赏'),
-          ),
+          TextButton(onPressed: () => Navigator.pop(c), child: const Text('取消')),
         ],
       ),
     );
-    input.dispose();
     if (amount == null || !mounted) return;
     setState(() => _rewarding = true);
-    final result = await ThreadInteractionService.instance.reward(
-      tid: d.tid,
-      pid: d.firstPid,
-      amount: amount,
-    );
+    final result = await ThreadInteractionService.instance.reward(tid: d.tid, pid: d.firstPid, amount: amount);
     if (!mounted) return;
     setState(() => _rewarding = false);
-    _snack(result ?? '打赏成功');
+    _snack(result ?? '已打赏 $amount 星币');
   }
 
   Future<void> _purchase() async {
@@ -232,25 +217,17 @@ class _DetailPageState extends State<DetailPage> {
       if (!_loggedIn) return;
     }
     final price = d.price == null ? '以论坛页面为准' : '${d.price} ${d.currency}';
-    final ok =
-        await showDialog<bool>(
-          context: context,
-          builder: (c) => AlertDialog(
-            title: const Text('购买主题'),
-            content: Text('确定购买这个付费主题吗？\n\n价格：$price'),
-            actions: [
-              TextButton(
-                onPressed: () => Navigator.pop(c, false),
-                child: const Text('取消'),
-              ),
-              FilledButton(
-                onPressed: () => Navigator.pop(c, true),
-                child: const Text('确定购买'),
-              ),
-            ],
-          ),
-        ) ??
-        false;
+    final ok = await showDialog<bool>(
+      context: context,
+      builder: (c) => AlertDialog(
+        title: const Text('购买主题'),
+        content: Text('确定购买这个付费主题吗？\n\n价格：$price'),
+        actions: [
+          TextButton(onPressed: () => Navigator.pop(c, false), child: const Text('取消')),
+          FilledButton(onPressed: () => Navigator.pop(c, true), child: const Text('确定购买')),
+        ],
+      ),
+    ) ?? false;
     if (!ok || !mounted) return;
     setState(() => _buying = true);
     final result = await ApiService.instance.purchaseThread(d.tid);
@@ -267,22 +244,9 @@ class _DetailPageState extends State<DetailPage> {
       backgroundColor: colors.surfaceContainerLowest,
       appBar: AppBar(
         titleSpacing: 8,
-        leading: IconButton(
-          onPressed: () => Navigator.maybePop(context),
-          icon: const Icon(Icons.arrow_back_rounded),
-        ),
-        title: Text(
-          widget.title,
-          maxLines: 1,
-          overflow: TextOverflow.ellipsis,
-          style: const TextStyle(fontSize: 16, fontWeight: FontWeight.w700),
-        ),
-        actions: [
-          IconButton(
-            onPressed: _fetch,
-            icon: const Icon(Icons.refresh_rounded),
-          ),
-        ],
+        leading: IconButton(onPressed: () => Navigator.maybePop(context), icon: const Icon(Icons.arrow_back_rounded)),
+        title: Text(widget.title, maxLines: 1, overflow: TextOverflow.ellipsis, style: const TextStyle(fontSize: 16, fontWeight: FontWeight.w700)),
+        actions: [IconButton(onPressed: _fetch, icon: const Icon(Icons.refresh_rounded))],
         backgroundColor: colors.surfaceContainerLowest,
         surfaceTintColor: Colors.transparent,
         scrolledUnderElevation: 0,
@@ -305,11 +269,7 @@ class _DetailPageState extends State<DetailPage> {
           _hero(context, d),
           _quickActions(context, d),
           _sectionHeader(context, '正文', '楼主发布的主题内容', Icons.article_rounded),
-          d.isPaid
-              ? _paidNotice(context, d)
-              : (d.bodyHtml.trim().isEmpty
-                    ? _empty(context, '暂无正文内容')
-                    : _nativeBodyCard(context, d.bodyHtml)),
+          d.isPaid ? _paidNotice(context, d) : (d.bodyHtml.trim().isEmpty ? _empty(context, '暂无正文内容') : _nativeBodyCard(context, d.bodyHtml)),
           if (d.commentsHtml.trim().isNotEmpty) _commentsSection(context, d),
         ],
       ),
@@ -321,11 +281,7 @@ class _DetailPageState extends State<DetailPage> {
     return Container(
       margin: const EdgeInsets.only(bottom: 14),
       padding: const EdgeInsets.fromLTRB(16, 16, 16, 8),
-      decoration: BoxDecoration(
-        color: c.surface,
-        borderRadius: BorderRadius.circular(22),
-        border: Border.all(color: c.outlineVariant.withValues(alpha: .5)),
-      ),
+      decoration: BoxDecoration(color: c.surface, borderRadius: BorderRadius.circular(22), border: Border.all(color: c.outlineVariant.withValues(alpha: .5))),
       child: NativePostContent(html: html, onLinkTap: _handlePostLink),
     );
   }
@@ -333,25 +289,13 @@ class _DetailPageState extends State<DetailPage> {
   Future<void> _handlePostLink(String url) async {
     if (url.trim().isEmpty) return;
     final uri = Uri.tryParse(url.trim());
-    if (uri == null) {
-      _snack('链接格式无效');
-      return;
-    }
+    if (uri == null) { _snack('链接格式无效'); return; }
     if (AttachmentDownloadService.instance.isAttachmentUrl(uri.toString())) {
-      if (!_loggedIn) {
-        if (mounted) await _login();
-        return;
-      }
+      if (!_loggedIn) { if (mounted) await _login(); return; }
       try {
-        final started = await AttachmentDownloadService.instance.download(
-          url: uri.toString(),
-          cookie: AuthService.instance.authCookie,
-          referer: 'https://www.ycoo.net/',
-        );
+        final started = await AttachmentDownloadService.instance.download(url: uri.toString(), cookie: AuthService.instance.authCookie, referer: 'https://www.ycoo.net/');
         if (mounted) _snack(started ? '已开始下载附件' : '当前平台暂不支持原生附件下载');
-      } catch (e) {
-        if (mounted) _snack('附件下载失败：$e');
-      }
+      } catch (e) { if (mounted) _snack('附件下载失败：$e'); }
       return;
     }
     _snack('链接：${uri.toString()}');
@@ -367,18 +311,11 @@ class _DetailPageState extends State<DetailPage> {
           children: [
             Icon(Icons.cloud_off_rounded, size: 48, color: c.onSurfaceVariant),
             const SizedBox(height: 14),
-            const Text(
-              '详情加载失败',
-              style: TextStyle(fontWeight: FontWeight.w700, fontSize: 16),
-            ),
+            const Text('详情加载失败', style: TextStyle(fontWeight: FontWeight.w700, fontSize: 16)),
             const SizedBox(height: 7),
             Text('网络或服务器暂时不可用', style: TextStyle(color: c.onSurfaceVariant)),
             const SizedBox(height: 16),
-            FilledButton.icon(
-              onPressed: _fetch,
-              icon: const Icon(Icons.refresh_rounded),
-              label: const Text('重新加载'),
-            ),
+            FilledButton.icon(onPressed: _fetch, icon: const Icon(Icons.refresh_rounded), label: const Text('重新加载')),
           ],
         ),
       ),
@@ -390,15 +327,8 @@ class _DetailPageState extends State<DetailPage> {
     if (name.isEmpty) return;
     final uid = await CommentProfileResolver.instance.resolveUid(name);
     if (!context.mounted) return;
-    if (uid == null || uid <= 0) {
-      _snack('未找到该用户资料，请稍后重试');
-      return;
-    }
-    Navigator.of(context).push(
-      MaterialPageRoute(
-        builder: (_) => NativeProfilePage(uid: uid, username: name),
-      ),
-    );
+    if (uid == null || uid <= 0) { _snack('未找到该用户资料，请稍后重试'); return; }
+    Navigator.of(context).push(MaterialPageRoute(builder: (_) => NativeProfilePage(uid: uid, username: name)));
   }
 
   Widget _hero(BuildContext context, ThreadDetail d) {
@@ -407,11 +337,7 @@ class _DetailPageState extends State<DetailPage> {
       margin: const EdgeInsets.only(bottom: 8),
       padding: const EdgeInsets.fromLTRB(18, 18, 18, 16),
       decoration: BoxDecoration(
-        gradient: LinearGradient(
-          begin: Alignment.topLeft,
-          end: Alignment.bottomRight,
-          colors: [c.primaryContainer.withValues(alpha: .72), c.surface],
-        ),
+        gradient: LinearGradient(begin: Alignment.topLeft, end: Alignment.bottomRight, colors: [c.primaryContainer.withValues(alpha: .72), c.surface]),
         borderRadius: BorderRadius.circular(26),
         border: Border.all(color: c.outlineVariant.withValues(alpha: .45)),
       ),
@@ -420,92 +346,36 @@ class _DetailPageState extends State<DetailPage> {
         children: [
           if (d.boardName.isNotEmpty)
             GestureDetector(
-              onTap: d.fid == 0
-                  ? null
-                  : () => Navigator.of(context).push(
-                      MaterialPageRoute(
-                        builder: (_) => BoardThreadListPage(
-                          filter: d.boardName,
-                          fid: d.fid,
-                        ),
-                      ),
-                    ),
+              onTap: d.fid == 0 ? null : () => Navigator.of(context).push(MaterialPageRoute(builder: (_) => BoardThreadListPage(filter: d.boardName, fid: d.fid))),
               child: _tag(context, Icons.forum_rounded, d.boardName),
             ),
           const SizedBox(height: 14),
-          Text(
-            d.title,
-            style: Theme.of(context).textTheme.headlineSmall?.copyWith(
-              fontSize: 23,
-              height: 1.28,
-              fontWeight: FontWeight.w800,
-            ),
-          ),
+          Text(d.title, style: Theme.of(context).textTheme.headlineSmall?.copyWith(fontSize: 23, height: 1.28, fontWeight: FontWeight.w800)),
           const SizedBox(height: 16),
           Row(
             children: [
-              ResolvedUserAvatar(
-                uid: 0,
-                username: d.author,
-                radius: 22,
-                onTap: () => _openAuthorProfile(context, d.author),
-              ),
+              ResolvedUserAvatar(uid: 0, username: d.author, radius: 22, onTap: () => _openAuthorProfile(context, d.author)),
               const SizedBox(width: 11),
               Expanded(
                 child: Column(
                   crossAxisAlignment: CrossAxisAlignment.start,
                   children: [
-                    Row(
-                      children: [
-                        Flexible(
-                          child: Text(
-                            d.author,
-                            maxLines: 1,
-                            overflow: TextOverflow.ellipsis,
-                            style: const TextStyle(fontWeight: FontWeight.w800),
-                          ),
-                        ),
-                        if (d.level.isNotEmpty) ...[
-                          const SizedBox(width: 7),
-                          _chip(
-                            d.level,
-                            c.secondaryContainer,
-                            c.onSecondaryContainer,
-                          ),
-                        ],
-                      ],
-                    ),
-                    if (d.time.isNotEmpty) ...[
-                      const SizedBox(height: 3),
-                      Text(
-                        d.time,
-                        style: TextStyle(
-                          fontSize: 11.5,
-                          color: c.onSurfaceVariant,
-                        ),
-                      ),
-                    ],
+                    Row(children: [
+                      Flexible(child: Text(d.author, maxLines: 1, overflow: TextOverflow.ellipsis, style: const TextStyle(fontWeight: FontWeight.w800))),
+                      if (d.level.isNotEmpty) ...[const SizedBox(width: 7), _chip(d.level, c.secondaryContainer, c.onSecondaryContainer)],
+                    ]),
+                    if (d.time.isNotEmpty) ...[const SizedBox(height: 3), Text(d.time, style: TextStyle(fontSize: 11.5, color: c.onSurfaceVariant))],
                   ],
                 ),
               ),
             ],
           ),
           const SizedBox(height: 14),
-          Wrap(
-            spacing: 7,
-            runSpacing: 7,
-            children: [
-              _metaChip(context, Icons.tag_rounded, '主题 ${d.tid}'),
-              if (d.isPaid)
-                _metaChip(context, Icons.lock_outline_rounded, '付费主题'),
-              if (_likeCount > 0)
-                _metaChip(
-                  context,
-                  Icons.favorite_border_rounded,
-                  '$_likeCount 点赞',
-                ),
-            ],
-          ),
+          Wrap(spacing: 7, runSpacing: 7, children: [
+            _metaChip(context, Icons.tag_rounded, '主题 ${d.tid}'),
+            if (d.isPaid) _metaChip(context, Icons.lock_outline_rounded, '付费主题'),
+            if (_likeCount > 0) _metaChip(context, Icons.favorite_border_rounded, '$_likeCount 点赞'),
+          ]),
         ],
       ),
     );
@@ -515,187 +385,60 @@ class _DetailPageState extends State<DetailPage> {
     final c = Theme.of(context).colorScheme;
     return Container(
       padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 6),
-      decoration: BoxDecoration(
-        color: c.surface.withValues(alpha: .75),
-        borderRadius: BorderRadius.circular(12),
-      ),
-      child: Row(
-        mainAxisSize: MainAxisSize.min,
-        children: [
-          Icon(icon, size: 15, color: c.primary),
-          const SizedBox(width: 6),
-          Text(
-            text,
-            style: TextStyle(
-              fontSize: 12,
-              fontWeight: FontWeight.w700,
-              color: c.primary,
-            ),
-          ),
-          const SizedBox(width: 3),
-          Icon(Icons.chevron_right_rounded, size: 15, color: c.primary),
-        ],
-      ),
+      decoration: BoxDecoration(color: c.surface.withValues(alpha: .75), borderRadius: BorderRadius.circular(12)),
+      child: Row(mainAxisSize: MainAxisSize.min, children: [Icon(icon, size: 15, color: c.primary), const SizedBox(width: 6), Text(text, style: TextStyle(fontSize: 12, fontWeight: FontWeight.w700, color: c.primary)), const SizedBox(width: 3), Icon(Icons.chevron_right_rounded, size: 15, color: c.primary)]),
     );
   }
 
   Widget _chip(String text, Color bg, Color fg) => Container(
     padding: const EdgeInsets.symmetric(horizontal: 7, vertical: 2),
-    decoration: BoxDecoration(
-      color: bg,
-      borderRadius: BorderRadius.circular(8),
-    ),
-    child: Text(
-      text,
-      style: TextStyle(fontSize: 10, color: fg, fontWeight: FontWeight.w600),
-    ),
+    decoration: BoxDecoration(color: bg, borderRadius: BorderRadius.circular(8)),
+    child: Text(text, style: TextStyle(fontSize: 10, color: fg, fontWeight: FontWeight.w600)),
   );
+
   Widget _metaChip(BuildContext context, IconData icon, String text) {
     final c = Theme.of(context).colorScheme;
     return Container(
       padding: const EdgeInsets.symmetric(horizontal: 9, vertical: 6),
-      decoration: BoxDecoration(
-        color: c.surface.withValues(alpha: .72),
-        borderRadius: BorderRadius.circular(10),
-        border: Border.all(color: c.outlineVariant.withValues(alpha: .35)),
-      ),
-      child: Row(
-        mainAxisSize: MainAxisSize.min,
-        children: [
-          Icon(icon, size: 14, color: c.onSurfaceVariant),
-          const SizedBox(width: 5),
-          Text(
-            text,
-            style: TextStyle(
-              fontSize: 11,
-              color: c.onSurfaceVariant,
-              fontWeight: FontWeight.w600,
-            ),
-          ),
-        ],
-      ),
+      decoration: BoxDecoration(color: c.surface.withValues(alpha: .72), borderRadius: BorderRadius.circular(10), border: Border.all(color: c.outlineVariant.withValues(alpha: .35))),
+      child: Row(mainAxisSize: MainAxisSize.min, children: [Icon(icon, size: 14, color: c.onSurfaceVariant), const SizedBox(width: 5), Text(text, style: TextStyle(fontSize: 11, color: c.onSurfaceVariant, fontWeight: FontWeight.w600))]),
     );
   }
 
   Widget _quickActions(BuildContext context, ThreadDetail d) {
     final c = Theme.of(context).colorScheme;
-    Widget item(
-      IconData icon,
-      String label, {
-      bool active = false,
-      int? count,
-      required VoidCallback onTap,
-    }) => Expanded(
+    Widget item(IconData icon, String label, {bool active = false, int? count, required VoidCallback onTap}) => Expanded(
       child: InkWell(
         borderRadius: BorderRadius.circular(14),
         onTap: onTap,
         child: Padding(
           padding: const EdgeInsets.symmetric(vertical: 10),
-          child: Column(
-            mainAxisSize: MainAxisSize.min,
-            children: [
-              Icon(
-                icon,
-                size: 20,
-                color: active ? c.primary : c.onSurfaceVariant,
-              ),
-              const SizedBox(height: 4),
-              Text(
-                count != null && count > 0 ? '$label · $count' : label,
-                style: TextStyle(
-                  fontSize: 11.5,
-                  fontWeight: active ? FontWeight.w700 : FontWeight.w600,
-                  color: active ? c.primary : c.onSurfaceVariant,
-                ),
-              ),
-            ],
-          ),
+          child: Column(mainAxisSize: MainAxisSize.min, children: [Icon(icon, size: 20, color: active ? c.primary : c.onSurfaceVariant), const SizedBox(height: 4), Text(count != null && count > 0 ? '$label · $count' : label, style: TextStyle(fontSize: 11.5, fontWeight: active ? FontWeight.w700 : FontWeight.w600, color: active ? c.primary : c.onSurfaceVariant))]),
         ),
       ),
     );
     return Container(
       margin: const EdgeInsets.only(bottom: 8),
       padding: const EdgeInsets.symmetric(horizontal: 5, vertical: 3),
-      decoration: BoxDecoration(
-        color: c.surface,
-        borderRadius: BorderRadius.circular(18),
-        border: Border.all(color: c.outlineVariant.withValues(alpha: .45)),
-      ),
-      child: Row(
-        children: [
-          item(
-            _liked ? Icons.favorite_rounded : Icons.favorite_border_rounded,
-            _liked ? '已点赞' : '点赞',
-            active: _liked,
-            count: _likeCount,
-            onTap: () => _like(d),
-          ),
-          item(
-            _favorited ? Icons.star_rounded : Icons.star_border_rounded,
-            _favorited ? '已收藏' : '收藏',
-            active: _favorited,
-            onTap: () => _favorite(d),
-          ),
-          item(
-            _rewarding
-                ? Icons.hourglass_top_rounded
-                : Icons.card_giftcard_outlined,
-            '打赏',
-            active: _rewarding,
-            onTap: () => _reward(d),
-          ),
-          item(
-            Icons.chat_bubble_outline_rounded,
-            '回复',
-            onTap: () => _replyFocus.requestFocus(),
-          ),
-        ],
-      ),
+      decoration: BoxDecoration(color: c.surface, borderRadius: BorderRadius.circular(18), border: Border.all(color: c.outlineVariant.withValues(alpha: .45))),
+      child: Row(children: [
+        item(_liked ? Icons.favorite_rounded : Icons.favorite_border_rounded, _liked ? '已点赞' : '点赞', active: _liked, count: _likeCount, onTap: () => _like(d)),
+        item(_favorited ? Icons.star_rounded : Icons.star_border_rounded, _favorited ? '已收藏' : '收藏', active: _favorited, onTap: () => _favorite(d)),
+        item(_rewarding ? Icons.hourglass_top_rounded : Icons.card_giftcard_outlined, '打赏', active: _rewarding, onTap: () => _reward(d)),
+        item(Icons.chat_bubble_outline_rounded, '回复', onTap: () => _replyFocus.requestFocus()),
+      ]),
     );
   }
 
-  Widget _sectionHeader(
-    BuildContext context,
-    String title,
-    String subtitle,
-    IconData icon,
-  ) {
+  Widget _sectionHeader(BuildContext context, String title, String subtitle, IconData icon) {
     final c = Theme.of(context).colorScheme;
     return Padding(
       padding: const EdgeInsets.fromLTRB(4, 7, 4, 10),
-      child: Row(
-        children: [
-          Container(
-            width: 38,
-            height: 38,
-            decoration: BoxDecoration(
-              color: c.primaryContainer,
-              borderRadius: BorderRadius.circular(12),
-            ),
-            child: Icon(icon, size: 20, color: c.primary),
-          ),
-          const SizedBox(width: 10),
-          Expanded(
-            child: Column(
-              crossAxisAlignment: CrossAxisAlignment.start,
-              children: [
-                Text(
-                  title,
-                  style: const TextStyle(
-                    fontSize: 17,
-                    fontWeight: FontWeight.w800,
-                  ),
-                ),
-                const SizedBox(height: 2),
-                Text(
-                  subtitle,
-                  style: TextStyle(fontSize: 11.5, color: c.onSurfaceVariant),
-                ),
-              ],
-            ),
-          ),
-        ],
-      ),
+      child: Row(children: [
+        Container(width: 38, height: 38, decoration: BoxDecoration(color: c.primaryContainer, borderRadius: BorderRadius.circular(12)), child: Icon(icon, size: 20, color: c.primary)),
+        const SizedBox(width: 10),
+        Expanded(child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [Text(title, style: const TextStyle(fontSize: 17, fontWeight: FontWeight.w800)), const SizedBox(height: 2), Text(subtitle, style: TextStyle(fontSize: 11.5, color: c.onSurfaceVariant))])),
+      ]),
     );
   }
 
@@ -704,41 +447,16 @@ class _DetailPageState extends State<DetailPage> {
     return Container(
       margin: const EdgeInsets.only(bottom: 10),
       padding: const EdgeInsets.all(26),
-      decoration: BoxDecoration(
-        gradient: LinearGradient(colors: [c.primaryContainer, c.surface]),
-        borderRadius: BorderRadius.circular(24),
-        border: Border.all(color: c.outlineVariant.withValues(alpha: .45)),
-      ),
-      child: Column(
-        children: [
-          Icon(Icons.lock_rounded, size: 34, color: c.primary),
-          const SizedBox(height: 14),
-          const Text(
-            '这是一个付费主题',
-            style: TextStyle(fontSize: 18, fontWeight: FontWeight.w800),
-          ),
-          const SizedBox(height: 6),
-          Text(
-            d.price == null
-                ? '购买后即可查看完整内容'
-                : '支付 ${d.price} ${d.currency} 后查看完整内容',
-            textAlign: TextAlign.center,
-            style: TextStyle(color: c.onSurfaceVariant),
-          ),
-          const SizedBox(height: 18),
-          FilledButton.icon(
-            onPressed: _buying ? null : _purchase,
-            icon: _buying
-                ? const SizedBox(
-                    width: 18,
-                    height: 18,
-                    child: CircularProgressIndicator(strokeWidth: 2),
-                  )
-                : const Icon(Icons.shopping_bag_outlined),
-            label: Text(_buying ? '购买中…' : '购买主题'),
-          ),
-        ],
-      ),
+      decoration: BoxDecoration(gradient: LinearGradient(colors: [c.primaryContainer, c.surface]), borderRadius: BorderRadius.circular(24), border: Border.all(color: c.outlineVariant.withValues(alpha: .45))),
+      child: Column(children: [
+        Icon(Icons.lock_rounded, size: 34, color: c.primary),
+        const SizedBox(height: 14),
+        const Text('这是一个付费主题', style: TextStyle(fontSize: 18, fontWeight: FontWeight.w800)),
+        const SizedBox(height: 6),
+        Text(d.price == null ? '购买后即可查看完整内容' : '支付 ${d.price} ${d.currency} 后查看完整内容', textAlign: TextAlign.center, style: TextStyle(color: c.onSurfaceVariant)),
+        const SizedBox(height: 18),
+        FilledButton.icon(onPressed: _buying ? null : _purchase, icon: _buying ? const SizedBox(width: 18, height: 18, child: CircularProgressIndicator(strokeWidth: 2)) : const Icon(Icons.shopping_bag_outlined), label: Text(_buying ? '购买中…' : '购买主题')),
+      ]),
     );
   }
 
@@ -746,43 +464,17 @@ class _DetailPageState extends State<DetailPage> {
     final c = Theme.of(context).colorScheme;
     return Container(
       margin: const EdgeInsets.only(top: 2, bottom: 10),
-      decoration: BoxDecoration(
-        color: c.surface,
-        borderRadius: BorderRadius.circular(24),
-        border: Border.all(color: c.outlineVariant.withValues(alpha: .45)),
-      ),
-      child: Column(
-        children: [
-          InkWell(
-            onTap: () => setState(() => _commentsExpanded = !_commentsExpanded),
-            child: Padding(
-              padding: const EdgeInsets.fromLTRB(16, 15, 12, 15),
-              child: Row(
-                children: [
-                  const Expanded(
-                    child: Text(
-                      '评论 / 回复',
-                      style: TextStyle(
-                        fontSize: 17,
-                        fontWeight: FontWeight.w800,
-                      ),
-                    ),
-                  ),
-                  Icon(
-                    _commentsExpanded
-                        ? Icons.keyboard_arrow_up_rounded
-                        : Icons.keyboard_arrow_down_rounded,
-                  ),
-                ],
-              ),
-            ),
+      decoration: BoxDecoration(color: c.surface, borderRadius: BorderRadius.circular(24), border: Border.all(color: c.outlineVariant.withValues(alpha: .45))),
+      child: Column(children: [
+        InkWell(
+          onTap: () => setState(() => _commentsExpanded = !_commentsExpanded),
+          child: Padding(
+            padding: const EdgeInsets.fromLTRB(16, 15, 12, 15),
+            child: Row(children: [const Expanded(child: Text('评论 / 回复', style: TextStyle(fontSize: 17, fontWeight: FontWeight.w800))), Icon(_commentsExpanded ? Icons.keyboard_arrow_up_rounded : Icons.keyboard_arrow_down_rounded)]),
           ),
-          if (_commentsExpanded) ...[
-            Divider(height: 1, color: c.outlineVariant.withValues(alpha: .35)),
-            NativeCommentList(html: d.commentsHtml),
-          ],
-        ],
-      ),
+        ),
+        if (_commentsExpanded) ...[Divider(height: 1, color: c.outlineVariant.withValues(alpha: .35)), NativeCommentList(html: d.commentsHtml)],
+      ]),
     );
   }
 
@@ -791,18 +483,8 @@ class _DetailPageState extends State<DetailPage> {
     return Container(
       margin: const EdgeInsets.only(bottom: 10),
       padding: const EdgeInsets.symmetric(vertical: 44),
-      decoration: BoxDecoration(
-        color: c.surface,
-        borderRadius: BorderRadius.circular(22),
-        border: Border.all(color: c.outlineVariant.withValues(alpha: .4)),
-      ),
-      child: Column(
-        children: [
-          Icon(Icons.article_outlined, size: 34, color: c.onSurfaceVariant),
-          const SizedBox(height: 9),
-          Text(text, style: TextStyle(color: c.onSurfaceVariant)),
-        ],
-      ),
+      decoration: BoxDecoration(color: c.surface, borderRadius: BorderRadius.circular(22), border: Border.all(color: c.outlineVariant.withValues(alpha: .4))),
+      child: Column(children: [Icon(Icons.article_outlined, size: 34, color: c.onSurfaceVariant), const SizedBox(height: 9), Text(text, style: TextStyle(color: c.onSurfaceVariant))]),
     );
   }
 
@@ -810,86 +492,19 @@ class _DetailPageState extends State<DetailPage> {
     final c = Theme.of(context).colorScheme;
     final d = _detail;
     if (d == null || d.isPaid) return const SizedBox.shrink();
-
     return SafeArea(
       top: false,
       child: Container(
         padding: const EdgeInsets.fromLTRB(12, 8, 12, 8),
-        decoration: BoxDecoration(
-          color: c.surface,
-          border: Border(
-            top: BorderSide(color: c.outlineVariant.withValues(alpha: .45)),
-          ),
-          boxShadow: [
-            BoxShadow(
-              color: c.shadow.withValues(alpha: .045),
-              blurRadius: 16,
-              offset: const Offset(0, -4),
-            ),
-          ],
-        ),
+        decoration: BoxDecoration(color: c.surface, border: Border(top: BorderSide(color: c.outlineVariant.withValues(alpha: .45))), boxShadow: [BoxShadow(color: c.shadow.withValues(alpha: .045), blurRadius: 16, offset: const Offset(0, -4))]),
         child: !_loggedIn
-            ? OutlinedButton.icon(
-                onPressed: _login,
-                icon: const Icon(Icons.login_rounded, size: 18),
-                label: const Text('登录后参与讨论'),
-                style: OutlinedButton.styleFrom(
-                  minimumSize: const Size.fromHeight(46),
-                  shape: RoundedRectangleBorder(
-                    borderRadius: BorderRadius.circular(15),
-                  ),
-                ),
-              )
+            ? OutlinedButton.icon(onPressed: _login, icon: const Icon(Icons.login_rounded, size: 18), label: const Text('登录后参与讨论'), style: OutlinedButton.styleFrom(minimumSize: const Size.fromHeight(46), shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(15))))
             : Row(
                 crossAxisAlignment: CrossAxisAlignment.end,
                 children: [
-                  Expanded(
-                    child: TextField(
-                      controller: _replyCtrl,
-                      focusNode: _replyFocus,
-                      minLines: 1,
-                      maxLines: 4,
-                      textInputAction: TextInputAction.send,
-                      onSubmitted: (_) => _reply(),
-                      decoration: InputDecoration(
-                        hintText: '友善地说点什么…',
-                        isDense: true,
-                        filled: true,
-                        fillColor: c.surfaceContainerHighest.withValues(
-                          alpha: .72,
-                        ),
-                        border: OutlineInputBorder(
-                          borderRadius: BorderRadius.circular(18),
-                          borderSide: BorderSide.none,
-                        ),
-                        contentPadding: const EdgeInsets.symmetric(
-                          horizontal: 15,
-                          vertical: 11,
-                        ),
-                      ),
-                    ),
-                  ),
+                  Expanded(child: TextField(controller: _replyCtrl, focusNode: _replyFocus, minLines: 1, maxLines: 4, textInputAction: TextInputAction.send, onSubmitted: (_) => _reply(), decoration: InputDecoration(hintText: '友善地说点什么…', isDense: true, filled: true, fillColor: c.surfaceContainerHighest.withValues(alpha: .72), border: OutlineInputBorder(borderRadius: BorderRadius.circular(18), borderSide: BorderSide.none), contentPadding: const EdgeInsets.symmetric(horizontal: 15, vertical: 11)))),
                   const SizedBox(width: 7),
-                  SizedBox(
-                    width: 46,
-                    height: 46,
-                    child: FilledButton(
-                      onPressed: _sending ? null : _reply,
-                      style: FilledButton.styleFrom(
-                        padding: EdgeInsets.zero,
-                        shape: RoundedRectangleBorder(
-                          borderRadius: BorderRadius.circular(15),
-                        ),
-                      ),
-                      child: _sending
-                          ? const SizedBox(
-                              width: 18,
-                              height: 18,
-                              child: CircularProgressIndicator(strokeWidth: 2),
-                            )
-                          : const Icon(Icons.arrow_upward_rounded),
-                    ),
-                  ),
+                  SizedBox(width: 46, height: 46, child: FilledButton(onPressed: _sending ? null : _reply, style: FilledButton.styleFrom(padding: EdgeInsets.zero, shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(15))), child: _sending ? const SizedBox(width: 18, height: 18, child: CircularProgressIndicator(strokeWidth: 2)) : const Icon(Icons.arrow_upward_rounded))),
                 ],
               ),
       ),
