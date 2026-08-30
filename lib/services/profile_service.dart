@@ -20,41 +20,13 @@ class ProfileData {
   final bool followingMe;
   final bool followedByMe;
 
-  const ProfileData({
-    required this.uid,
-    required this.username,
-    required this.avatar,
-    required this.group,
-    required this.signature,
-    required this.threads,
-    required this.replies,
-    required this.following,
-    required this.followers,
-    required this.credits,
-    required this.points,
-    required this.followingMe,
-    required this.followedByMe,
-  });
+  const ProfileData({required this.uid, required this.username, required this.avatar, required this.group, required this.signature, required this.threads, required this.replies, required this.following, required this.followers, required this.credits, required this.points, required this.followingMe, required this.followedByMe});
 
-  ProfileData copyWith({
-    int? following,
-    int? followers,
-    bool? followingMe,
-    bool? followedByMe,
-  }) => ProfileData(
-    uid: uid,
-    username: username,
-    avatar: avatar,
-    group: group,
-    signature: signature,
-    threads: threads,
-    replies: replies,
-    following: following ?? this.following,
-    followers: followers ?? this.followers,
-    credits: credits,
-    points: points,
-    followingMe: followingMe ?? this.followingMe,
-    followedByMe: followedByMe ?? this.followedByMe,
+  ProfileData copyWith({int? following, int? followers, bool? followingMe, bool? followedByMe}) => ProfileData(
+    uid: uid, username: username, avatar: avatar, group: group, signature: signature,
+    threads: threads, replies: replies, following: following ?? this.following,
+    followers: followers ?? this.followers, credits: credits, points: points,
+    followingMe: followingMe ?? this.followingMe, followedByMe: followedByMe ?? this.followedByMe,
   );
 }
 
@@ -65,10 +37,8 @@ class ProfileService {
 
   Future<String> _get(String path) async {
     final client = await NetClient.instance.client;
-    final uri = Uri.parse('$_base$path').replace(queryParameters: {
-      ...Uri.parse('$_base$path').queryParameters,
-      '_ycoo_ts': DateTime.now().millisecondsSinceEpoch.toString(),
-    });
+    final parsed = Uri.parse('$_base$path');
+    final uri = parsed.replace(queryParameters: {...parsed.queryParameters, '_ycoo_ts': DateTime.now().millisecondsSinceEpoch.toString()});
     final cookie = AuthService.instance.authCookie;
     final r = await NetClient.retry(() => client.get(uri, headers: {
       'User-Agent': NetClient.ua,
@@ -84,8 +54,13 @@ class ProfileService {
   Future<ProfileData> fetchProfile(int uid) async {
     final html = await _get('home.php?mod=space&do=profile&uid=$uid&mobile=2');
     final doc = parser.parse(html);
+    for (final n in doc.querySelectorAll('script,style,noscript,template')) { n.remove(); }
     final text = _clean(doc.body?.text ?? '');
-    final name = _clean(doc.querySelector('.comiis_space_name, .vwmy a, .mtm .xw1, .hm .xw1, h1')?.text ?? '用户');
+
+    // “头像旁边”显示昵称：优先取资料页明确标注的昵称，而不是用户名链接。
+    final nickname = _labelValue(doc, ['昵称', '昵称：', '显示名称']);
+    final username = _labelValue(doc, ['用户名', '用户名：']) ?? _visibleName(doc);
+    final name = _validName(nickname) ? nickname! : (_validName(username) ? username! : '用户');
     final avatar = _abs(doc.querySelector('.avatar img, .avtm img, img[src*="avatar"], .comiis_space_avatar img')?.attributes['src'] ?? '');
     final group = _clean(doc.querySelector('.comiis_space_level, .gm, .xg1')?.text ?? '');
     final signature = _clean(doc.querySelector('.comiis_space_signature, .personal_signature, .spv')?.text ?? '');
@@ -94,72 +69,92 @@ class ProfileService {
     final followers = _numberFor(doc, text, ['粉丝'], uid: uid);
     final threads = _numberFor(doc, text, ['主题数', '主题'], uid: uid);
     final replies = _numberFor(doc, text, ['回帖数', '回帖'], uid: uid);
-    final credits = _numberFor(doc, text, ['星币', '源币'], uid: uid, rejectUid: true);
+    final credits = await _fetchCreditBalance(doc, text, uid);
     final points = _numberFor(doc, text, ['积分'], uid: uid, rejectUid: true);
-
     final me = AuthService.instance.uid ?? 0;
     final followedByMe = me > 0 && RegExp(r'(?:取消关注|已关注)').hasMatch(text);
 
-    return ProfileData(
-      uid: uid,
-      username: name,
-      avatar: avatar,
-      group: group,
-      signature: signature,
-      threads: threads,
-      replies: replies,
-      following: following,
-      followers: followers,
-      credits: credits,
-      points: points,
-      followingMe: false,
-      followedByMe: followedByMe,
-    );
+    return ProfileData(uid: uid, username: name, avatar: avatar, group: group, signature: signature, threads: threads, replies: replies, following: following, followers: followers, credits: credits, points: points, followingMe: false, followedByMe: followedByMe);
   }
 
-  static int _numberFor(
-    dynamic doc,
-    String text,
-    List<String> labels, {
-    required int uid,
-    bool rejectUid = false,
-  }) {
-    // Prefer a single DOM node containing the label and its value. This avoids
-    // accidentally pairing “星币” with a later UID from the flattened page text.
-    final elements = (doc.querySelectorAll('li, dt, dd, div, span, p, a, em, strong') as List)
-        .cast<dynamic>();
-    for (final element in elements) {
-      final value = _clean(element.text ?? '');
-      if (value.isEmpty || value.length > 80) continue;
-      if (!labels.any(value.contains)) continue;
-      if (RegExp(r'UID\s*[:：]?', caseSensitive: false).hasMatch(value)) continue;
-      final match = RegExp(r'(?:^|[^0-9])([0-9]{1,12})(?:\s*(?:个|枚|点)?\s*)$').firstMatch(value);
-      if (match != null) {
-        final number = int.tryParse(match.group(1)!);
-        if (number != null && (!rejectUid || number != uid)) return number;
+  Future<int> _fetchCreditBalance(dynamic profileDoc, String text, int uid) async {
+    // 个人资料页有时只显示积分而不输出可提现星币。优先从专门的 credit 页面读取，避免 UID 被当余额。
+    final direct = _numberFor(profileDoc, text, ['星币', '源币'], uid: uid, rejectUid: true);
+    if (direct > 0) return direct;
+    try {
+      final html = await _get('home.php?mod=spacecp&ac=credit&mobile=2');
+      final doc = parser.parse(html);
+      for (final node in doc.querySelectorAll('li,dt,dd,tr,td,th,div,span,p,strong,em')) {
+        final value = _clean(node.text ?? '');
+        if (value.isEmpty || value.length > 120 || !RegExp(r'(星币|源币)').hasMatch(value)) continue;
+        final m = RegExp(r'(?:星币|源币)\s*[:：]?\s*([0-9]{1,12})').firstMatch(value);
+        if (m != null) {
+          final n = int.tryParse(m.group(1)!);
+          if (n != null && n != uid) return n;
+        }
+        final n = RegExp(r'([0-9]{1,12})\s*(?:星币|源币)').firstMatch(value);
+        if (n != null) {
+          final v = int.tryParse(n.group(1)!);
+          if (v != null && v != uid) return v;
+        }
       }
-      final afterLabel = RegExp('(?:${labels.map(RegExp.escape).join('|')})\\s*[:：]?\\s*([0-9]{1,12})').firstMatch(value);
-      if (afterLabel != null) {
-        final number = int.tryParse(afterLabel.group(1)!);
-        if (number != null && (!rejectUid || number != uid)) return number;
+    } catch (_) {}
+    return 0;
+  }
+
+  static int _numberFor(dynamic doc, String text, List<String> labels, {required int uid, bool rejectUid = false}) {
+    for (final element in doc.querySelectorAll('li,dt,dd,div,span,p,a,em,strong')) {
+      final value = _clean(element.text ?? '');
+      if (value.isEmpty || value.length > 80 || !labels.any(value.contains)) continue;
+      if (RegExp(r'UID\s*[:：]?', caseSensitive: false).hasMatch(value)) continue;
+      final m = RegExp(r'(?:${labels.map(RegExp.escape).join('|')})\s*[:：]?\s*([0-9]{1,12})').firstMatch(value);
+      if (m != null) {
+        final n = int.tryParse(m.group(1)!);
+        if (n != null && (!rejectUid || n != uid)) return n;
+      }
+      final tail = RegExp(r'(?:^|[^0-9])([0-9]{1,12})(?:\s*(?:个|枚|点)?\s*)$').firstMatch(value);
+      if (tail != null) {
+        final n = int.tryParse(tail.group(1)!);
+        if (n != null && (!rejectUid || n != uid)) return n;
       }
     }
-
-    // Fallback for themes that flatten the statistics into plain text.
     for (final label in labels) {
-      final matches = RegExp('${RegExp.escape(label)}\\s*[:：]?\\s*([0-9]{1,12})').allMatches(text);
-      for (final match in matches) {
-        final number = int.tryParse(match.group(1)!);
-        if (number != null && (!rejectUid || number != uid)) return number;
+      for (final m in RegExp('${RegExp.escape(label)}\\s*[:：]?\\s*([0-9]{1,12})').allMatches(text)) {
+        final n = int.tryParse(m.group(1)!);
+        if (n != null && (!rejectUid || n != uid)) return n;
       }
     }
     return 0;
   }
 
+  static String? _labelValue(dynamic doc, List<String> labels) {
+    for (final node in doc.querySelectorAll('li,dt,dd,th,td,p,div,span')) {
+      final text = _clean(node.text ?? '');
+      for (final label in labels) {
+        if (!text.contains(label)) continue;
+        final value = _clean(text.replaceFirst(label, '').replaceFirst(':', '').replaceFirst('：', ''));
+        if (_validName(value)) return value;
+      }
+    }
+    return null;
+  }
+
+  static String? _visibleName(dynamic doc) {
+    for (final selector in ['.vwmy a', '.vwmy', '.pf_username', '.userinfo a', '.user-info a', '.member-name', '.username', '.nickname', '[class*="username"]', '[class*="nickname"]']) {
+      final value = _clean(doc.querySelector(selector)?.text ?? '');
+      if (_validName(value)) return value;
+    }
+    return null;
+  }
+
+  static bool _validName(String? value) {
+    if (value == null) return false;
+    final v = _clean(value);
+    return v.isNotEmpty && v.length <= 32 && !RegExp(r'^(UID|用户名|昵称|登录|注册|退出|主题|回帖)\s*[:：]?$', caseSensitive: false).hasMatch(v);
+  }
+
   Future<List<ThreadItem>> fetchThreads(int uid, {bool replies = false}) {
-    final path = replies
-        ? 'home.php?mod=space&do=thread&view=me&type=reply&uid=$uid&mobile=2'
-        : 'home.php?mod=space&do=thread&view=me&uid=$uid&mobile=2';
+    final path = replies ? 'home.php?mod=space&do=thread&view=me&type=reply&uid=$uid&mobile=2' : 'home.php?mod=space&do=thread&view=me&uid=$uid&mobile=2';
     return MemberServiceV2.instance.fetchThreads(path);
   }
 
@@ -171,42 +166,19 @@ class ProfileService {
       final page = await _get('home.php?mod=space&do=profile&uid=$uid&mobile=2');
       final formhash = _hidden(page, 'formhash');
       if (formhash == null || formhash.isEmpty) return '未取得操作令牌，请刷新后重试';
-      final path = 'home.php?mod=spacecp&ac=friend&op=${follow ? 'add' : 'ignore'}&uid=$uid&inajax=1';
-      final r = await client.post(
-        Uri.parse('$_base$path'),
-        headers: {
-          'User-Agent': NetClient.ua,
-          'Accept': '*/*',
-          'Content-Type': 'application/x-www-form-urlencoded; charset=UTF-8',
-          'Referer': '$_base' 'home.php?mod=space&do=profile&uid=$uid&mobile=2',
-          'X-Requested-With': 'XMLHttpRequest',
-          'Cookie': cookie ?? '',
-        },
-        body: {'formhash': formhash, 'uid': '$uid', 'handlekey': 'follow_$uid'},
-      ).timeout(const Duration(seconds: 20));
+      final r = await client.post(Uri.parse('$_base' 'home.php?mod=spacecp&ac=friend&op=${follow ? 'add' : 'ignore'}&uid=$uid&inajax=1'), headers: {'User-Agent': NetClient.ua, 'Accept': '*/*', 'Content-Type': 'application/x-www-form-urlencoded; charset=UTF-8', 'Referer': '$_base' 'home.php?mod=space&do=profile&uid=$uid&mobile=2', 'X-Requested-With': 'XMLHttpRequest', 'Cookie': cookie ?? ''}, body: {'formhash': formhash, 'uid': '$uid', 'handlekey': 'follow_$uid'}).timeout(const Duration(seconds: 20));
       final body = NetClient.decode(r.bodyBytes);
       if (body.contains('succeed') || body.contains('成功') || body.contains('已关注') || (follow && body.contains('follow'))) return null;
       if (body.contains('登录') && body.contains('用户名')) return '登录态已失效，请重新登录';
       return _message(body) ?? '操作失败，请稍后重试';
-    } catch (_) {
-      return '网络请求失败，请稍后重试';
-    }
+    } catch (_) { return '网络请求失败，请稍后重试'; }
   }
 
   static String? _message(String html) => RegExp(r'''(?:showError|showDialog)\(\s*['"]([^'"]+)''').firstMatch(html)?.group(1);
-
   static String? _hidden(String html, String name) {
     final e = RegExp.escape(name);
     return RegExp('name\\s*=\\s*["\\\']$e["\\\'][^>]*value\\s*=\\s*["\\\']([^"\\\']+)', caseSensitive: false).firstMatch(html)?.group(1);
   }
-
   static String _clean(String s) => s.replaceAll(RegExp(r'\s+'), ' ').trim();
-
-  static String _abs(String u) {
-    if (u.isEmpty) return '';
-    if (u.startsWith('http')) return u;
-    if (u.startsWith('//')) return 'https:$u';
-    if (u.startsWith('/')) return _base + u.substring(1);
-    return _base + u;
-  }
+  static String _abs(String u) { if (u.isEmpty) return ''; if (u.startsWith('http')) return u; if (u.startsWith('//')) return 'https:$u'; if (u.startsWith('/')) return _base + u.substring(1); return _base + u; }
 }
