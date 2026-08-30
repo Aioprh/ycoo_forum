@@ -14,8 +14,9 @@ jobs:
     steps:
       - uses: actions/checkout@v4
       - name: Patch profile stats parser
-        shell: python
+        shell: bash
         run: |
+          python3 <<'PY'
           from pathlib import Path
 
           path = Path('lib/services/profile_service.dart')
@@ -31,7 +32,7 @@ jobs:
           if marker not in text:
               raise SystemExit('_numberNearLabel marker not found')
 
-          helper = r'''  static int _numberByExactLabel(dom.Document doc, List<String> labels) {
+          helper = '''  static int _numberByExactLabel(dom.Document doc, List<String> labels) {
     final wanted = labels.map(_clean).where((e) => e.isNotEmpty).toList();
     for (final node in doc.querySelectorAll('li,dt,dd,th,td,a,span,div,p,strong,em')) {
       final own = _clean(node.text);
@@ -43,8 +44,7 @@ jobs:
 
         final parent = node.parent;
         if (parent == null) continue;
-        final siblings = parent.children;
-        for (final sibling in siblings) {
+        for (final sibling in parent.children) {
           final siblingText = _clean(sibling.text);
           if (siblingText.isEmpty || siblingText.length > 80) continue;
           final value = _numberBesideLabel(siblingText, label);
@@ -58,8 +58,8 @@ jobs:
   static int? _numberBesideLabel(String text, String label) {
     final escaped = RegExp.escape(label);
     final patterns = <RegExp>[
-      RegExp('$escaped\\s*[:：]?\\s*([0-9]{1,12})(?![0-9])'),
-      RegExp('([0-9]{1,12})(?![0-9])\\s*$escaped'),
+      RegExp('$escaped\\\\s*[:：]?\\\\s*([0-9]{1,12})(?![0-9])'),
+      RegExp('([0-9]{1,12})(?![0-9])\\\\s*$escaped'),
     ];
     for (final pattern in patterns) {
       final match = pattern.firstMatch(text);
@@ -73,6 +73,7 @@ jobs:
 '''
           text = text.replace(marker, helper + marker, 1)
           path.write_text(text, encoding='utf-8')
+          PY
 
       - name: Commit patch and remove one-shot workflow
         shell: bash
