@@ -1,3 +1,5 @@
+import 'dart:io';
+
 import 'package:file_picker/file_picker.dart';
 import 'package:flutter/material.dart';
 
@@ -88,17 +90,27 @@ class _CreateThreadPageState extends State<CreateThreadPage> {
     setState(() { _types = types; _loadingTypes = false; _typeid = types.isNotEmpty ? types.first.id : null; });
   }
 
-  Future<void> _pickAttachments() async {
+  Future<void> _pickAttachments({bool imagesOnly = false}) async {
     if (_uploading || _submitting || _fid == null) return;
     try {
-      final picked = await FilePicker.platform.pickFiles(allowMultiple: true, withData: false, type: FileType.any);
+      final picked = await FilePicker.platform.pickFiles(
+        allowMultiple: true,
+        withData: false,
+        type: imagesOnly ? FileType.image : FileType.any,
+      );
       if (picked == null || picked.files.isEmpty) return;
       setState(() { _uploading = true; _error = null; _uploadStatus = '准备上传 0/${picked.files.length}'; });
       for (var i = 0; i < picked.files.length; i++) {
         final file = picked.files[i];
-        if (file.path == null || file.path!.isEmpty) { setState(() => _error = '${file.name} 无法读取'); continue; }
-        if (file.size > AttachmentUploadService.maxBytes) { setState(() => _error = '${file.name} 超过 10 MB，已跳过'); continue; }
-        setState(() => _uploadStatus = '正在上传 ${i + 1}/${picked.files.length}：${file.name}');
+        if (file.path == null || file.path!.isEmpty) {
+          if (mounted) setState(() => _error = '${file.name} 无法读取');
+          continue;
+        }
+        if (file.size > AttachmentUploadService.maxBytes) {
+          if (mounted) setState(() => _error = '${file.name} 超过 10 MB，已跳过');
+          continue;
+        }
+        if (mounted) setState(() => _uploadStatus = '正在上传 ${i + 1}/${picked.files.length}：${file.name}');
         try {
           final uploaded = await AttachmentUploadService.instance.upload(fid: _fid!, file: file);
           if (mounted) setState(() => _attachments.add(uploaded));
@@ -114,6 +126,15 @@ class _CreateThreadPageState extends State<CreateThreadPage> {
   }
 
   void _removeAttachment(int aid) => setState(() => _attachments.removeWhere((e) => e.aid == aid));
+
+  void _reorderAttachment(int oldIndex, int newIndex) {
+    if (_uploading || _submitting || oldIndex == newIndex) return;
+    setState(() {
+      if (newIndex > oldIndex) newIndex -= 1;
+      final item = _attachments.removeAt(oldIndex);
+      _attachments.insert(newIndex, item);
+    });
+  }
 
   Future<void> _submit() async {
     if (_submitting || _uploading || !_formKey.currentState!.validate() || _fid == null) return;
@@ -212,7 +233,7 @@ class _CreateThreadPageState extends State<CreateThreadPage> {
         SingleChildScrollView(scrollDirection: Axis.horizontal, child: Row(children: [
           const SizedBox(width: 6), _tool(Icons.format_bold_rounded, '粗体', () => _insert('[b]{text}[/b]')),
           _tool(Icons.format_italic_rounded, '斜体', () => _insert('[i]{text}[/i]')),
-          _tool(Icons.palette_outlined, '颜色', _chooseColor), _tool(Icons.image_outlined, '图片', _insertImage),
+          _tool(Icons.palette_outlined, '颜色', _chooseColor), _tool(Icons.image_outlined, '图片 URL', _insertImage),
           _tool(Icons.link_rounded, '链接', _insertLink), _tool(Icons.format_quote_rounded, '引用', () => _insert('[quote]{text}[/quote]')),
           _tool(Icons.code_rounded, '代码', () => _insert('[code]{text}[/code]')), _tool(Icons.emoji_emotions_outlined, '表情', _chooseEmoji),
           const SizedBox(width: 6),
@@ -227,25 +248,71 @@ class _CreateThreadPageState extends State<CreateThreadPage> {
     );
   }
 
+  bool _isImage(UploadedAttachment a) {
+    final ext = a.name.toLowerCase().split('.').last;
+    return const {'jpg', 'jpeg', 'png', 'gif', 'webp', 'bmp', 'heic', 'heif'}.contains(ext) && a.localPath != null;
+  }
+
+  Widget _attachmentTile(BuildContext context, UploadedAttachment a, int index) {
+    final scheme = Theme.of(context).colorScheme;
+    final image = _isImage(a);
+    return Container(
+      key: ValueKey(a.aid),
+      width: 116,
+      margin: const EdgeInsets.only(right: 10),
+      decoration: BoxDecoration(color: scheme.surfaceContainerHighest.withOpacity(.45), borderRadius: BorderRadius.circular(18), border: Border.all(color: scheme.outlineVariant.withOpacity(.55))),
+      clipBehavior: Clip.antiAlias,
+      child: Stack(children: [
+        SizedBox(height: 126, width: 116, child: image
+          ? Image.file(File(a.localPath!), fit: BoxFit.cover, errorBuilder: (_, __, ___) => _filePreview(scheme))
+          : _filePreview(scheme)),
+        Positioned(left: 7, top: 7, child: Container(width: 25, height: 25, decoration: BoxDecoration(color: scheme.scrim.withOpacity(.55), shape: BoxShape.circle), child: Icon(Icons.drag_indicator_rounded, color: scheme.onInverseSurface, size: 17))),
+        Positioned(right: 5, top: 5, child: Material(color: scheme.scrim.withOpacity(.58), shape: const CircleBorder(), child: InkWell(onTap: _submitting || _uploading ? null : () => _removeAttachment(a.aid), child: Padding(padding: const EdgeInsets.all(4), child: Icon(Icons.close_rounded, color: scheme.onInverseSurface, size: 17))))),
+        Positioned(left: 7, right: 7, bottom: 7, child: Container(padding: const EdgeInsets.symmetric(horizontal: 7, vertical: 5), decoration: BoxDecoration(color: scheme.scrim.withOpacity(.62), borderRadius: BorderRadius.circular(9)), child: Text(a.name, maxLines: 1, overflow: TextOverflow.ellipsis, style: TextStyle(color: scheme.onInverseSurface, fontSize: 10, fontWeight: FontWeight.w600)))),
+      ]),
+    );
+  }
+
+  Widget _filePreview(ColorScheme scheme) => Center(child: Column(mainAxisAlignment: MainAxisAlignment.center, children: [
+    Icon(Icons.insert_drive_file_rounded, size: 38, color: scheme.primary),
+    const SizedBox(height: 6),
+    Text('附件', style: TextStyle(fontSize: 11, color: scheme.onSurfaceVariant, fontWeight: FontWeight.w600)),
+  ]);
+
   Widget _attachmentCard(BuildContext context) {
     final scheme = Theme.of(context).colorScheme;
     return Container(
       decoration: BoxDecoration(color: scheme.surface, borderRadius: BorderRadius.circular(22), border: Border.all(color: scheme.outlineVariant.withOpacity(.65))),
-      padding: const EdgeInsets.fromLTRB(16, 14, 16, 10),
+      padding: const EdgeInsets.fromLTRB(16, 14, 16, 12),
       child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
         Row(children: [
-          Container(width: 34, height: 34, decoration: BoxDecoration(color: scheme.secondaryContainer, borderRadius: BorderRadius.circular(10)), child: Icon(Icons.attach_file_rounded, size: 19, color: scheme.onSecondaryContainer)),
-          const SizedBox(width: 10), const Expanded(child: Text('附件', style: TextStyle(fontSize: 16, fontWeight: FontWeight.w800))),
-          FilledButton.tonalIcon(onPressed: _submitting || _uploading ? null : _pickAttachments, icon: const Icon(Icons.add_rounded, size: 18), label: const Text('添加')),
+          Container(width: 34, height: 34, decoration: BoxDecoration(color: scheme.secondaryContainer, borderRadius: BorderRadius.circular(10)), child: Icon(Icons.photo_library_outlined, size: 19, color: scheme.onSecondaryContainer)),
+          const SizedBox(width: 10), const Expanded(child: Text('图片与附件', style: TextStyle(fontSize: 16, fontWeight: FontWeight.w800))),
+          PopupMenuButton<String>(enabled: !_submitting && !_uploading, tooltip: '添加', icon: const Icon(Icons.add_circle_outline_rounded), onSelected: (value) {
+            if (value == 'image') _pickAttachments(imagesOnly: true); else _pickAttachments();
+          }, itemBuilder: (_) => const [
+            PopupMenuItem(value: 'image', child: ListTile(leading: Icon(Icons.photo_library_outlined), title: Text('从图库选择'), contentPadding: EdgeInsets.zero)),
+            PopupMenuItem(value: 'file', child: ListTile(leading: Icon(Icons.attach_file_rounded), title: Text('选择文件'), contentPadding: EdgeInsets.zero)),
+          ]),
         ]),
-        const SizedBox(height: 5), Text('单个文件最大 10 MB · 使用论坛原生上传', style: TextStyle(fontSize: 12)),
-        if (_uploading) ...[const SizedBox(height: 12), const LinearProgressIndicator(minHeight: 3), const SizedBox(height: 6), Text(_uploadStatus, maxLines: 1, overflow: TextOverflow.ellipsis, style: const TextStyle(fontSize: 11))],
+        const SizedBox(height: 5), Text('图库图片会直接预览 · 长按拖动可调整顺序 · 单个文件最大 10 MB', style: TextStyle(fontSize: 12)),
+        if (_uploading) ...[
+          const SizedBox(height: 12), const LinearProgressIndicator(minHeight: 3), const SizedBox(height: 6),
+          Text(_uploadStatus, maxLines: 1, overflow: TextOverflow.ellipsis, style: const TextStyle(fontSize: 11)),
+        ],
         if (_attachments.isNotEmpty) ...[
-          const SizedBox(height: 8),
-          ..._attachments.map((a) => Container(margin: const EdgeInsets.only(top: 6), padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 8), decoration: BoxDecoration(color: scheme.surfaceContainerHighest.withOpacity(.5), borderRadius: BorderRadius.circular(14)), child: Row(children: [
-            Container(width: 38, height: 38, decoration: BoxDecoration(color: scheme.primaryContainer, borderRadius: BorderRadius.circular(10)), child: Icon(Icons.insert_drive_file_outlined, color: scheme.onPrimaryContainer)),
-            const SizedBox(width: 10), Expanded(child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [Text(a.name, maxLines: 1, overflow: TextOverflow.ellipsis, style: const TextStyle(fontWeight: FontWeight.w600)), Text('${(a.size / 1024 / 1024).toStringAsFixed(2)} MB', style: const TextStyle(fontSize: 11))])),
-            IconButton(onPressed: _uploading || _submitting ? null : () => _removeAttachment(a.aid), icon: const Icon(Icons.close_rounded, size: 19)),
+          const SizedBox(height: 12),
+          SizedBox(height: 126, child: ReorderableListView.builder(
+            scrollDirection: Axis.horizontal,
+            buildDefaultDragHandles: false,
+            itemCount: _attachments.length,
+            onReorder: _reorderAttachment,
+            itemBuilder: (context, index) => ReorderableDragStartListener(index: index, enabled: !_uploading && !_submitting, child: _attachmentTile(context, _attachments[index], index)),
+          )),
+        ] else if (!_uploading) ...[
+          const SizedBox(height: 12),
+          InkWell(onTap: _submitting ? null : () => _pickAttachments(imagesOnly: true), borderRadius: BorderRadius.circular(17), child: Container(width: double.infinity, padding: const EdgeInsets.symmetric(vertical: 18), decoration: BoxDecoration(color: scheme.surfaceContainerHighest.withOpacity(.35), borderRadius: BorderRadius.circular(17), border: Border.all(color: scheme.outlineVariant, style: BorderStyle.solid)), child: Column(children: [
+            Icon(Icons.add_photo_alternate_outlined, size: 28, color: scheme.primary), const SizedBox(height: 7), const Text('添加图片', style: TextStyle(fontWeight: FontWeight.w700)), const SizedBox(height: 3), Text('点击从图库选择图片', style: TextStyle(fontSize: 11, color: scheme.onSurfaceVariant)),
           ]))),
         ],
       ]),
@@ -288,7 +355,7 @@ class _CreateThreadPageState extends State<CreateThreadPage> {
       body: SafeArea(child: Form(key: _formKey, child: ListView(padding: const EdgeInsets.fromLTRB(16, 10, 16, 24), keyboardDismissBehavior: ScrollViewKeyboardDismissBehavior.onDrag, children: [
         Container(padding: const EdgeInsets.fromLTRB(18, 16, 18, 14), decoration: BoxDecoration(gradient: LinearGradient(colors: [scheme.primaryContainer, scheme.secondaryContainer]), borderRadius: BorderRadius.circular(24)), child: Row(children: [
           Container(width: 46, height: 46, decoration: BoxDecoration(color: scheme.surface.withOpacity(.72), borderRadius: BorderRadius.circular(15)), child: Icon(Icons.forum_rounded, color: scheme.primary)), const SizedBox(width: 13),
-          const Expanded(child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [Text('分享点什么吧', style: TextStyle(fontSize: 18, fontWeight: FontWeight.w900)), SizedBox(height: 3), Text('原生编辑 · 网页端 BBCode · 附件上传', style: TextStyle(fontSize: 12))])),
+          const Expanded(child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [Text('分享点什么吧', style: TextStyle(fontSize: 18, fontWeight: FontWeight.w900)), SizedBox(height: 3), Text('原生编辑 · 网页端 BBCode · 图片与附件', style: TextStyle(fontSize: 12))])),
         ])),
         const SizedBox(height: 14),
         if (_loadingBoards) const LinearProgressIndicator(minHeight: 2),
