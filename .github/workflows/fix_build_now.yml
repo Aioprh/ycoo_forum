@@ -1,8 +1,6 @@
 name: Repair current Android build
 
 on:
-  push:
-    branches: [main]
   workflow_dispatch:
 
 permissions:
@@ -11,6 +9,7 @@ permissions:
 jobs:
   repair:
     runs-on: ubuntu-latest
+    timeout-minutes: 30
     steps:
       - uses: actions/checkout@v4
         with:
@@ -18,8 +17,9 @@ jobs:
           fetch-depth: 0
       - uses: subosito/flutter-action@v2
         with:
-          flutter-version: 3.47.2
+          flutter-version: '3.47.2'
           channel: stable
+          cache: true
       - name: Repair, verify and commit
         shell: bash
         run: |
@@ -30,13 +30,12 @@ jobs:
           p = Path('lib/pages/detail_page.dart')
           s = p.read_text()
           start = s.find('  Widget _composer(BuildContext context) {')
-          if start < 0:
-              raise SystemExit('composer function not found')
-          end = s.find('\n  }\n}', start)
-          if end < 0:
-              raise SystemExit('composer function end not found')
-          end += len('\n  }')
-          composer = '''  Widget _composer(BuildContext context) {
+          if start >= 0:
+              end = s.find('\n  }\n}', start)
+              if end < 0:
+                  raise SystemExit('composer function end not found')
+              end += len('\n  }')
+              composer = '''  Widget _composer(BuildContext context) {
             final c = Theme.of(context).colorScheme;
             final d = _detail;
             if (d == null || d.isPaid) return const SizedBox.shrink();
@@ -114,8 +113,8 @@ jobs:
               ),
             );
           }'''
-          s = s[:start] + composer + s[end:]
-          p.write_text(s)
+              s = s[:start] + composer + s[end:]
+              p.write_text(s)
 
           p = Path('lib/widgets/native_post_content.dart')
           s = p.read_text()
@@ -131,10 +130,10 @@ jobs:
           dart format lib/pages/detail_page.dart lib/widgets/native_post_content.dart
           flutter pub get
           flutter analyze --no-fatal-infos --no-fatal-warnings
-          flutter test
-          flutter build apk --debug
+          flutter test --dart-define=cronetHttpNoPlay=true
+          flutter build apk --release --dart-define=cronetHttpNoPlay=true
           git config user.name 'github-actions[bot]'
           git config user.email '41898282+github-actions[bot]@users.noreply.github.com'
           git add lib/pages/detail_page.dart lib/widgets/native_post_content.dart android/gradle.properties
-          git commit -m 'fix: repair Android build and Gradle memory' || exit 0
+          git diff --cached --quiet || git commit -m 'fix: repair Android build and Gradle memory'
           git push origin main
