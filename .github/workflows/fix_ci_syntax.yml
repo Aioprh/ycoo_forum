@@ -1,0 +1,86 @@
+name: Fix native renderer syntax
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - '.github/workflows/fix_ci_syntax.yml'
+
+permissions:
+  contents: write
+
+jobs:
+  fix:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: main
+          fetch-depth: 0
+      - uses: subosito/flutter-action@v2
+        with:
+          flutter-version: '3.47.2'
+          channel: stable
+      - name: Fix Dart sources
+        run: |
+          python3 - <<'PY'
+          from pathlib import Path
+          p = Path('lib/widgets/native_post_content.dart')
+          s = p.read_text()
+          s = s.replace("String _nodeText(dom.Node node) => node is dom.Text ? node.text : node.text;", "String _nodeText(dom.Node node) => node.text ?? '';" )
+          p.write_text(s)
+
+          p = Path('lib/pages/detail_page.dart')
+          lines = p.read_text().splitlines()
+          out = []
+          for line in lines:
+              if line.lstrip().startswith('Widget _commentsSection(BuildContext context, ThreadDetail d) {'):
+                  out.extend([
+                    "  Widget _commentsSection(BuildContext context, ThreadDetail d) {",
+                    "    final c = Theme.of(context).colorScheme;",
+                    "    return Container(",
+                    "      margin: const EdgeInsets.only(top: 2, bottom: 10),",
+                    "      decoration: BoxDecoration(",
+                    "        color: c.surface,",
+                    "        borderRadius: BorderRadius.circular(24),",
+                    "        border: Border.all(color: c.outlineVariant.withValues(alpha: .45)),",
+                    "      ),",
+                    "      child: Column(",
+                    "        children: [",
+                    "          InkWell(",
+                    "            onTap: () => setState(() => _commentsExpanded = !_commentsExpanded),",
+                    "            child: Padding(",
+                    "              padding: const EdgeInsets.fromLTRB(16, 15, 12, 15),",
+                    "              child: Row(",
+                    "                children: [",
+                    "                  const Expanded(child: Text('评论 / 回复', style: TextStyle(fontSize: 17, fontWeight: FontWeight.w800))),",
+                    "                  Icon(_commentsExpanded ? Icons.keyboard_arrow_up_rounded : Icons.keyboard_arrow_down_rounded),",
+                    "                ],",
+                    "              ),",
+                    "            ),",
+                    "          ),",
+                    "          if (_commentsExpanded) ...[",
+                    "            Divider(height: 1, color: c.outlineVariant.withValues(alpha: .35)),",
+                    "            NativeCommentList(html: d.commentsHtml),",
+                    "          ],",
+                    "        ],",
+                    "      ),",
+                    "    );",
+                    "  }",
+                  ])
+              else:
+                  out.append(line)
+          p.write_text('\n'.join(out) + '\n')
+          PY
+          dart format lib/pages/detail_page.dart lib/widgets/native_post_content.dart
+          flutter pub get
+          flutter analyze --no-fatal-infos --no-fatal-warnings
+      - name: Commit fix
+        run: |
+          git config user.name 'github-actions[bot]'
+          git config user.email '41898282+github-actions[bot]@users.noreply.github.com'
+          git add lib/pages/detail_page.dart lib/widgets/native_post_content.dart .github/workflows/fix_ci_syntax.yml
+          git commit -m 'fix: resolve native renderer analyzer errors [skip ci]' || exit 0
+          git rm .github/workflows/fix_ci_syntax.yml
+          git commit -m 'chore: remove temporary CI fix workflow [skip ci]' || exit 0
+          git push origin main
