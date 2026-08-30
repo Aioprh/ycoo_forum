@@ -14,7 +14,8 @@ class CreditRechargePage extends StatefulWidget {
 
 class _CreditRechargePageState extends State<CreditRechargePage> {
   static const _base = 'https://www.ycoo.net/';
-  static const _path = 'home.php?ac=plugin&id=boan_buycredit:buycredit&mod=spacecp&op=credit';
+  static const _path =
+      'home.php?ac=plugin&id=boan_buycredit:buycredit&mod=spacecp&op=credit';
 
   final _cookieManager = WebViewCookieManager();
   WebViewController? _controller;
@@ -47,7 +48,14 @@ class _CreditRechargePageState extends State<CreditRechargePage> {
         final name = item.substring(0, index).trim();
         final value = item.substring(index + 1).trim();
         if (name.isEmpty || value.isEmpty) continue;
-        await _cookieManager.setCookie(WebViewCookie(name: name, value: value, domain: 'www.ycoo.net', path: '/'));
+        await _cookieManager.setCookie(
+          WebViewCookie(
+            name: name,
+            value: value,
+            domain: 'www.ycoo.net',
+            path: '/',
+          ),
+        );
       }
 
       final controller = WebViewController();
@@ -59,14 +67,26 @@ class _CreditRechargePageState extends State<CreditRechargePage> {
             if (mounted) setState(() => _progress = progress.clamp(0, 100));
           },
           onPageStarted: (_) {
-            if (mounted) setState(() { _loading = true; _error = null; });
+            if (mounted)
+              setState(() {
+                _loading = true;
+                _error = null;
+              });
           },
           onPageFinished: (_) {
-            if (mounted) setState(() { _loading = false; _progress = 100; });
+            if (mounted)
+              setState(() {
+                _loading = false;
+                _progress = 100;
+              });
           },
           onWebResourceError: (error) {
             if (error.isForMainFrame != true) return;
-            if (mounted) setState(() { _loading = false; _error = error.description; });
+            if (mounted)
+              setState(() {
+                _loading = false;
+                _error = error.description;
+              });
           },
           onNavigationRequest: (_) => NavigationDecision.navigate,
         ),
@@ -75,7 +95,11 @@ class _CreditRechargePageState extends State<CreditRechargePage> {
       await controller.loadRequest(_uri);
       if (mounted) setState(() => _loading = false);
     } catch (e) {
-      if (mounted) setState(() { _loading = false; _error = e.toString().replaceFirst('Exception: ', ''); });
+      if (mounted)
+        setState(() {
+          _loading = false;
+          _error = e.toString().replaceFirst('Exception: ', '');
+        });
     }
   }
 
@@ -85,7 +109,10 @@ class _CreditRechargePageState extends State<CreditRechargePage> {
       await _initWebView();
       return;
     }
-    setState(() { _loading = true; _error = null; });
+    setState(() {
+      _loading = true;
+      _error = null;
+    });
     await controller.reload();
   }
 
@@ -95,28 +122,46 @@ class _CreditRechargePageState extends State<CreditRechargePage> {
     return Scaffold(
       appBar: AppBar(
         title: const Text('源币充值'),
-        actions: [IconButton(tooltip: '刷新充值页面', onPressed: _reload, icon: const Icon(Icons.refresh_rounded))],
+        actions: [
+          IconButton(
+            tooltip: '刷新充值页面',
+            onPressed: _reload,
+            icon: const Icon(Icons.refresh_rounded),
+          ),
+        ],
       ),
       body: Column(
         children: [
-          if (_loading && _progress > 0 && _progress < 100) LinearProgressIndicator(value: _progress / 100),
+          if (_loading && _progress > 0 && _progress < 100)
+            LinearProgressIndicator(value: _progress / 100),
           Expanded(
             child: _error != null && _controller == null
                 ? Center(
                     child: Padding(
                       padding: const EdgeInsets.all(24),
-                      child: Column(mainAxisSize: MainAxisSize.min, children: [
-                        Icon(Icons.account_balance_wallet_outlined, size: 52, color: scheme.outline),
-                        const SizedBox(height: 12),
-                        Text(_error!, textAlign: TextAlign.center),
-                        const SizedBox(height: 14),
-                        FilledButton.icon(onPressed: _initWebView, icon: const Icon(Icons.refresh), label: const Text('重新加载')),
-                      ]),
+                      child: Column(
+                        mainAxisSize: MainAxisSize.min,
+                        children: [
+                          Icon(
+                            Icons.account_balance_wallet_outlined,
+                            size: 52,
+                            color: scheme.outline,
+                          ),
+                          const SizedBox(height: 12),
+                          Text(_error!, textAlign: TextAlign.center),
+                          const SizedBox(height: 14),
+                          FilledButton.icon(
+                            onPressed: _initWebView,
+                            icon: const Icon(Icons.refresh),
+                            label: const Text('重新加载'),
+                          ),
+                        ],
+                      ),
                     ),
                   )
                 : _controller == null
-                    ? const Center(child: CircularProgressIndicator())
-                    : WebViewWidget(controller: _controller!),
+                ? const Center(child: CircularProgressIndicator())
+                : WebViewWidget(controller: _controller!),
           ),
         ],
       ),

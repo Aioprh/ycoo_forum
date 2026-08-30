@@ -56,11 +56,12 @@ class _DetailPageState extends State<DetailPage> {
 
   Future<void> _fetch() async {
     final hadDetail = _detail != null;
-    if (mounted)
+    if (mounted) {
       setState(() {
         _loading = !hadDetail;
         _error = null;
       });
+    }
     try {
       final d = await ApiService.instance.fetchThreadDetail(widget.tid);
       if (!mounted) return;
@@ -120,8 +121,9 @@ class _DetailPageState extends State<DetailPage> {
       _replyFocus.unfocus();
       _snack('回帖成功');
       await _fetch();
-    } else
+    } else {
       _snack(error);
+    }
   }
 
   Future<void> _like(ThreadDetail d) async {
@@ -393,7 +395,9 @@ class _DetailPageState extends State<DetailPage> {
       return;
     }
     Navigator.of(context).push(
-      MaterialPageRoute(builder: (_) => NativeProfilePage(uid: uid, username: name)),
+      MaterialPageRoute(
+        builder: (_) => NativeProfilePage(uid: uid, username: name),
+      ),
     );
   }
 

@@ -37,7 +37,8 @@ class ProfileIdentityService {
     final cookie = AuthService.instance.authCookie;
     final headers = {
       'User-Agent': NetClient.ua,
-      'Accept': 'text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8',
+      'Accept':
+          'text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8',
       'Accept-Language': 'zh-CN,zh;q=0.9',
       if (cookie != null && cookie.isNotEmpty) 'Cookie': cookie,
     };
@@ -58,10 +59,16 @@ class ProfileIdentityService {
 
     for (final url in urls) {
       try {
-        final response = await client.get(Uri.parse(url), headers: headers).timeout(const Duration(seconds: 15));
+        final response = await client
+            .get(Uri.parse(url), headers: headers)
+            .timeout(const Duration(seconds: 15));
         if (response.statusCode != 200) continue;
         final doc = parser.parse(NetClient.decode(response.bodyBytes));
-        for (final n in doc.querySelectorAll('script,style,noscript,template')) n.remove();
+        for (final n in doc.querySelectorAll(
+          'script,style,noscript,template',
+        )) {
+          n.remove();
+        }
 
         nickname ??= _firstValid([
           _findLabelValue(doc, '昵称'),
@@ -75,32 +82,50 @@ class ProfileIdentityService {
           _titleName(doc),
           _findVisibleName(doc),
         ]);
-        avatar ??= _firstAvatar(doc) ?? '${_base}uc_server/avatar.php?uid=$uid&size=middle';
+        avatar ??=
+            _firstAvatar(doc) ??
+            '${_base}uc_server/avatar.php?uid=$uid&size=middle';
         level ??= _findLevel(doc);
         rank ??= _findRank(doc);
         points ??= _findNumberByLabels(doc, ['积分', '总积分']);
         coins ??= _findNumberByLabels(doc, ['星币', '源币']);
 
-        if (username != null && level != null && rank != null && (points != null || coins != null)) break;
+        if (username != null &&
+            level != null &&
+            rank != null &&
+            (points != null || coins != null))
+          break;
       } catch (_) {}
     }
 
     try {
-      final response = await client.get(
-        Uri.parse('${_base}home.php?mod=spacecp&ac=credit&showcredit=1&inajax=1&ajaxtarget=extcreditmenu_menu'),
-        headers: headers,
-      ).timeout(const Duration(seconds: 15));
+      final response = await client
+          .get(
+            Uri.parse(
+              '${_base}home.php?mod=spacecp&ac=credit&showcredit=1&inajax=1&ajaxtarget=extcreditmenu_menu',
+            ),
+            headers: headers,
+          )
+          .timeout(const Duration(seconds: 15));
       if (response.statusCode == 200) {
         final doc = parser.parse(NetClient.decode(response.bodyBytes));
         coins ??= _findNumericByLabelsInCreditMenu(doc, ['星币', '源币']);
-        coins ??= _firstNumericByLabelRegex(_clean(doc.body?.text ?? ''), ['星币', '源币']);
+        coins ??= _firstNumericByLabelRegex(_clean(doc.body?.text ?? ''), [
+          '星币',
+          '源币',
+        ]);
         points ??= _findNumberByLabels(doc, ['积分', '总积分']);
         points ??= _elementNumber(doc, 'hcredit_1');
       }
     } catch (_) {}
 
     if (username == null && nickname == null && avatar == null) return null;
-    nickname = _stripAccountMeta(nickname, level: level, rank: rank, points: points);
+    nickname = _stripAccountMeta(
+      nickname,
+      level: level,
+      rank: rank,
+      points: points,
+    );
     return ProfileIdentity(
       username: username,
       uid: uid,
@@ -113,15 +138,27 @@ class ProfileIdentityService {
     );
   }
 
-  String? _stripAccountMeta(String? value, {String? level, String? rank, int? points}) {
+  String? _stripAccountMeta(
+    String? value, {
+    String? level,
+    String? rank,
+    int? points,
+  }) {
     if (value == null) return null;
     var text = _clean(value);
-    final metaStart = RegExp(r'Lv\.?\s*\d+', caseSensitive: false).firstMatch(text);
+    final metaStart = RegExp(
+      r'Lv\.?\s*\d+',
+      caseSensitive: false,
+    ).firstMatch(text);
     if (metaStart != null) {
       text = text.substring(0, metaStart.start).trim();
     } else {
-      final pointsStart = RegExp(r'积分\s*[:：]?\s*\d+', caseSensitive: false).firstMatch(text);
-      if (pointsStart != null) text = text.substring(0, pointsStart.start).trim();
+      final pointsStart = RegExp(
+        r'积分\s*[:：]?\s*\d+',
+        caseSensitive: false,
+      ).firstMatch(text);
+      if (pointsStart != null)
+        text = text.substring(0, pointsStart.start).trim();
       if (rank != null && rank.isNotEmpty) {
         final rankIndex = text.indexOf(rank);
         if (rankIndex > 0) text = text.substring(0, rankIndex).trim();
@@ -129,7 +166,10 @@ class ProfileIdentityService {
     }
 
     if (level != null && level.isNotEmpty) {
-      text = text.replaceAll(RegExp(RegExp.escape(level), caseSensitive: false), ' ');
+      text = text.replaceAll(
+        RegExp(RegExp.escape(level), caseSensitive: false),
+        ' ',
+      );
     }
     text = text.replaceAll(RegExp(r'Lv\.?\s*\d+', caseSensitive: false), ' ');
     if (rank != null && rank.isNotEmpty) {
@@ -144,32 +184,50 @@ class ProfileIdentityService {
   }
 
   String? _findLevel(dynamic doc) {
-    for (final node in doc.querySelectorAll('.comiis_space_level, .user-level, .level, [class*="level"], [class*="group"]')) {
+    for (final node in doc.querySelectorAll(
+      '.comiis_space_level, .user-level, .level, [class*="level"], [class*="group"]',
+    )) {
       final text = _clean(node.text);
-      final m = RegExp(r'Lv\.?\s*([0-9]+)', caseSensitive: false).firstMatch(text);
+      final m = RegExp(
+        r'Lv\.?\s*([0-9]+)',
+        caseSensitive: false,
+      ).firstMatch(text);
       if (m != null) return 'Lv.${m.group(1)}';
     }
     final text = _clean(doc.body?.text ?? '');
-    final m = RegExp(r'\bLv\.?\s*([0-9]+)', caseSensitive: false).firstMatch(text);
+    final m = RegExp(
+      r'\bLv\.?\s*([0-9]+)',
+      caseSensitive: false,
+    ).firstMatch(text);
     return m == null ? null : 'Lv.${m.group(1)}';
   }
 
   String? _findRank(dynamic doc) {
     const selectors = [
-      '.comiis_space_level', '.user-level', '.user-group', '.group-name',
-      '[class*="level"]', '[class*="group"]', '[class*="rank"]',
+      '.comiis_space_level',
+      '.user-level',
+      '.user-group',
+      '.group-name',
+      '[class*="level"]',
+      '[class*="group"]',
+      '[class*="rank"]',
     ];
     for (final selector in selectors) {
       for (final node in doc.querySelectorAll(selector)) {
         final text = _clean(node.text);
         if (text.isEmpty) continue;
-        final value = text.replaceFirst(RegExp(r'Lv\.?\s*\d+', caseSensitive: false), '').trim();
+        final value = text
+            .replaceFirst(RegExp(r'Lv\.?\s*\d+', caseSensitive: false), '')
+            .trim();
         if (_validBadge(value)) return value;
       }
     }
     final text = _clean(doc.body?.text ?? '');
-    final m = RegExp(r'Lv\.?\s*\d+\s+([^\s|｜·•]{1,12})', caseSensitive: false).firstMatch(text);
-    return m == null ? null : m.group(1);
+    final m = RegExp(
+      r'Lv\.?\s*\d+\s+([^\s|｜·•]{1,12})',
+      caseSensitive: false,
+    ).firstMatch(text);
+    return m?.group(1);
   }
 
   int? _findNumberByLabels(dynamic doc, List<String> labels) {
@@ -203,7 +261,8 @@ class ProfileIdentityService {
 
   int? _firstNumericByLabelRegex(String text, List<String> labels) {
     for (final label in labels) {
-      final m = RegExp(RegExp.escape(label) + r'\s*[:：]\s*([0-9]{1,12})').firstMatch(text);
+      final m = RegExp(RegExp.escape(label) + r'\s*[:：]\s*([0-9]{1,12})')
+          .firstMatch(text);
       if (m != null) return int.tryParse(m.group(1)!);
     }
     return null;
@@ -211,8 +270,13 @@ class ProfileIdentityService {
 
   String? _findNicknameNode(dynamic doc) {
     const selectors = [
-      '.nickname', '.nick-name', '.pf_nickname', '.userinfo .name',
-      '.user-info .name', '[class*="nickname"]', '[class*="nick"]',
+      '.nickname',
+      '.nick-name',
+      '.pf_nickname',
+      '.userinfo .name',
+      '.user-info .name',
+      '[class*="nickname"]',
+      '[class*="nick"]',
     ];
     for (final selector in selectors) {
       for (final node in doc.querySelectorAll(selector)) {
@@ -227,7 +291,11 @@ class ProfileIdentityService {
     for (final a in doc.querySelectorAll('a[href]')) {
       final href = a.attributes['href'] ?? '';
       if (!href.contains('space') && !href.contains('member')) continue;
-      if (!RegExp(r'(?:uid=|uid%3D|uid/|uid-)' + uid.toString(), caseSensitive: false).hasMatch(href)) continue;
+      if (!RegExp(
+        r'(?:uid=|uid%3D|uid/|uid-)' + uid.toString(),
+        caseSensitive: false,
+      ).hasMatch(href))
+        continue;
       final text = _clean(a.text);
       if (_validName(text)) return text;
     }
@@ -251,14 +319,27 @@ class ProfileIdentityService {
     for (final node in doc.querySelectorAll('li,dt,dd,th,td,p,div,span')) {
       final text = _clean(node.text);
       if (!text.contains(label)) continue;
-      final value = _clean(text.replaceFirst(label, '').replaceFirst(':', '').replaceFirst('：', ''));
+      final value = _clean(
+        text
+            .replaceFirst(label, '')
+            .replaceFirst(':', '')
+            .replaceFirst('：', ''),
+      );
       if (_validName(value)) return value;
     }
     return null;
   }
 
   String? _findVisibleName(dynamic doc) {
-    const selectors = ['.vwmy', '.pf_username', '.userinfo a', '.user-info a', '.member-name', '.username', '[class*="username"]'];
+    const selectors = [
+      '.vwmy',
+      '.pf_username',
+      '.userinfo a',
+      '.user-info a',
+      '.member-name',
+      '.username',
+      '[class*="username"]',
+    ];
     for (final selector in selectors) {
       for (final node in doc.querySelectorAll(selector)) {
         final text = _clean(node.text);
@@ -280,18 +361,45 @@ class ProfileIdentityService {
   }
 
   String? _firstValid(List<String?> values) {
-    for (final v in values) if (_validName(v)) return v!.trim();
+    for (final v in values) {
+      if (_validName(v)) return v!.trim();
+    }
     return null;
   }
 
-  String _clean(String s) => s.replaceAll(RegExp(r'[\uE000-\uF8FF]'), '').replaceAll('\uFFFD', '').replaceAll(RegExp(r'\s+'), ' ').trim();
+  String _clean(String s) => s
+      .replaceAll(RegExp(r'[\uE000-\uF8FF]'), '')
+      .replaceAll('\uFFFD', '')
+      .replaceAll(RegExp(r'\s+'), ' ')
+      .trim();
 
   bool _validName(String? s) {
     if (s == null) return false;
     final v = _clean(s);
     if (v.isEmpty || v.length > 32) return false;
-    if (const {'X', 'x', '×', '登录', '注册', '退出', '退出登录', '个人主页', '资料', '主题', '回帖', '用户名', '昵称', '首页', '搜索', '设置'}.contains(v)) return false;
-    return !v.contains('�') && !v.contains('Ã') && !v.contains('Â') && !v.contains('â');
+    if (const {
+      'X',
+      'x',
+      '×',
+      '登录',
+      '注册',
+      '退出',
+      '退出登录',
+      '个人主页',
+      '资料',
+      '主题',
+      '回帖',
+      '用户名',
+      '昵称',
+      '首页',
+      '搜索',
+      '设置',
+    }.contains(v))
+      return false;
+    return !v.contains('�') &&
+        !v.contains('Ã') &&
+        !v.contains('Â') &&
+        !v.contains('â');
   }
 
   bool _validBadge(String value) {

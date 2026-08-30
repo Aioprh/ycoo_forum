@@ -57,7 +57,10 @@ class _LoginPageState extends State<LoginPage> {
     }
 
     FocusScope.of(context).unfocus();
-    setState(() { _loading = true; _error = null; });
+    setState(() {
+      _loading = true;
+      _error = null;
+    });
 
     final error = await AuthService.instance.loginNative(
       _usernameController.text,
@@ -76,7 +79,9 @@ class _LoginPageState extends State<LoginPage> {
   }
 
   Future<void> _webFallback() async {
-    final ok = await Navigator.of(context).push<bool>(MaterialPageRoute(builder: (_) => const _LegacyLoginPage()));
+    final ok = await Navigator.of(
+      context,
+    ).push<bool>(MaterialPageRoute(builder: (_) => const _LegacyLoginPage()));
     if (ok == true && mounted) Navigator.of(context).pop(true);
   }
 
@@ -102,12 +107,30 @@ class _LoginPageState extends State<LoginPage> {
                       width: 82,
                       height: 82,
                       margin: const EdgeInsets.only(bottom: 18),
-                      decoration: BoxDecoration(shape: BoxShape.circle, color: scheme.primaryContainer),
-                      child: Icon(Icons.forum_rounded, size: 42, color: scheme.primary),
+                      decoration: BoxDecoration(
+                        shape: BoxShape.circle,
+                        color: scheme.primaryContainer,
+                      ),
+                      child: Icon(
+                        Icons.forum_rounded,
+                        size: 42,
+                        color: scheme.primary,
+                      ),
                     ),
-                    const Text('登录源论坛', textAlign: TextAlign.center, style: TextStyle(fontSize: 28, fontWeight: FontWeight.w800)),
+                    const Text(
+                      '登录源论坛',
+                      textAlign: TextAlign.center,
+                      style: TextStyle(
+                        fontSize: 28,
+                        fontWeight: FontWeight.w800,
+                      ),
+                    ),
                     const SizedBox(height: 8),
-                    Text('原生登录 · 登录后自动同步头像与个人资料', textAlign: TextAlign.center, style: TextStyle(color: Colors.grey.shade600)),
+                    Text(
+                      '原生登录 · 登录后自动同步头像与个人资料',
+                      textAlign: TextAlign.center,
+                      style: TextStyle(color: Colors.grey.shade600),
+                    ),
                     const SizedBox(height: 30),
                     TextFormField(
                       controller: _usernameController,
@@ -118,51 +141,84 @@ class _LoginPageState extends State<LoginPage> {
                         hintText: '请输入论坛用户名',
                         prefixIcon: const Icon(Icons.person_outline),
                         filled: true,
-                        fillColor: scheme.surfaceContainerHighest.withOpacity(.45),
-                        border: OutlineInputBorder(borderRadius: BorderRadius.circular(16), borderSide: BorderSide.none),
+                        fillColor: scheme.surfaceContainerHighest.withValues(
+                          alpha: .45,
+                        ),
+                        border: OutlineInputBorder(
+                          borderRadius: BorderRadius.circular(16),
+                          borderSide: BorderSide.none,
+                        ),
                       ),
-                      validator: (v) => v == null || v.trim().isEmpty ? '请输入用户名' : null,
+                      validator: (v) =>
+                          v == null || v.trim().isEmpty ? '请输入用户名' : null,
                     ),
                     const SizedBox(height: 14),
                     TextFormField(
                       controller: _passwordController,
                       obscureText: _obscure,
-                      textInputAction: hasQuestion ? TextInputAction.next : TextInputAction.done,
+                      textInputAction: hasQuestion
+                          ? TextInputAction.next
+                          : TextInputAction.done,
                       autofillHints: const [AutofillHints.password],
-                      onFieldSubmitted: (_) => hasQuestion ? FocusScope.of(context).nextFocus() : _login(),
+                      onFieldSubmitted: (_) => hasQuestion
+                          ? FocusScope.of(context).nextFocus()
+                          : _login(),
                       decoration: InputDecoration(
                         labelText: '密码',
                         hintText: '请输入论坛密码',
                         prefixIcon: const Icon(Icons.lock_outline),
                         suffixIcon: IconButton(
                           tooltip: _obscure ? '显示密码' : '隐藏密码',
-                          icon: Icon(_obscure ? Icons.visibility_outlined : Icons.visibility_off_outlined),
+                          icon: Icon(
+                            _obscure
+                                ? Icons.visibility_outlined
+                                : Icons.visibility_off_outlined,
+                          ),
                           onPressed: () => setState(() => _obscure = !_obscure),
                         ),
                         filled: true,
-                        fillColor: scheme.surfaceContainerHighest.withOpacity(.45),
-                        border: OutlineInputBorder(borderRadius: BorderRadius.circular(16), borderSide: BorderSide.none),
+                        fillColor: scheme.surfaceContainerHighest.withValues(
+                          alpha: .45,
+                        ),
+                        border: OutlineInputBorder(
+                          borderRadius: BorderRadius.circular(16),
+                          borderSide: BorderSide.none,
+                        ),
                       ),
                       validator: (v) => v == null || v.isEmpty ? '请输入密码' : null,
                     ),
                     const SizedBox(height: 14),
                     DropdownButtonFormField<String>(
-                      value: _questionId,
+                      initialValue: _questionId,
                       decoration: InputDecoration(
                         labelText: '安全提问',
                         prefixIcon: const Icon(Icons.help_outline),
                         filled: true,
-                        fillColor: scheme.surfaceContainerHighest.withOpacity(.45),
-                        border: OutlineInputBorder(borderRadius: BorderRadius.circular(16), borderSide: BorderSide.none),
+                        fillColor: scheme.surfaceContainerHighest.withValues(
+                          alpha: .45,
+                        ),
+                        border: OutlineInputBorder(
+                          borderRadius: BorderRadius.circular(16),
+                          borderSide: BorderSide.none,
+                        ),
                       ),
-                      items: _questions.map((q) => DropdownMenuItem<String>(value: q.$1, child: Text(q.$2))).toList(),
-                      onChanged: _loading ? null : (value) {
-                        if (value == null) return;
-                        setState(() {
-                          _questionId = value;
-                          if (value == '0') _answerController.clear();
-                        });
-                      },
+                      items: _questions
+                          .map(
+                            (q) => DropdownMenuItem<String>(
+                              value: q.$1,
+                              child: Text(q.$2),
+                            ),
+                          )
+                          .toList(),
+                      onChanged: _loading
+                          ? null
+                          : (value) {
+                              if (value == null) return;
+                              setState(() {
+                                _questionId = value;
+                                if (value == '0') _answerController.clear();
+                              });
+                            },
                     ),
                     if (hasQuestion) ...[
                       const SizedBox(height: 14),
@@ -175,31 +231,51 @@ class _LoginPageState extends State<LoginPage> {
                           hintText: '请输入安全提问答案',
                           prefixIcon: const Icon(Icons.edit_outlined),
                           filled: true,
-                          fillColor: scheme.surfaceContainerHighest.withOpacity(.45),
-                          border: OutlineInputBorder(borderRadius: BorderRadius.circular(16), borderSide: BorderSide.none),
+                          fillColor: scheme.surfaceContainerHighest.withValues(
+                            alpha: .45,
+                          ),
+                          border: OutlineInputBorder(
+                            borderRadius: BorderRadius.circular(16),
+                            borderSide: BorderSide.none,
+                          ),
                         ),
                       ),
                     ],
                     const SizedBox(height: 12),
                     InkWell(
                       borderRadius: BorderRadius.circular(12),
-                      onTap: _loading ? null : () => setState(() => _agreed = !_agreed),
+                      onTap: _loading
+                          ? null
+                          : () => setState(() => _agreed = !_agreed),
                       child: Padding(
                         padding: const EdgeInsets.symmetric(vertical: 4),
                         child: Row(
                           crossAxisAlignment: CrossAxisAlignment.start,
                           children: [
-                            Checkbox(value: _agreed, onChanged: _loading ? null : (v) => setState(() => _agreed = v ?? false)),
+                            Checkbox(
+                              value: _agreed,
+                              onChanged: _loading
+                                  ? null
+                                  : (v) => setState(() => _agreed = v ?? false),
+                            ),
                             Expanded(
                               child: Padding(
                                 padding: const EdgeInsets.only(top: 11),
                                 child: Text.rich(
-                                  TextSpan(children: [
-                                    const TextSpan(text: '阅读并同意 '),
-                                    TextSpan(text: '《用户协议》', style: TextStyle(color: scheme.primary)),
-                                    const TextSpan(text: ' 和 '),
-                                    TextSpan(text: '《隐私声明》', style: TextStyle(color: scheme.primary)),
-                                  ]),
+                                  TextSpan(
+                                    children: [
+                                      const TextSpan(text: '阅读并同意 '),
+                                      TextSpan(
+                                        text: '《用户协议》',
+                                        style: TextStyle(color: scheme.primary),
+                                      ),
+                                      const TextSpan(text: ' 和 '),
+                                      TextSpan(
+                                        text: '《隐私声明》',
+                                        style: TextStyle(color: scheme.primary),
+                                      ),
+                                    ],
+                                  ),
                                 ),
                               ),
                             ),
@@ -211,12 +287,28 @@ class _LoginPageState extends State<LoginPage> {
                       const SizedBox(height: 10),
                       Container(
                         padding: const EdgeInsets.all(12),
-                        decoration: BoxDecoration(color: scheme.errorContainer, borderRadius: BorderRadius.circular(14)),
-                        child: Row(crossAxisAlignment: CrossAxisAlignment.start, children: [
-                          Icon(Icons.info_outline, color: scheme.onErrorContainer),
-                          const SizedBox(width: 8),
-                          Expanded(child: Text(_error!, style: TextStyle(color: scheme.onErrorContainer))),
-                        ]),
+                        decoration: BoxDecoration(
+                          color: scheme.errorContainer,
+                          borderRadius: BorderRadius.circular(14),
+                        ),
+                        child: Row(
+                          crossAxisAlignment: CrossAxisAlignment.start,
+                          children: [
+                            Icon(
+                              Icons.info_outline,
+                              color: scheme.onErrorContainer,
+                            ),
+                            const SizedBox(width: 8),
+                            Expanded(
+                              child: Text(
+                                _error!,
+                                style: TextStyle(
+                                  color: scheme.onErrorContainer,
+                                ),
+                              ),
+                            ),
+                          ],
+                        ),
                       ),
                     ],
                     const SizedBox(height: 18),
@@ -225,8 +317,20 @@ class _LoginPageState extends State<LoginPage> {
                       child: FilledButton(
                         onPressed: _loading ? null : _login,
                         child: _loading
-                            ? const SizedBox(width: 22, height: 22, child: CircularProgressIndicator(strokeWidth: 2))
-                            : const Text('登录', style: TextStyle(fontSize: 16, fontWeight: FontWeight.w700)),
+                            ? const SizedBox(
+                                width: 22,
+                                height: 22,
+                                child: CircularProgressIndicator(
+                                  strokeWidth: 2,
+                                ),
+                              )
+                            : const Text(
+                                '登录',
+                                style: TextStyle(
+                                  fontSize: 16,
+                                  fontWeight: FontWeight.w700,
+                                ),
+                              ),
                       ),
                     ),
                     const SizedBox(height: 12),
@@ -236,7 +340,14 @@ class _LoginPageState extends State<LoginPage> {
                       label: const Text('需要验证码？使用网页验证'),
                     ),
                     const SizedBox(height: 14),
-                    Text('登录请求直接发送到源论坛，密码不会保存到应用配置或代码中。', textAlign: TextAlign.center, style: TextStyle(fontSize: 12, color: Colors.grey.shade600)),
+                    Text(
+                      '登录请求直接发送到源论坛，密码不会保存到应用配置或代码中。',
+                      textAlign: TextAlign.center,
+                      style: TextStyle(
+                        fontSize: 12,
+                        color: Colors.grey.shade600,
+                      ),
+                    ),
                   ],
                 ),
               ),
@@ -265,13 +376,17 @@ class _LegacyLoginPageState extends State<_LegacyLoginPage> {
     super.initState();
     _controller = WebViewController()
       ..setJavaScriptMode(JavaScriptMode.unrestricted)
-      ..setNavigationDelegate(NavigationDelegate(onPageFinished: (_) => _checkLogin()));
+      ..setNavigationDelegate(
+        NavigationDelegate(onPageFinished: (_) => _checkLogin()),
+      );
     _load();
   }
 
   Future<void> _load() async {
     try {
-      await _controller.loadRequest(Uri.parse('${AuthService.base}${AuthService.loginPath}'));
+      await _controller.loadRequest(
+        Uri.parse('${AuthService.base}${AuthService.loginPath}'),
+      );
       LoginLog.instance.add('加载网页验证登录页');
     } catch (e) {
       if (mounted) setState(() => _status = '加载失败:$e');
@@ -280,8 +395,13 @@ class _LegacyLoginPageState extends State<_LegacyLoginPage> {
 
   Future<void> _checkLogin() async {
     if (_resolved) return;
-    final cookies = await WebViewCookieManager().getCookies(domain: Uri.parse(AuthService.base));
-    final cookieStr = cookies.where((c) => c.value.isNotEmpty).map((c) => '${c.name}=${c.value}').join('; ');
+    final cookies = await WebViewCookieManager().getCookies(
+      domain: Uri.parse(AuthService.base),
+    );
+    final cookieStr = cookies
+        .where((c) => c.value.isNotEmpty)
+        .map((c) => '${c.name}=${c.value}')
+        .join('; ');
     final authed = cookies.any((c) => c.name.toLowerCase().endsWith('auth'));
     if (!authed) return;
     _resolved = true;
@@ -293,17 +413,30 @@ class _LegacyLoginPageState extends State<_LegacyLoginPage> {
   @override
   Widget build(BuildContext context) => Scaffold(
     appBar: AppBar(title: const Text('网页验证登录')),
-    body: Column(children: [
-      Expanded(child: WebViewWidget(controller: _controller)),
-      Container(
-        width: double.infinity,
-        padding: const EdgeInsets.all(8),
-        child: Column(mainAxisSize: MainAxisSize.min, children: [
-          Text(_status, textAlign: TextAlign.center, style: Theme.of(context).textTheme.bodySmall),
-          const SizedBox(height: 8),
-          FilledButton.icon(onPressed: _checkLogin, icon: const Icon(Icons.check, size: 18), label: const Text('已完成验证,返回应用')),
-        ]),
-      ),
-    ]),
+    body: Column(
+      children: [
+        Expanded(child: WebViewWidget(controller: _controller)),
+        Container(
+          width: double.infinity,
+          padding: const EdgeInsets.all(8),
+          child: Column(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              Text(
+                _status,
+                textAlign: TextAlign.center,
+                style: Theme.of(context).textTheme.bodySmall,
+              ),
+              const SizedBox(height: 8),
+              FilledButton.icon(
+                onPressed: _checkLogin,
+                icon: const Icon(Icons.check, size: 18),
+                label: const Text('已完成验证,返回应用'),
+              ),
+            ],
+          ),
+        ),
+      ],
+    ),
   );
 }

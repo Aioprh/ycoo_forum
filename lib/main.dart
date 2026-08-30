@@ -40,11 +40,7 @@ class RootShell extends StatefulWidget {
 class _RootShellState extends State<RootShell> {
   int _index = 0;
 
-  static const _pages = <Widget>[
-    HomePage(),
-    BoardPage(),
-    ProfilePage(),
-  ];
+  static const _pages = <Widget>[HomePage(), BoardPage(), ProfilePage()];
 
   @override
   Widget build(BuildContext context) {

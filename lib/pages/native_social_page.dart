@@ -96,9 +96,21 @@ class _NativeSocialPageState extends State<NativeSocialPage> {
               ),
               child: Row(
                 children: [
-                  _tabButton(_SocialTab.friends, '好友', Icons.people_alt_outlined),
-                  _tabButton(_SocialTab.following, '关注', Icons.person_add_alt_1_outlined),
-                  _tabButton(_SocialTab.followers, '粉丝', Icons.favorite_border_rounded),
+                  _tabButton(
+                    _SocialTab.friends,
+                    '好友',
+                    Icons.people_alt_outlined,
+                  ),
+                  _tabButton(
+                    _SocialTab.following,
+                    '关注',
+                    Icons.person_add_alt_1_outlined,
+                  ),
+                  _tabButton(
+                    _SocialTab.followers,
+                    '粉丝',
+                    Icons.favorite_border_rounded,
+                  ),
                 ],
               ),
             ),
@@ -111,12 +123,18 @@ class _NativeSocialPageState extends State<NativeSocialPage> {
                   return const Center(child: CircularProgressIndicator());
                 }
                 if (snapshot.hasError) {
-                  final message = snapshot.error.toString().replaceFirst('Exception: ', '');
+                  final message = snapshot.error.toString().replaceFirst(
+                    'Exception: ',
+                    '',
+                  );
                   return _ErrorState(message: message, onRetry: _refresh);
                 }
                 final users = snapshot.data ?? const <SocialUser>[];
                 if (users.isEmpty) {
-                  return _EmptyState(title: '暂无$_tabTitle', subtitle: _emptyText);
+                  return _EmptyState(
+                    title: '暂无$_tabTitle',
+                    subtitle: _emptyText,
+                  );
                 }
                 return RefreshIndicator(
                   onRefresh: _refresh,
@@ -124,7 +142,8 @@ class _NativeSocialPageState extends State<NativeSocialPage> {
                     physics: const AlwaysScrollableScrollPhysics(),
                     padding: const EdgeInsets.fromLTRB(14, 4, 14, 28),
                     itemCount: users.length,
-                    separatorBuilder: (context, index) => const SizedBox(height: 8),
+                    separatorBuilder: (context, index) =>
+                        const SizedBox(height: 8),
                     itemBuilder: (context, index) => _UserCard(
                       user: users[index],
                       tab: _tab,
@@ -160,7 +179,9 @@ class _NativeSocialPageState extends State<NativeSocialPage> {
               Icon(
                 icon,
                 size: 17,
-                color: selected ? scheme.onPrimaryContainer : scheme.onSurfaceVariant,
+                color: selected
+                    ? scheme.onPrimaryContainer
+                    : scheme.onSurfaceVariant,
               ),
               const SizedBox(width: 5),
               Text(
@@ -168,7 +189,9 @@ class _NativeSocialPageState extends State<NativeSocialPage> {
                 style: TextStyle(
                   fontSize: 13,
                   fontWeight: selected ? FontWeight.w800 : FontWeight.w600,
-                  color: selected ? scheme.onPrimaryContainer : scheme.onSurfaceVariant,
+                  color: selected
+                      ? scheme.onPrimaryContainer
+                      : scheme.onSurfaceVariant,
                 ),
               ),
             ],
@@ -217,13 +240,11 @@ class _UserCard extends StatelessWidget {
       child: InkWell(
         onTap: user.uid > 0
             ? () => Navigator.of(context).push(
-                  MaterialPageRoute(
-                    builder: (context) => NativeProfilePage(
-                      uid: user.uid,
-                      username: user.name,
-                    ),
-                  ),
-                )
+                MaterialPageRoute(
+                  builder: (context) =>
+                      NativeProfilePage(uid: user.uid, username: user.name),
+                ),
+              )
             : null,
         child: Padding(
           padding: const EdgeInsets.fromLTRB(14, 13, 12, 13),
@@ -232,7 +253,9 @@ class _UserCard extends StatelessWidget {
               CircleAvatar(
                 radius: 27,
                 backgroundColor: scheme.primaryContainer,
-                backgroundImage: user.avatar.isEmpty ? null : NetworkImage(user.avatar),
+                backgroundImage: user.avatar.isEmpty
+                    ? null
+                    : NetworkImage(user.avatar),
                 child: user.avatar.isEmpty
                     ? Text(
                         first,
@@ -252,7 +275,10 @@ class _UserCard extends StatelessWidget {
                       user.name,
                       maxLines: 1,
                       overflow: TextOverflow.ellipsis,
-                      style: const TextStyle(fontSize: 15, fontWeight: FontWeight.w800),
+                      style: const TextStyle(
+                        fontSize: 15,
+                        fontWeight: FontWeight.w800,
+                      ),
                     ),
                     const SizedBox(height: 4),
                     Text(

@@ -10,7 +10,11 @@ class BoardThreadListPage extends StatelessWidget {
   final int fid;
   final String filter;
 
-  const BoardThreadListPage({super.key, required this.fid, required this.filter});
+  const BoardThreadListPage({
+    super.key,
+    required this.fid,
+    required this.filter,
+  });
 
   Future<List<ThreadItem>> _load(int page) async {
     final url = ApiService.forumUrl(fid, page);
@@ -29,10 +33,7 @@ class BoardThreadListPage extends StatelessWidget {
       appBar: AppBar(title: Text(filter)),
       body: SafeArea(
         top: false,
-        child: ThreadListView(
-          paginate: true,
-          loader: _load,
-        ),
+        child: ThreadListView(paginate: true, loader: _load),
       ),
     );
   }

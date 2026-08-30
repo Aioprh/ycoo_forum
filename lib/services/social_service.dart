@@ -10,7 +10,13 @@ class SocialUser {
   final String avatar;
   final String subtitle;
   final bool followed;
-  const SocialUser({required this.uid, required this.name, required this.avatar, required this.subtitle, this.followed = false});
+  const SocialUser({
+    required this.uid,
+    required this.name,
+    required this.avatar,
+    required this.subtitle,
+    this.followed = false,
+  });
 }
 
 class SocialService {
@@ -21,40 +27,48 @@ class SocialService {
   Future<String> _get(String path) async {
     final client = await NetClient.instance.client;
     final cookie = AuthService.instance.authCookie;
-    final response = await NetClient.retry(() => client.get(Uri.parse('$_base$path'), headers: {
-      'User-Agent': NetClient.ua,
-      'Accept': 'text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8',
-      'Accept-Language': 'zh-CN,zh;q=0.9',
-      'Cache-Control': 'no-cache, no-store',
-      'Pragma': 'no-cache',
-      if (cookie != null && cookie.isNotEmpty) 'Cookie': cookie,
-    }).timeout(const Duration(seconds: 20)));
-    if (response.statusCode != 200) throw Exception('请求失败 HTTP ${response.statusCode}');
+    final response = await NetClient.retry(
+      () => client
+          .get(
+            Uri.parse('$_base$path'),
+            headers: {
+              'User-Agent': NetClient.ua,
+              'Accept': 'text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8',
+              'Accept-Language': 'zh-CN,zh;q=0.9',
+              'Cache-Control': 'no-cache, no-store',
+              'Pragma': 'no-cache',
+              if (cookie != null && cookie.isNotEmpty) 'Cookie': cookie,
+            },
+          )
+          .timeout(const Duration(seconds: 20)),
+    );
+    if (response.statusCode != 200)
+      throw Exception('请求失败 HTTP ${response.statusCode}');
     final html = NetClient.decode(response.bodyBytes);
     if (_looksLikeLogin(html)) throw Exception('登录态已失效，请重新登录论坛');
     return html;
   }
 
   Future<List<SocialUser>> fetchFriends() => _fetchCandidates([
-        'home.php?mod=space&do=friend&view=me&mobile=2',
-        'home.php?mod=space&do=friend&view=me',
-        'home.php?mod=space&do=friend&mobile=2',
-        'home.php?mod=space&do=friend',
-      ]);
+    'home.php?mod=space&do=friend&view=me&mobile=2',
+    'home.php?mod=space&do=friend&view=me',
+    'home.php?mod=space&do=friend&mobile=2',
+    'home.php?mod=space&do=friend',
+  ]);
 
   Future<List<SocialUser>> fetchFollowing() => _fetchCandidates([
-        'home.php?mod=space&do=follow&view=following&mobile=2',
-        'home.php?mod=space&do=follow&view=following',
-        'home.php?mod=follow&view=following&mobile=2',
-        'home.php?mod=follow&view=following',
-      ]);
+    'home.php?mod=space&do=follow&view=following&mobile=2',
+    'home.php?mod=space&do=follow&view=following',
+    'home.php?mod=follow&view=following&mobile=2',
+    'home.php?mod=follow&view=following',
+  ]);
 
   Future<List<SocialUser>> fetchFollowers() => _fetchCandidates([
-        'home.php?mod=space&do=follow&view=follower&mobile=2',
-        'home.php?mod=space&do=follow&view=follower',
-        'home.php?mod=follow&view=follower&mobile=2',
-        'home.php?mod=follow&view=follower',
-      ]);
+    'home.php?mod=space&do=follow&view=follower&mobile=2',
+    'home.php?mod=space&do=follow&view=follower',
+    'home.php?mod=follow&view=follower&mobile=2',
+    'home.php?mod=follow&view=follower',
+  ]);
 
   Future<List<SocialUser>> _fetchCandidates(List<String> paths) async {
     Object? last;
@@ -74,13 +88,15 @@ class SocialService {
       }
     }
     if (best.isNotEmpty) return best;
-    if (last != null) throw last!;
+    if (last != null) throw last;
     return const [];
   }
 
   Future<List<SocialUser>> _parseUsers(String html) async {
     final doc = parser.parse(html);
-    for (final node in doc.querySelectorAll('script,style,noscript,template')) node.remove();
+    for (final node in doc.querySelectorAll('script,style,noscript,template')) {
+      node.remove();
+    }
     final links = doc.querySelectorAll('a[href*="uid="],a[href*="space-uid-"]');
     final byUid = <int, List<dynamic>>{};
     for (final link in links) {
@@ -106,7 +122,9 @@ class SocialService {
         final candidateName = _extractName(anchor, container, uid);
         final candidateAvatar = _extractAvatar(anchor, container);
         if (_badName(candidateName)) continue;
-        name = candidateName; avatar = candidateAvatar; bestAnchor = anchor;
+        name = candidateName;
+        avatar = candidateAvatar;
+        bestAnchor = anchor;
         if (_isProfileHref(anchor.attributes['href'] ?? '')) break;
       }
       final container = _userContainer(bestAnchor ?? candidates.first);
@@ -117,13 +135,18 @@ class SocialService {
       if (_badName(name) || avatar.isEmpty) {
         try {
           final profile = await ProfileService.instance.fetchProfile(uid);
-          if (_validProfileName(profile.username)) name = profile.username.trim();
-          if (avatar.isEmpty && profile.avatar.isNotEmpty) avatar = profile.avatar;
-          if (subtitle == 'UID $uid' && profile.group.isNotEmpty) subtitle = 'UID $uid · ${profile.group}';
+          if (_validProfileName(profile.username))
+            name = profile.username.trim();
+          if (avatar.isEmpty && profile.avatar.isNotEmpty)
+            avatar = profile.avatar;
+          if (subtitle == 'UID $uid' && profile.group.isNotEmpty)
+            subtitle = 'UID $uid · ${profile.group}';
         } catch (_) {}
       }
       if (_badName(name)) continue;
-      result.add(SocialUser(uid: uid, name: name, avatar: avatar, subtitle: subtitle));
+      result.add(
+        SocialUser(uid: uid, name: name, avatar: avatar, subtitle: subtitle),
+      );
       if (result.length >= 200) break;
     }
     return result;
@@ -135,11 +158,24 @@ class SocialService {
       _clean(anchor.attributes['title'] ?? ''),
       _clean(anchor.attributes['aria-label'] ?? ''),
       _clean(anchor.querySelector('img')?.attributes['alt'] ?? ''),
-      _clean(container?.querySelector('.xw1,.xi2,.name,.username,.nickname,.title,[class*="username"],[class*="nickname"],[class*="name"]')?.text ?? ''),
+      _clean(
+        container
+                ?.querySelector(
+                  '.xw1,.xi2,.name,.username,.nickname,.title,[class*="username"],[class*="nickname"],[class*="name"]',
+                )
+                ?.text ??
+            '',
+      ),
       _clean(container?.attributes['title'] ?? ''),
     ];
-    if (container != null) for (final a in container.querySelectorAll('a[href]')) if (_uidFrom(a.attributes['href'] ?? '') == uid) values.add(_clean(a.text));
-    for (final value in values) if (!_badName(value)) return value;
+    if (container != null)
+      for (final a in container.querySelectorAll('a[href]')) {
+        if (_uidFrom(a.attributes['href'] ?? '') == uid)
+          values.add(_clean(a.text));
+      }
+    for (final value in values) {
+      if (!_badName(value)) return value;
+    }
     return '';
   }
 
@@ -149,7 +185,12 @@ class SocialService {
     if (anchorImage != null) images.add(anchorImage);
     if (container != null) images.addAll(container.querySelectorAll('img'));
     for (final image in images) {
-      final raw = (image.attributes['data-src'] ?? image.attributes['data-original'] ?? image.attributes['src'] ?? '').trim();
+      final raw =
+          (image.attributes['data-src'] ??
+                  image.attributes['data-original'] ??
+                  image.attributes['src'] ??
+                  '')
+              .trim();
       if (_validImageSource(raw)) return _absolute(raw);
     }
     return '';
@@ -159,7 +200,8 @@ class SocialService {
     var node = anchor?.parent;
     for (var i = 0; i < 5 && node != null; i++) {
       final text = _clean(node.text ?? '');
-      final hasUserAction = node.querySelector('a[href*="space"],a[href*="uid="],img') != null;
+      final hasUserAction =
+          node.querySelector('a[href*="space"],a[href*="uid="],img') != null;
       if (hasUserAction && text.length <= 300) return node;
       node = node.parent;
     }
@@ -200,10 +242,17 @@ class SocialService {
       final formhash = _hiddenValue(page, 'formhash');
       if (formhash.isEmpty) return '未取得操作令牌，请刷新登录状态后重试';
       final action = follow ? 'add' : 'del';
-      final uri = Uri.parse('${_base}home.php').replace(queryParameters: {
-        'mod': 'spacecp', 'ac': 'follow', 'op': action,
-        'hash': formhash, 'fuid': '$uid', 'mobile': '2', 'inajax': '1',
-      });
+      final uri = Uri.parse('${_base}home.php').replace(
+        queryParameters: {
+          'mod': 'spacecp',
+          'ac': 'follow',
+          'op': action,
+          'hash': formhash,
+          'fuid': '$uid',
+          'mobile': '2',
+          'inajax': '1',
+        },
+      );
       final headers = <String, String>{
         'User-Agent': NetClient.ua,
         'Accept': 'application/json,text/html,*/*',
@@ -213,30 +262,60 @@ class SocialService {
         'X-Requested-With': 'XMLHttpRequest',
         if (cookie.isNotEmpty) 'Cookie': cookie,
       };
-      var response = await NetClient.retry(() => client.get(uri, headers: headers).timeout(const Duration(seconds: 20)));
+      var response = await NetClient.retry(
+        () => client
+            .get(uri, headers: headers)
+            .timeout(const Duration(seconds: 20)),
+      );
       var body = NetClient.decode(response.bodyBytes);
       if (_isSuccess(body)) return null;
       // 少数模板会把动作改成 POST，保留标准 hash/fuid，同时兼容旧字段。
-      response = await NetClient.retry(() => client.post(uri, headers: {...headers, 'Content-Type': 'application/x-www-form-urlencoded; charset=UTF-8'}, body: {
-        'hash': formhash, 'formhash': formhash, 'fuid': '$uid', 'uid': '$uid', 'op': action, 'inajax': '1',
-      }).timeout(const Duration(seconds: 20)));
+      response = await NetClient.retry(
+        () => client
+            .post(
+              uri,
+              headers: {
+                ...headers,
+                'Content-Type':
+                    'application/x-www-form-urlencoded; charset=UTF-8',
+              },
+              body: {
+                'hash': formhash,
+                'formhash': formhash,
+                'fuid': '$uid',
+                'uid': '$uid',
+                'op': action,
+                'inajax': '1',
+              },
+            )
+            .timeout(const Duration(seconds: 20)),
+      );
       body = NetClient.decode(response.bodyBytes);
       if (_isSuccess(body)) return null;
-      if (body.contains('登录') && (body.contains('失效') || body.contains('用户名'))) return '登录态已失效，请重新登录论坛';
+      if (body.contains('登录') && (body.contains('失效') || body.contains('用户名')))
+        return '登录态已失效，请重新登录论坛';
       if (_tokenFailed(body)) return '操作令牌已失效，请刷新后重试';
       return follow ? '关注失败，请稍后重试' : '取消关注失败，请稍后重试';
     } catch (e) {
-      return e.toString().contains('令牌') ? e.toString().replaceFirst('Exception: ', '') : '操作失败，请检查网络后重试';
+      return e.toString().contains('令牌')
+          ? e.toString().replaceFirst('Exception: ', '')
+          : '操作失败，请检查网络后重试';
     }
   }
 
-  static bool _isSuccess(String body) => RegExp(r'(succeed|成功|已关注|关注成功|取消关注成功)', caseSensitive: false).hasMatch(body);
+  static bool _isSuccess(String body) => RegExp(
+    r'(succeed|成功|已关注|关注成功|取消关注成功)',
+    caseSensitive: false,
+  ).hasMatch(body);
 
   static int _uidFrom(String href) {
     final uri = Uri.tryParse(href);
     final q = uri?.queryParameters['uid'];
     if (q != null) return int.tryParse(q) ?? 0;
-    final m = RegExp(r'(?:space-uid-|uid=)(\d+)', caseSensitive: false).firstMatch(href);
+    final m = RegExp(
+      r'(?:space-uid-|uid=)(\d+)',
+      caseSensitive: false,
+    ).firstMatch(href);
     return int.tryParse(m?.group(1) ?? '') ?? 0;
   }
 
@@ -244,36 +323,72 @@ class SocialService {
     final lower = href.toLowerCase();
     if (!lower.contains('uid=')) return lower.contains('space-uid-');
     if (!lower.contains('mod=space')) return false;
-    return !lower.contains('mod=spacecp') && (!lower.contains('do=') || lower.contains('do=profile'));
+    return !lower.contains('mod=spacecp') &&
+        (!lower.contains('do=') || lower.contains('do=profile'));
   }
 
   static String _absolute(String value) {
     if (value.isEmpty) return '';
     if (value.startsWith('//')) return 'https:$value';
-    if (value.startsWith('http://') || value.startsWith('https://')) return value;
-    return value.startsWith('/') ? '$_base${value.substring(1)}' : '$_base$value';
+    if (value.startsWith('http://') || value.startsWith('https://'))
+      return value;
+    return value.startsWith('/')
+        ? '$_base${value.substring(1)}'
+        : '$_base$value';
   }
 
   static bool _validImageSource(String value) {
-    if (value.isEmpty || value == '×' || value == 'x' || value == 'X') return false;
+    if (value.isEmpty || value == '×' || value == 'x' || value == 'X')
+      return false;
     if (value.contains('\uFFFD') || value.contains('�')) return false;
-    return value.startsWith('http://') || value.startsWith('https://') || value.startsWith('//') || value.startsWith('/');
+    return value.startsWith('http://') ||
+        value.startsWith('https://') ||
+        value.startsWith('//') ||
+        value.startsWith('/');
   }
 
-  static bool _validProfileName(String value) => !_badName(value) && !RegExp(r'^(?:用户|资料|个人资料|用户名|昵称)$').hasMatch(value.trim());
+  static bool _validProfileName(String value) =>
+      !_badName(value) &&
+      !RegExp(r'^(?:用户|资料|个人资料|用户名|昵称)$').hasMatch(value.trim());
 
   static bool _badName(String value) {
     final v = _clean(value);
     if (v.isEmpty || v.length > 40) return true;
-    if (const {'首页','下一页','上一页','更多','关注','粉丝','好友','删除','取消关注','×','x','X','××'}.contains(v)) return true;
+    if (const {
+      '首页',
+      '下一页',
+      '上一页',
+      '更多',
+      '关注',
+      '粉丝',
+      '好友',
+      '删除',
+      '取消关注',
+      '×',
+      'x',
+      'X',
+      '××',
+    }.contains(v))
+      return true;
     if (v.contains('�') || v.contains('\uFFFD')) return true;
     if (!RegExp(r'[\u4e00-\u9fffA-Za-z0-9]').hasMatch(v)) return true;
     return false;
   }
 
-  static String _clean(String value) => value.replaceAll('\uFFFD', '�').replaceAll(RegExp(r'\s+'), ' ').trim();
+  static String _clean(String value) =>
+      value.replaceAll('\uFFFD', '�').replaceAll(RegExp(r'\s+'), ' ').trim();
 
-  static bool _isNavigation(String value) => const {'首页','下一页','上一页','更多','关注','粉丝','好友','删除','取消关注'}.contains(value);
+  static bool _isNavigation(String value) => const {
+    '首页',
+    '下一页',
+    '上一页',
+    '更多',
+    '关注',
+    '粉丝',
+    '好友',
+    '删除',
+    '取消关注',
+  }.contains(value);
 
   static String _hiddenValue(String html, String name) {
     final doc = parser.parse(html);
@@ -282,24 +397,47 @@ class SocialService {
     if (value.isNotEmpty) return value;
     final escaped = RegExp.escape(name);
     final patterns = <RegExp>[
-      RegExp('name\\s*=\\s*["\\\']$escaped["\\\'][^>]*value\\s*=\\s*["\\\']([^"\\\']+)["\\\']', caseSensitive: false),
-      RegExp('value\\s*=\\s*["\\\']([^"\\\']+)["\\\'][^>]*name\\s*=\\s*["\\\']$escaped["\\\']', caseSensitive: false),
-      RegExp('(?:[?&]|\\b)$escaped(?:=|%3D)([A-Za-z0-9_-]{6,64})', caseSensitive: false),
-      RegExp('["\\\']$escaped["\\\']\\s*:\\s*["\\\']([A-Za-z0-9_-]{6,64})["\\\']', caseSensitive: false),
+      RegExp(
+        'name\\s*=\\s*["\\\']$escaped["\\\'][^>]*value\\s*=\\s*["\\\']([^"\\\']+)["\\\']',
+        caseSensitive: false,
+      ),
+      RegExp(
+        'value\\s*=\\s*["\\\']([^"\\\']+)["\\\'][^>]*name\\s*=\\s*["\\\']$escaped["\\\']',
+        caseSensitive: false,
+      ),
+      RegExp(
+        '(?:[?&]|\\b)$escaped(?:=|%3D)([A-Za-z0-9_-]{6,64})',
+        caseSensitive: false,
+      ),
+      RegExp(
+        '["\\\']$escaped["\\\']\\s*:\\s*["\\\']([A-Za-z0-9_-]{6,64})["\\\']',
+        caseSensitive: false,
+      ),
     ];
     for (final pattern in patterns) {
       final match = pattern.firstMatch(html);
-      if (match != null && match.group(1)!.trim().isNotEmpty) return match.group(1)!.trim();
+      if (match != null && match.group(1)!.trim().isNotEmpty)
+        return match.group(1)!.trim();
     }
     return '';
   }
 
-  static bool _tokenFailed(String body) => body.contains('formhash') && (body.contains('错误') || body.contains('失效') || body.contains('非法') || body.contains('验证失败'));
+  static bool _tokenFailed(String body) =>
+      body.contains('formhash') &&
+      (body.contains('错误') ||
+          body.contains('失效') ||
+          body.contains('非法') ||
+          body.contains('验证失败'));
 
   static bool _looksLikeLogin(String html) {
     final doc = parser.parse(html);
-    for (final node in doc.querySelectorAll('script,style,noscript,template')) node.remove();
+    for (final node in doc.querySelectorAll('script,style,noscript,template')) {
+      node.remove();
+    }
     final text = _clean(doc.body?.text ?? '');
-    return text.isNotEmpty && RegExp(r'(用户名|登录密码)').hasMatch(text) && text.contains('登录') && !html.contains('action=logout');
+    return text.isNotEmpty &&
+        RegExp(r'(用户名|登录密码)').hasMatch(text) &&
+        text.contains('登录') &&
+        !html.contains('action=logout');
   }
 }

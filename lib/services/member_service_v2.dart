@@ -15,7 +15,12 @@ class NativeMessage {
   final String subtitle;
   final String sender;
   final String time;
-  const NativeMessage({required this.title, required this.subtitle, this.sender = '', this.time = ''});
+  const NativeMessage({
+    required this.title,
+    required this.subtitle,
+    this.sender = '',
+    this.time = '',
+  });
 }
 
 class NativeFriend {
@@ -38,19 +43,29 @@ class MemberServiceV2 {
   Future<String> _get(String path) async {
     final client = await NetClient.instance.client;
     final cookie = AuthService.instance.authCookie;
-    final uri = Uri.parse('$_base$path').replace(queryParameters: {
-      ...Uri.parse('$_base$path').queryParameters,
-      '_ycoo_ts': DateTime.now().millisecondsSinceEpoch.toString(),
-    });
-    final response = await NetClient.retry(() => client.get(uri, headers: {
-      'User-Agent': NetClient.ua,
-      'Accept': 'text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8',
-      'Accept-Language': 'zh-CN,zh;q=0.9',
-      'Cache-Control': 'no-cache, no-store',
-      'Pragma': 'no-cache',
-      if (cookie != null && cookie.isNotEmpty) 'Cookie': cookie,
-    }).timeout(const Duration(seconds: 20)));
-    if (response.statusCode != 200) throw Exception('请求失败 HTTP ${response.statusCode}');
+    final uri = Uri.parse('$_base$path').replace(
+      queryParameters: {
+        ...Uri.parse('$_base$path').queryParameters,
+        '_ycoo_ts': DateTime.now().millisecondsSinceEpoch.toString(),
+      },
+    );
+    final response = await NetClient.retry(
+      () => client
+          .get(
+            uri,
+            headers: {
+              'User-Agent': NetClient.ua,
+              'Accept': 'text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8',
+              'Accept-Language': 'zh-CN,zh;q=0.9',
+              'Cache-Control': 'no-cache, no-store',
+              'Pragma': 'no-cache',
+              if (cookie != null && cookie.isNotEmpty) 'Cookie': cookie,
+            },
+          )
+          .timeout(const Duration(seconds: 20)),
+    );
+    if (response.statusCode != 200)
+      throw Exception('请求失败 HTTP ${response.statusCode}');
     final html = NetClient.decode(response.bodyBytes);
     if (_looksLikeLogin(html)) throw Exception('登录态已失效，请重新登录论坛');
     return html;
@@ -71,7 +86,9 @@ class MemberServiceV2 {
 
   static dynamic _doc(String html) {
     final doc = parser.parse(html);
-    for (final node in doc.querySelectorAll('script,style,noscript,template')) { node.remove(); }
+    for (final node in doc.querySelectorAll('script,style,noscript,template')) {
+      node.remove();
+    }
     return doc;
   }
 
@@ -81,49 +98,96 @@ class MemberServiceV2 {
     final seen = <int>{};
     for (final a in doc.querySelectorAll('a[href]')) {
       final href = a.attributes['href'] ?? '';
-      final m = RegExp(r'(?:thread-|[?&]tid=)(\d+)', caseSensitive: false).firstMatch(href);
+      final m = RegExp(
+        r'(?:thread-|[?&]tid=)(\d+)',
+        caseSensitive: false,
+      ).firstMatch(href);
       if (m == null) continue;
       final tid = int.tryParse(m.group(1)!) ?? 0;
       final title = _clean(a.text);
-      if (tid <= 0 || title.length < 2 || !seen.add(tid) || _looksLikeNavigation(title)) continue;
+      if (tid <= 0 ||
+          title.length < 2 ||
+          !seen.add(tid) ||
+          _looksLikeNavigation(title))
+        continue;
       final parent = _clean(a.parent?.text ?? '');
-      result.add(ThreadItem(tid: tid, title: title, author: '', avatar: '', fid: 0, boardName: '', level: '', time: '', subtitle: parent == title ? '' : parent.replaceFirst(title, '').trim(), cover: '', likeCount: 0, replyCount: 0, viewCount: 0));
+      result.add(
+        ThreadItem(
+          tid: tid,
+          title: title,
+          author: '',
+          avatar: '',
+          fid: 0,
+          boardName: '',
+          level: '',
+          time: '',
+          subtitle: parent == title
+              ? ''
+              : parent.replaceFirst(title, '').trim(),
+          cover: '',
+          likeCount: 0,
+          replyCount: 0,
+          viewCount: 0,
+        ),
+      );
     }
     return result;
   }
 
   Future<List<NativeNotice>> fetchNotices() async {
-    final doc = _doc(await _first(['home.php?mod=space&do=notice&mobile=2', 'home.php?mod=space&do=notice']));
+    final doc = _doc(
+      await _first([
+        'home.php?mod=space&do=notice&mobile=2',
+        'home.php?mod=space&do=notice',
+      ]),
+    );
     final result = <NativeNotice>[];
     final seen = <String>{};
-    for (final node in doc.querySelectorAll('li,tr,article,.nts,.notice,.notice_li,.comiis_notice,.ntc_list')) {
+    for (final node in doc.querySelectorAll(
+      'li,tr,article,.nts,.notice,.notice_li,.comiis_notice,.ntc_list',
+    )) {
       final text = _clean(node.text);
       if (text.length < 2 || text.length > 500 || !seen.add(text)) continue;
-      if (!RegExp(r'(回复|评论|提到|通知|系统|赞了|收藏|提醒|关注|好友|主题)').hasMatch(text)) continue;
-      result.add(NativeNotice(title: text.length > 60 ? text.substring(0, 60) : text, subtitle: text));
+      if (!RegExp(r'(回复|评论|提到|通知|系统|赞了|收藏|提醒|关注|好友|主题)').hasMatch(text))
+        continue;
+      result.add(
+        NativeNotice(
+          title: text.length > 60 ? text.substring(0, 60) : text,
+          subtitle: text,
+        ),
+      );
       if (result.length >= 100) break;
     }
     return result;
   }
 
   Future<List<NativeMessage>> fetchMessages() async {
-    final doc = _doc(await _first(['home.php?mod=space&do=pm&mobile=2', 'home.php?mod=space&do=pm']));
+    final doc = _doc(
+      await _first([
+        'home.php?mod=space&do=pm&mobile=2',
+        'home.php?mod=space&do=pm',
+      ]),
+    );
     final result = <NativeMessage>[];
     final seen = <String>{};
     final nodes = doc.querySelectorAll('dl.pml, dl[id^="pmlist_"]');
     for (final node in nodes) {
       final message = _parseMessage(node);
       if (message == null) continue;
-      final key = '${message.sender}|${message.subtitle}|${message.time}'.toLowerCase();
+      final key = '${message.sender}|${message.subtitle}|${message.time}'
+          .toLowerCase();
       if (!seen.add(key)) continue;
       result.add(message);
       if (result.length >= 100) break;
     }
     if (result.isNotEmpty) return result;
-    for (final node in doc.querySelectorAll('li.pm_list,li.pml,.pm_list > li,.pml > li')) {
+    for (final node in doc.querySelectorAll(
+      'li.pm_list,li.pml,.pm_list > li,.pml > li',
+    )) {
       final message = _parseMessage(node);
       if (message == null) continue;
-      final key = '${message.sender}|${message.subtitle}|${message.time}'.toLowerCase();
+      final key = '${message.sender}|${message.subtitle}|${message.time}'
+          .toLowerCase();
       if (!seen.add(key)) continue;
       result.add(message);
       if (result.length >= 100) break;
@@ -134,43 +198,93 @@ class MemberServiceV2 {
   NativeMessage? _parseMessage(dynamic node) {
     final author = node.querySelector('a[href*="uid="],a[href*="mod=space"]');
     var sender = _clean(author?.text ?? '');
-    final time = _clean(node.querySelector('.xg1,.xg2,time,[class*="time"],[class*="date"]')?.text ?? '');
+    final time = _clean(
+      node
+              .querySelector('.xg1,.xg2,time,[class*="time"],[class*="date"]')
+              ?.text ??
+          '',
+    );
     var body = _clean(node.querySelector('.ptm')?.text ?? node.text);
     if (sender.isNotEmpty) body = body.replaceFirst(sender, '').trim();
     if (time.isNotEmpty) body = body.replaceFirst(time, '').trim();
     body = body.replaceAll(RegExp(r'^[:：\-·\s]+|[:：\-·\s]+$'), '').trim();
-    if (body.isEmpty || body == '站内私信' || body == '站内消息' || body == '私信') return null;
+    if (body.isEmpty || body == '站内私信' || body == '站内消息' || body == '私信')
+      return null;
     if (sender.isEmpty) sender = '站内私信';
-    return NativeMessage(title: sender, subtitle: body, sender: sender, time: time);
+    return NativeMessage(
+      title: sender,
+      subtitle: body,
+      sender: sender,
+      time: time,
+    );
   }
 
   Future<List<NativeFriend>> fetchFriends() async {
-    final doc = _doc(await _first(['home.php?mod=space&do=friend&mobile=2', 'home.php?mod=space&do=friend']));
+    final doc = _doc(
+      await _first([
+        'home.php?mod=space&do=friend&mobile=2',
+        'home.php?mod=space&do=friend',
+      ]),
+    );
     final result = <NativeFriend>[];
     final seen = <String>{};
-    for (final a in doc.querySelectorAll('a[href*="uid="],a[href*="username="]')) {
+    for (final a in doc.querySelectorAll(
+      'a[href*="uid="],a[href*="username="]',
+    )) {
       final name = _clean(a.text);
-      if (name.isEmpty || name.length > 40 || _looksLikeNavigation(name) || !seen.add(name)) continue;
+      if (name.isEmpty ||
+          name.length > 40 ||
+          _looksLikeNavigation(name) ||
+          !seen.add(name))
+        continue;
       final parent = _clean(a.parent?.text ?? '');
-      result.add(NativeFriend(name: name, subtitle: parent == name ? '好友 / 关注' : parent.replaceFirst(name, '').trim()));
+      result.add(
+        NativeFriend(
+          name: name,
+          subtitle: parent == name
+              ? '好友 / 关注'
+              : parent.replaceFirst(name, '').trim(),
+        ),
+      );
       if (result.length >= 100) break;
     }
     return result;
   }
 
   Future<NativeCreditSummary> fetchCredits() async {
-    final doc = _doc(await _first(['home.php?mod=spacecp&ac=credit&mobile=2', 'home.php?mod=spacecp&ac=credit']));
+    final doc = _doc(
+      await _first([
+        'home.php?mod=spacecp&ac=credit&mobile=2',
+        'home.php?mod=spacecp&ac=credit',
+      ]),
+    );
     final text = _clean(doc.body?.text ?? '');
     final records = <String>[];
-    for (final node in doc.querySelectorAll('table tr,li,p,.credit_box,.comiis_credit,.credit_list,.mt')) {
+    for (final node in doc.querySelectorAll(
+      'table tr,li,p,.credit_box,.comiis_credit,.credit_list,.mt',
+    )) {
       final value = _clean(node.text);
-      if (value.isNotEmpty && value.length <= 300 && RegExp(r'(星币|积分|余额|充值|消费|交易|收入|支出)').hasMatch(value) && !records.contains(value)) records.add(value);
+      if (value.isNotEmpty &&
+          value.length <= 300 &&
+          RegExp(r'(星币|积分|余额|充值|消费|交易|收入|支出)').hasMatch(value) &&
+          !records.contains(value))
+        records.add(value);
     }
-    final balance = RegExp(r'(?:星币(?:余额)?|余额)\s*[:：]?\s*(\d+(?:\.\d+)?)').firstMatch(text)?.group(1) ?? '—';
-    return NativeCreditSummary(balance: balance, records: records.take(30).toList());
+    final balance =
+        RegExp(r'(?:星币(?:余额)?|余额)\s*[:：]?\s*(\d+(?:\.\d+)?)')
+            .firstMatch(text)
+            ?.group(1) ??
+        '—';
+    return NativeCreditSummary(
+      balance: balance,
+      records: records.take(30).toList(),
+    );
   }
 
-  Future<String?> sendMessage({required String to, required String message}) async {
+  Future<String?> sendMessage({
+    required String to,
+    required String message,
+  }) async {
     final target = to.trim();
     final text = message.trim();
     if (target.isEmpty) return '请输入收件人用户名';
@@ -181,7 +295,8 @@ class MemberServiceV2 {
       final client = await NetClient.instance.client;
       final headers = <String, String>{
         'User-Agent': NetClient.ua,
-        'Accept': 'text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8',
+        'Accept':
+            'text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8',
         'Accept-Language': 'zh-CN,zh;q=0.9',
         'Cache-Control': 'no-cache, no-store',
         'Pragma': 'no-cache',
@@ -195,11 +310,15 @@ class MemberServiceV2 {
         'forum.php?mobile=2',
       ]) {
         try {
-          final uri = Uri.parse('$_base$path').replace(queryParameters: {
-            ...Uri.parse('$_base$path').queryParameters,
-            '_ycoo_ts': DateTime.now().millisecondsSinceEpoch.toString(),
-          });
-          final response = await client.get(uri, headers: headers).timeout(const Duration(seconds: 20));
+          final uri = Uri.parse('$_base$path').replace(
+            queryParameters: {
+              ...Uri.parse('$_base$path').queryParameters,
+              '_ycoo_ts': DateTime.now().millisecondsSinceEpoch.toString(),
+            },
+          );
+          final response = await client
+              .get(uri, headers: headers)
+              .timeout(const Duration(seconds: 20));
           final html = NetClient.decode(response.bodyBytes);
           if (_looksLikeLogin(html)) return '登录态已失效，请重新登录论坛';
           final candidate = _formhashFromHtml(html);
@@ -210,25 +329,37 @@ class MemberServiceV2 {
           }
         } catch (_) {}
       }
-      if (formhash == null || formhash.isEmpty) return '未取得私信令牌(formhash)，请刷新登录状态后重试';
-      final sendUri = Uri.parse('$_base/home.php?mod=spacecp&ac=pm&op=send&mobile=2');
-      final response = await client.post(sendUri, headers: {
-        ...headers,
-        'Referer': referer ?? '$_base',
-        'Origin': _base,
-        'Content-Type': 'application/x-www-form-urlencoded; charset=UTF-8',
-        'X-Requested-With': 'XMLHttpRequest',
-      }, body: {
-        'formhash': formhash,
-        'username': target,
-        'message': text,
-        'pmsubmit': 'yes',
-        'sendpm': 'true',
-      }).timeout(const Duration(seconds: 20));
+      if (formhash == null || formhash.isEmpty)
+        return '未取得私信令牌(formhash)，请刷新登录状态后重试';
+      final sendUri = Uri.parse(
+        '$_base/home.php?mod=spacecp&ac=pm&op=send&mobile=2',
+      );
+      final response = await client
+          .post(
+            sendUri,
+            headers: {
+              ...headers,
+              'Referer': referer ?? _base,
+              'Origin': _base,
+              'Content-Type':
+                  'application/x-www-form-urlencoded; charset=UTF-8',
+              'X-Requested-With': 'XMLHttpRequest',
+            },
+            body: {
+              'formhash': formhash,
+              'username': target,
+              'message': text,
+              'pmsubmit': 'yes',
+              'sendpm': 'true',
+            },
+          )
+          .timeout(const Duration(seconds: 20));
       final body = NetClient.decode(response.bodyBytes);
       if (_looksLikeSuccess(body)) return null;
-      if (body.contains('请先登录') || body.contains('登录后才能')) return '登录态已失效，请重新登录论坛';
-      if (body.contains('formhash') || body.contains('操作令牌')) return '私信令牌已失效，请刷新登录状态后重试';
+      if (body.contains('请先登录') || body.contains('登录后才能'))
+        return '登录态已失效，请重新登录论坛';
+      if (body.contains('formhash') || body.contains('操作令牌'))
+        return '私信令牌已失效，请刷新登录状态后重试';
       final error = _messageFromResponse(body);
       return error ?? '私信发送失败，请稍后重试';
     } catch (_) {
@@ -243,27 +374,51 @@ class MemberServiceV2 {
   }
 
   static String? _messageFromResponse(String body) {
-    final match = RegExp(r'''showError\(\s*['"]([^'"]+)['"]''').firstMatch(body);
+    final match = RegExp(r'''showError\(\s*['"]([^'"]+)['"]''')
+        .firstMatch(body);
     return match?.group(1)?.trim();
   }
 
-  static bool _looksLikeSuccess(String body) => body.contains('succeed') || body.contains('do_success') || body.contains('发送成功') || body.contains('操作成功');
+  static bool _looksLikeSuccess(String body) =>
+      body.contains('succeed') ||
+      body.contains('do_success') ||
+      body.contains('发送成功') ||
+      body.contains('操作成功');
 
   static String _withoutMobile(String path) {
     final uri = Uri.tryParse('$_base$path');
     if (uri == null) return path;
     final q = <String, String>{...uri.queryParameters}..remove('mobile');
-    return uri.replace(queryParameters: q).path + (q.isEmpty ? '' : '?${Uri(queryParameters: q).query}');
+    return uri.replace(queryParameters: q).path +
+        (q.isEmpty ? '' : '?${Uri(queryParameters: q).query}');
   }
 
-  static String _clean(String text) => text.replaceAll('\uFFFD', '').replaceAll(RegExp(r'\s+'), ' ').trim();
+  static String _clean(String text) =>
+      text.replaceAll('\uFFFD', '').replaceAll(RegExp(r'\s+'), ' ').trim();
 
   static bool _looksLikeLogin(String html) {
     final doc = parser.parse(html);
-    for (final node in doc.querySelectorAll('script,style,noscript,template')) { node.remove(); }
+    for (final node in doc.querySelectorAll('script,style,noscript,template')) {
+      node.remove();
+    }
     final text = _clean(doc.body?.text ?? '');
-    return text.isNotEmpty && RegExp(r'(用户名|登录密码)').hasMatch(text) && text.contains('登录') && !html.contains('action=logout');
+    return text.isNotEmpty &&
+        RegExp(r'(用户名|登录密码)').hasMatch(text) &&
+        text.contains('登录') &&
+        !html.contains('action=logout');
   }
 
-  static bool _looksLikeNavigation(String text) => const {'下一页','上一页','首页','更多','回复','查看','详情','登录','注册','站内私信','私信'}.contains(text);
+  static bool _looksLikeNavigation(String text) => const {
+    '下一页',
+    '上一页',
+    '首页',
+    '更多',
+    '回复',
+    '查看',
+    '详情',
+    '登录',
+    '注册',
+    '站内私信',
+    '私信',
+  }.contains(text);
 }

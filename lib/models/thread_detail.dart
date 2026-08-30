@@ -39,8 +39,8 @@ class ThreadDetail {
     required this.time,
     required this.fid,
     required this.boardName,
-    required String bodyHtml,
-    String commentsHtml = '',
+    required this._bodyHtml,
+    this._commentsHtml = '',
     bool isPaid = false,
     this.price,
     this.currency = '星币',
@@ -48,9 +48,7 @@ class ThreadDetail {
     this.firstPid = 0,
     this.likeCount = 0,
     this.likedByMe = false,
-  })  : _bodyHtml = bodyHtml,
-        _commentsHtml = commentsHtml,
-        _paid = isPaid;
+  }) : _paid = isPaid;
 }
 
 String _sanitizeForumHtml(String html) {
@@ -58,10 +56,18 @@ String _sanitizeForumHtml(String html) {
   final fragment = parser.parseFragment(html);
 
   bool removable(dom.Element e) {
-    final attrs = '${e.localName ?? ''} ${e.attributes['id'] ?? ''} ${e.attributes['class'] ?? ''}'.toLowerCase();
-    final style = (e.attributes['style'] ?? '').toLowerCase().replaceAll(' ', '');
-    if (style.contains('display:none') || style.contains('visibility:hidden')) return true;
-    if (RegExp(r'(^|[-_])(pay|paid|buy|purchase|locked|lock|price)([-_]|$)').hasMatch(attrs)) return true;
+    final attrs =
+        '${e.localName ?? ''} ${e.attributes['id'] ?? ''} ${e.attributes['class'] ?? ''}'
+            .toLowerCase();
+    final style = (e.attributes['style'] ?? '').toLowerCase().replaceAll(
+      ' ',
+      '',
+    );
+    if (style.contains('display:none') || style.contains('visibility:hidden'))
+      return true;
+    if (RegExp(r'(^|[-_])(pay|paid|buy|purchase|locked|lock|price)([-_]|$)')
+        .hasMatch(attrs))
+      return true;
     final text = e.text.replaceAll(RegExp(r'\s+'), ' ').trim();
     if (text.contains('本主题需向作者支付') || text.contains('购买后查看完整内容')) return true;
     return false;
@@ -83,7 +89,8 @@ String _sanitizeForumHtml(String html) {
   walk(root);
 
   final text = root.text.replaceAll(RegExp(r'\s+'), '').trim();
-  final hasMedia = root.querySelector('img,video,iframe,audio,table,pre') != null;
+  final hasMedia =
+      root.querySelector('img,video,iframe,audio,table,pre') != null;
   if (text.isEmpty && !hasMedia) return '';
   return root.innerHtml.trim();
 }

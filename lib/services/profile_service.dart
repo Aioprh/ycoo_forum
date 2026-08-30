@@ -20,8 +20,41 @@ class ProfileData {
   final int points;
   final bool followingMe;
   final bool followedByMe;
-  const ProfileData({required this.uid, required this.username, required this.avatar, required this.group, required this.signature, required this.threads, required this.replies, required this.following, required this.followers, required this.credits, required this.points, required this.followingMe, required this.followedByMe});
-  ProfileData copyWith({int? following, int? followers, bool? followingMe, bool? followedByMe}) => ProfileData(uid: uid, username: username, avatar: avatar, group: group, signature: signature, threads: threads, replies: replies, following: following ?? this.following, followers: followers ?? this.followers, credits: credits, points: points, followingMe: followingMe ?? this.followingMe, followedByMe: followedByMe ?? this.followedByMe);
+  const ProfileData({
+    required this.uid,
+    required this.username,
+    required this.avatar,
+    required this.group,
+    required this.signature,
+    required this.threads,
+    required this.replies,
+    required this.following,
+    required this.followers,
+    required this.credits,
+    required this.points,
+    required this.followingMe,
+    required this.followedByMe,
+  });
+  ProfileData copyWith({
+    int? following,
+    int? followers,
+    bool? followingMe,
+    bool? followedByMe,
+  }) => ProfileData(
+    uid: uid,
+    username: username,
+    avatar: avatar,
+    group: group,
+    signature: signature,
+    threads: threads,
+    replies: replies,
+    following: following ?? this.following,
+    followers: followers ?? this.followers,
+    credits: credits,
+    points: points,
+    followingMe: followingMe ?? this.followingMe,
+    followedByMe: followedByMe ?? this.followedByMe,
+  );
 }
 
 class ProfileService {
@@ -33,70 +66,321 @@ class ProfileService {
   Future<String> _get(String path) async {
     final client = await NetClient.instance.client;
     final parsed = Uri.parse('$_base$path');
-    final uri = parsed.replace(queryParameters: {...parsed.queryParameters, '_ycoo_ts': DateTime.now().millisecondsSinceEpoch.toString()});
+    final uri = parsed.replace(
+      queryParameters: {
+        ...parsed.queryParameters,
+        '_ycoo_ts': DateTime.now().millisecondsSinceEpoch.toString(),
+      },
+    );
     final cookie = AuthService.instance.authCookie;
-    final r = await NetClient.retry(() => client.get(uri, headers: {'User-Agent': NetClient.ua, 'Accept': 'text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8', 'Accept-Language': 'zh-CN,zh;q=0.9', 'Cache-Control': 'no-cache, no-store', 'Pragma': 'no-cache', if (cookie != null && cookie.isNotEmpty) 'Cookie': cookie}).timeout(const Duration(seconds: 20)));
+    final r = await NetClient.retry(
+      () => client
+          .get(
+            uri,
+            headers: {
+              'User-Agent': NetClient.ua,
+              'Accept': 'text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8',
+              'Accept-Language': 'zh-CN,zh;q=0.9',
+              'Cache-Control': 'no-cache, no-store',
+              'Pragma': 'no-cache',
+              if (cookie != null && cookie.isNotEmpty) 'Cookie': cookie,
+            },
+          )
+          .timeout(const Duration(seconds: 20)),
+    );
     if (r.statusCode != 200) throw Exception('请求失败 HTTP ${r.statusCode}');
     return NetClient.decode(r.bodyBytes);
   }
 
-  Future<ProfileData> fetchProfile(int uid, {String? fallbackUsername, bool forceRefresh = false}) async {
+  Future<ProfileData> fetchProfile(
+    int uid, {
+    String? fallbackUsername,
+    bool forceRefresh = false,
+  }) async {
     if (uid <= 0) throw Exception('无效的用户ID');
-    if (!forceRefresh) { final cached = _cache[uid]; if (cached != null) return cached; }
+    if (!forceRefresh) {
+      final cached = _cache[uid];
+      if (cached != null) return cached;
+    }
     final html = await _get('home.php?mod=space&uid=$uid&do=profile&mobile=2');
     final doc = parser.parse(html);
-    for (final n in doc.querySelectorAll('script,style,noscript,template')) n.remove();
+    for (final n in doc.querySelectorAll('script,style,noscript,template')) {
+      n.remove();
+    }
     final text = _clean(doc.body?.text ?? '');
-    final username = _profileUsername(doc, uid) ?? _labelValue(doc, ['昵称', '显示名称', '用户名']) ?? _visibleName(doc) ?? (fallbackUsername?.trim().isNotEmpty == true && _validName(fallbackUsername) ? fallbackUsername!.trim() : '用户');
+    final username =
+        _profileUsername(doc, uid) ??
+        _labelValue(doc, ['昵称', '显示名称', '用户名']) ??
+        _visibleName(doc) ??
+        (fallbackUsername?.trim().isNotEmpty == true &&
+                _validName(fallbackUsername)
+            ? fallbackUsername!.trim()
+            : '用户');
     final avatar = _avatar(doc, uid);
-    final group = _clean(doc.querySelector('.comiis_space_level, .gm, .xg1, a[href*="gid="]')?.text ?? '');
-    final signature = _clean(doc.querySelector('.comiis_space_signature, .personal_signature, .spv, .sign, [class*="signature"]')?.text ?? '');
-    final threads = _numberFromHref(doc, (href) => href.contains('do=thread') && href.contains('type=thread')) ?? _numberNearLabel(doc, ['主题', '主题数']);
-    final replies = _numberFromHref(doc, (href) => href.contains('do=thread') && href.contains('type=reply')) ?? _numberNearLabel(doc, ['回帖', '回帖数', '帖子']);
-    final followers = _numberFromHref(doc, (href) => href.contains('mod=follow') && href.contains('do=follower')) ?? _numberNearLabel(doc, ['粉丝']);
-    final following = _numberFromHref(doc, (href) => (href.contains('mod=follow') && (href.contains('do=following') || href.contains('do=friend'))) || href.contains('do=friend')) ?? _numberNearLabel(doc, ['关注', '好友']);
+    final group = _clean(
+      doc
+              .querySelector('.comiis_space_level, .gm, .xg1, a[href*="gid="]')
+              ?.text ??
+          '',
+    );
+    final signature = _clean(
+      doc
+              .querySelector(
+                '.comiis_space_signature, .personal_signature, .spv, .sign, [class*="signature"]',
+              )
+              ?.text ??
+          '',
+    );
+    final threads =
+        _numberFromHref(
+          doc,
+          (href) => href.contains('do=thread') && href.contains('type=thread'),
+        ) ??
+        _numberNearLabel(doc, ['主题', '主题数']);
+    final replies =
+        _numberFromHref(
+          doc,
+          (href) => href.contains('do=thread') && href.contains('type=reply'),
+        ) ??
+        _numberNearLabel(doc, ['回帖', '回帖数', '帖子']);
+    final followers =
+        _numberFromHref(
+          doc,
+          (href) => href.contains('mod=follow') && href.contains('do=follower'),
+        ) ??
+        _numberNearLabel(doc, ['粉丝']);
+    final following =
+        _numberFromHref(
+          doc,
+          (href) =>
+              (href.contains('mod=follow') &&
+                  (href.contains('do=following') ||
+                      href.contains('do=friend'))) ||
+              href.contains('do=friend'),
+        ) ??
+        _numberNearLabel(doc, ['关注', '好友']);
     final credits = _numberNearLabel(doc, ['星币', '源币', '金币', '余额']);
     final points = _numberNearLabel(doc, ['积分', '贡献']);
     final me = AuthService.instance.uid ?? 0;
     final followedByMe = me > 0 && RegExp(r'(?:取消关注|已关注)').hasMatch(text);
-    final result = ProfileData(uid: uid, username: _validName(username) ? username : (fallbackUsername?.trim().isNotEmpty == true && _validName(fallbackUsername) ? fallbackUsername!.trim() : '用户'), avatar: avatar, group: group, signature: signature, threads: threads, replies: replies, following: following, followers: followers, credits: credits, points: points, followingMe: false, followedByMe: followedByMe);
+    final result = ProfileData(
+      uid: uid,
+      username: _validName(username)
+          ? username
+          : (fallbackUsername?.trim().isNotEmpty == true &&
+                    _validName(fallbackUsername)
+                ? fallbackUsername!.trim()
+                : '用户'),
+      avatar: avatar,
+      group: group,
+      signature: signature,
+      threads: threads,
+      replies: replies,
+      following: following,
+      followers: followers,
+      credits: credits,
+      points: points,
+      followingMe: false,
+      followedByMe: followedByMe,
+    );
     _cache[uid] = result;
     return result;
   }
 
   static String? _profileUsername(dom.Document doc, int uid) {
     final uidText = uid.toString();
-    const selectors = ['#uhd .vwmy a', '#uhd .vwmy', '.comiis_space_user .username', '.comiis_space_user .nickname', '.comiis_space_user .name', '.comiis_space_user h2', '.pf_username', '.userinfo .username', '.user-info .username', '.member-name'];
-    for (final selector in selectors) { final value = _clean(doc.querySelector(selector)?.text ?? ''); if (_validName(value) && !_uiLabel(value)) return value; }
-    for (final a in doc.querySelectorAll('a[href]')) {
-      final href = a.attributes['href'] ?? ''; final lower = href.toLowerCase();
-      final hasUid = lower.contains('uid=$uidText') || lower.contains('uid%3d$uidText') || lower.contains('uid%253d$uidText');
-      if (!hasUid || !lower.contains('mod=space') || !lower.contains('do=profile')) continue;
-      final value = _clean(a.text); if (_validName(value) && !_uiLabel(value)) return value;
-      final parentValue = _clean(a.parent?.text ?? ''); if (_validName(parentValue) && !_uiLabel(parentValue)) return parentValue;
+    const selectors = [
+      '#uhd .vwmy a',
+      '#uhd .vwmy',
+      '.comiis_space_user .username',
+      '.comiis_space_user .nickname',
+      '.comiis_space_user .name',
+      '.comiis_space_user h2',
+      '.pf_username',
+      '.userinfo .username',
+      '.user-info .username',
+      '.member-name',
+    ];
+    for (final selector in selectors) {
+      final value = _clean(doc.querySelector(selector)?.text ?? '');
+      if (_validName(value) && !_uiLabel(value)) return value;
     }
-    final candidates = [doc.querySelector('meta[property="og:title"]')?.attributes['content'] ?? '', doc.querySelector('title')?.text ?? ''];
-    for (var value in candidates) { value = _clean(value).replaceFirst(RegExp(r'\s*[-|｜]\s*源论坛\s*$', caseSensitive: false), '').replaceFirst(RegExp(r'\s*的个人资料\s*$', caseSensitive: false), '').replaceFirst(RegExp(r'^个人资料\s*[-|｜:]\s*', caseSensitive: false), '').trim(); if (_validName(value) && !_uiLabel(value)) return value; }
+    for (final a in doc.querySelectorAll('a[href]')) {
+      final href = a.attributes['href'] ?? '';
+      final lower = href.toLowerCase();
+      final hasUid =
+          lower.contains('uid=$uidText') ||
+          lower.contains('uid%3d$uidText') ||
+          lower.contains('uid%253d$uidText');
+      if (!hasUid ||
+          !lower.contains('mod=space') ||
+          !lower.contains('do=profile'))
+        continue;
+      final value = _clean(a.text);
+      if (_validName(value) && !_uiLabel(value)) return value;
+      final parentValue = _clean(a.parent?.text ?? '');
+      if (_validName(parentValue) && !_uiLabel(parentValue)) return parentValue;
+    }
+    final candidates = [
+      doc.querySelector('meta[property="og:title"]')?.attributes['content'] ??
+          '',
+      doc.querySelector('title')?.text ?? '',
+    ];
+    for (var value in candidates) {
+      value = _clean(value)
+          .replaceFirst(RegExp(r'\s*[-|｜]\s*源论坛\s*$', caseSensitive: false), '')
+          .replaceFirst(RegExp(r'\s*的个人资料\s*$', caseSensitive: false), '')
+          .replaceFirst(RegExp(r'^个人资料\s*[-|｜:]\s*', caseSensitive: false), '')
+          .trim();
+      if (_validName(value) && !_uiLabel(value)) return value;
+    }
     return null;
   }
 
   static String _avatar(dom.Document doc, int uid) {
     final uidText = uid.toString();
-    for (final a in doc.querySelectorAll('a[href]')) { final href = (a.attributes['href'] ?? '').toLowerCase(); if (!href.contains('uid=$uidText') || !href.contains('do=profile')) continue; final img = a.querySelector('img[src], img[data-src]'); final value = _abs(img?.attributes['src'] ?? img?.attributes['data-src'] ?? ''); if (_isRealAvatar(value, uid)) return value; }
-    for (final selector in ['.comiis_space_avatar img', '.comiis_space_user img.avatar', '.comiis_space_user img.user_avatar', '.comiis_space_box img[src*="avatar"]', '.space_avatar img']) { final node = doc.querySelector(selector); if (node == null) continue; final value = _abs(node.attributes['src'] ?? node.attributes['data-src'] ?? ''); if (_isRealAvatar(value, uid)) return value; }
+    for (final a in doc.querySelectorAll('a[href]')) {
+      final href = (a.attributes['href'] ?? '').toLowerCase();
+      if (!href.contains('uid=$uidText') || !href.contains('do=profile'))
+        continue;
+      final img = a.querySelector('img[src], img[data-src]');
+      final value = _abs(
+        img?.attributes['src'] ?? img?.attributes['data-src'] ?? '',
+      );
+      if (_isRealAvatar(value, uid)) return value;
+    }
+    for (final selector in [
+      '.comiis_space_avatar img',
+      '.comiis_space_user img.avatar',
+      '.comiis_space_user img.user_avatar',
+      '.comiis_space_box img[src*="avatar"]',
+      '.space_avatar img',
+    ]) {
+      final node = doc.querySelector(selector);
+      if (node == null) continue;
+      final value = _abs(
+        node.attributes['src'] ?? node.attributes['data-src'] ?? '',
+      );
+      if (_isRealAvatar(value, uid)) return value;
+    }
     final s = uid.toString().padLeft(8, '0');
     return '${_base}data/avatar/${s.substring(0, 3)}/${s.substring(3, 5)}/${s.substring(5, 7)}/${s.substring(7)}_avatar_middle.jpg';
   }
 
-  static bool _isRealAvatar(String value, int uid) { if (value.isEmpty) return false; final lower = value.toLowerCase(); return !lower.contains('noavatar') && lower.contains('avatar'); }
-  static bool _uiLabel(String value) => RegExp(r'^(?:关注|已关注|聊天|私信|回复|主题|回帖|粉丝|积分|星币|登录|注册|退出|刷新|用户|用户名|昵称|资料|个人资料|用户资料)$').hasMatch(_clean(value));
-  static int? _numberFromHref(dom.Document doc, bool Function(String href) matches) { for (final a in doc.querySelectorAll('a[href]')) { final href = a.attributes['href'] ?? ''; if (!matches(href)) continue; final m = RegExp(r'(?<!\d)(\d{1,12})(?!\d)').firstMatch(_clean(a.text)); if (m != null) return int.tryParse(m.group(1)!); } return null; }
-  static int _numberNearLabel(dom.Document doc, List<String> labels) { final labelSet = labels.map(_clean).where((e) => e.isNotEmpty).toList(); for (final node in doc.querySelectorAll('th,td,li,dt,dd,div,span,p,a,strong,em')) { final value = _clean(node.text); if (value.isEmpty || value.length > 100 || !labelSet.any((label) => value == label || value.contains(label))) continue; for (final candidate in [node, node.parent, node.parent?.parent]) { if (candidate == null) continue; final text = _clean(candidate.text); if (text.isEmpty || text.length > 160) continue; for (final label in labelSet) { final match = RegExp('([0-9]{1,12})[^0-9]{0,12}${RegExp.escape(label)}').firstMatch(text) ?? RegExp('${RegExp.escape(label)}[^0-9]{0,12}([0-9]{1,12})').firstMatch(text); if (match != null) { final n = int.tryParse(match.group(1)!); if (n != null) return n; } } } } return 0; }
-  static String? _labelValue(dom.Document doc, List<String> labels) { for (final node in doc.querySelectorAll('li,dt,dd,th,td,p,div,span')) { final text = _clean(node.text); for (final label in labels) { if (!text.contains(label)) continue; final value = _clean(text.replaceFirst(label, '').replaceFirst(':', '').replaceFirst('：', '')); if (_validName(value) && !_uiLabel(value)) return value; } } return null; }
-  static String? _visibleName(dom.Document doc) { for (final selector in ['.vwmy a', '.vwmy', '.pf_username', '.userinfo a', '.user-info a', '.member-name', '.username', '.nickname', '[class*="username"]', '[class*="nickname"]']) { final value = _clean(doc.querySelector(selector)?.text ?? ''); if (_validName(value) && !_uiLabel(value)) return value; } return null; }
-  static bool _validName(String? value) { if (value == null) return false; final v = _clean(value); if (v.isEmpty || v.length > 32 || v.contains('\uFFFD') || v.contains('�') || RegExp(r'[\x00-\x1F]').hasMatch(v)) return false; if (RegExp(r'^(?:资料|个人资料|用户资料|用户|用户名|昵称|登录|注册|退出|主题|回帖|关注|已关注|聊天|私信|刷新)$', caseSensitive: false).hasMatch(v)) return false; return !RegExp(r'^(UID|用户|用户名|昵称|登录|注册|退出|主题|回帖)\s*[:：]?$', caseSensitive: false).hasMatch(v); }
+  static bool _isRealAvatar(String value, int uid) {
+    if (value.isEmpty) return false;
+    final lower = value.toLowerCase();
+    return !lower.contains('noavatar') && lower.contains('avatar');
+  }
 
-  Future<List<ThreadItem>> fetchThreads(int uid, {bool replies = false}) => MemberServiceV2.instance.fetchThreads('home.php?mod=space&uid=$uid&do=thread&type=${replies ? 'reply' : 'thread'}&view=me&from=space&mobile=2');
+  static bool _uiLabel(String value) => RegExp(
+    r'^(?:关注|已关注|聊天|私信|回复|主题|回帖|粉丝|积分|星币|登录|注册|退出|刷新|用户|用户名|昵称|资料|个人资料|用户资料)$',
+  ).hasMatch(_clean(value));
+  static int? _numberFromHref(
+    dom.Document doc,
+    bool Function(String href) matches,
+  ) {
+    for (final a in doc.querySelectorAll('a[href]')) {
+      final href = a.attributes['href'] ?? '';
+      if (!matches(href)) continue;
+      final m = RegExp(r'(?<!\d)(\d{1,12})(?!\d)').firstMatch(_clean(a.text));
+      if (m != null) return int.tryParse(m.group(1)!);
+    }
+    return null;
+  }
+
+  static int _numberNearLabel(dom.Document doc, List<String> labels) {
+    final labelSet = labels.map(_clean).where((e) => e.isNotEmpty).toList();
+    for (final node in doc.querySelectorAll(
+      'th,td,li,dt,dd,div,span,p,a,strong,em',
+    )) {
+      final value = _clean(node.text);
+      if (value.isEmpty ||
+          value.length > 100 ||
+          !labelSet.any((label) => value == label || value.contains(label)))
+        continue;
+      for (final candidate in [node, node.parent, node.parent?.parent]) {
+        if (candidate == null) continue;
+        final text = _clean(candidate.text);
+        if (text.isEmpty || text.length > 160) continue;
+        for (final label in labelSet) {
+          final match =
+              RegExp('([0-9]{1,12})[^0-9]{0,12}${RegExp.escape(label)}')
+                  .firstMatch(text) ??
+              RegExp('${RegExp.escape(label)}[^0-9]{0,12}([0-9]{1,12})')
+                  .firstMatch(text);
+          if (match != null) {
+            final n = int.tryParse(match.group(1)!);
+            if (n != null) return n;
+          }
+        }
+      }
+    }
+    return 0;
+  }
+
+  static String? _labelValue(dom.Document doc, List<String> labels) {
+    for (final node in doc.querySelectorAll('li,dt,dd,th,td,p,div,span')) {
+      final text = _clean(node.text);
+      for (final label in labels) {
+        if (!text.contains(label)) continue;
+        final value = _clean(
+          text
+              .replaceFirst(label, '')
+              .replaceFirst(':', '')
+              .replaceFirst('：', ''),
+        );
+        if (_validName(value) && !_uiLabel(value)) return value;
+      }
+    }
+    return null;
+  }
+
+  static String? _visibleName(dom.Document doc) {
+    for (final selector in [
+      '.vwmy a',
+      '.vwmy',
+      '.pf_username',
+      '.userinfo a',
+      '.user-info a',
+      '.member-name',
+      '.username',
+      '.nickname',
+      '[class*="username"]',
+      '[class*="nickname"]',
+    ]) {
+      final value = _clean(doc.querySelector(selector)?.text ?? '');
+      if (_validName(value) && !_uiLabel(value)) return value;
+    }
+    return null;
+  }
+
+  static bool _validName(String? value) {
+    if (value == null) return false;
+    final v = _clean(value);
+    if (v.isEmpty ||
+        v.length > 32 ||
+        v.contains('\uFFFD') ||
+        v.contains('�') ||
+        RegExp(r'[\x00-\x1F]').hasMatch(v))
+      return false;
+    if (RegExp(
+      r'^(?:资料|个人资料|用户资料|用户|用户名|昵称|登录|注册|退出|主题|回帖|关注|已关注|聊天|私信|刷新)$',
+      caseSensitive: false,
+    ).hasMatch(v))
+      return false;
+    return !RegExp(
+      r'^(UID|用户|用户名|昵称|登录|注册|退出|主题|回帖)\s*[:：]?$',
+      caseSensitive: false,
+    ).hasMatch(v);
+  }
+
+  Future<List<ThreadItem>> fetchThreads(
+    int uid, {
+    bool replies = false,
+  }) => MemberServiceV2.instance.fetchThreads(
+    'home.php?mod=space&uid=$uid&do=thread&type=${replies ? 'reply' : 'thread'}&view=me&from=space&mobile=2',
+  );
 
   Future<String?> setFollow(int uid, bool follow) async {
     final cookie = AuthService.instance.authCookie;
@@ -109,27 +393,94 @@ class ProfileService {
       final formhash = _hidden(page, 'formhash');
       if (formhash == null || formhash.isEmpty) return '未取得操作令牌，请刷新后重试';
       // Discuz 关注接口使用 hash/fuid；旧实现调用 friend/ignore，会把“关注”当成加好友。
-      final uri = Uri.parse('${_base}home.php').replace(queryParameters: {
-        'mod': 'spacecp', 'ac': 'follow', 'op': follow ? 'add' : 'del',
-        'hash': formhash, 'fuid': '$uid', 'mobile': '2', 'inajax': '1',
-      });
-      final headers = {'User-Agent': NetClient.ua, 'Accept': 'application/json,text/html,*/*', 'Referer': pageUrl, 'Cache-Control': 'no-cache, no-store', 'Pragma': 'no-cache', 'X-Requested-With': 'XMLHttpRequest', 'Cookie': cookie!};
-      var r = await NetClient.retry(() => client.get(uri, headers: headers).timeout(const Duration(seconds: 20)));
+      final uri = Uri.parse('${_base}home.php').replace(
+        queryParameters: {
+          'mod': 'spacecp',
+          'ac': 'follow',
+          'op': follow ? 'add' : 'del',
+          'hash': formhash,
+          'fuid': '$uid',
+          'mobile': '2',
+          'inajax': '1',
+        },
+      );
+      final headers = {
+        'User-Agent': NetClient.ua,
+        'Accept': 'application/json,text/html,*/*',
+        'Referer': pageUrl,
+        'Cache-Control': 'no-cache, no-store',
+        'Pragma': 'no-cache',
+        'X-Requested-With': 'XMLHttpRequest',
+        'Cookie': cookie!,
+      };
+      var r = await NetClient.retry(
+        () => client
+            .get(uri, headers: headers)
+            .timeout(const Duration(seconds: 20)),
+      );
       var body = NetClient.decode(r.bodyBytes);
       if (_followSuccess(body, follow)) return null;
       // 兼容站点自定义为 POST 的模板，但仍使用标准 hash/fuid。
-      r = await NetClient.retry(() => client.post(uri, headers: {...headers, 'Content-Type': 'application/x-www-form-urlencoded; charset=UTF-8'}, body: {'hash': formhash, 'formhash': formhash, 'fuid': '$uid', 'uid': '$uid', 'op': follow ? 'add' : 'del', 'inajax': '1'}).timeout(const Duration(seconds: 20)));
+      r = await NetClient.retry(
+        () => client
+            .post(
+              uri,
+              headers: {
+                ...headers,
+                'Content-Type':
+                    'application/x-www-form-urlencoded; charset=UTF-8',
+              },
+              body: {
+                'hash': formhash,
+                'formhash': formhash,
+                'fuid': '$uid',
+                'uid': '$uid',
+                'op': follow ? 'add' : 'del',
+                'inajax': '1',
+              },
+            )
+            .timeout(const Duration(seconds: 20)),
+      );
       body = NetClient.decode(r.bodyBytes);
       if (_followSuccess(body, follow)) return null;
-      if (body.contains('操作令牌已失效') || body.contains('表单验证串不符') || body.contains('请求来路不正确') || body.contains('formhash错误')) return '操作令牌已失效，请刷新后重试';
+      if (body.contains('操作令牌已失效') ||
+          body.contains('表单验证串不符') ||
+          body.contains('请求来路不正确') ||
+          body.contains('formhash错误'))
+        return '操作令牌已失效，请刷新后重试';
       if (body.contains('登录')) return '登录态已失效，请重新登录';
       return _message(body) ?? '操作失败，请稍后重试';
-    } catch (_) { return '网络请求失败，请稍后重试'; }
+    } catch (_) {
+      return '网络请求失败，请稍后重试';
+    }
   }
 
-  static bool _followSuccess(String body, bool follow) { final lower = body.toLowerCase(); return lower.contains('succeed') || body.contains('成功') || (follow && body.contains('已关注')) || (!follow && (body.contains('取消关注') || body.contains('已取消'))); }
-  static String? _message(String html) => RegExp(r'''(?:showError|showDialog)\(\s*['"]([^'"]+)''').firstMatch(html)?.group(1);
-  static String? _hidden(String html, String name) { final e = RegExp.escape(name); return RegExp('name\\s*=\\s*["\\\']$e["\\\'][^>]*value\\s*=\\s*["\\\']([^"\\\']+)', caseSensitive: false).firstMatch(html)?.group(1); }
+  static bool _followSuccess(String body, bool follow) {
+    final lower = body.toLowerCase();
+    return lower.contains('succeed') ||
+        body.contains('成功') ||
+        (follow && body.contains('已关注')) ||
+        (!follow && (body.contains('取消关注') || body.contains('已取消')));
+  }
+
+  static String? _message(String html) =>
+      RegExp(r'''(?:showError|showDialog)\(\s*['"]([^'"]+)''')
+          .firstMatch(html)
+          ?.group(1);
+  static String? _hidden(String html, String name) {
+    final e = RegExp.escape(name);
+    return RegExp(
+      'name\\s*=\\s*["\\\']$e["\\\'][^>]*value\\s*=\\s*["\\\']([^"\\\']+)',
+      caseSensitive: false,
+    ).firstMatch(html)?.group(1);
+  }
+
   static String _clean(String s) => s.replaceAll(RegExp(r'\s+'), ' ').trim();
-  static String _abs(String u) { if (u.isEmpty) return ''; if (u.startsWith('http')) return u; if (u.startsWith('//')) return 'https:$u'; if (u.startsWith('/')) return _base + u.substring(1); return _base + u.replaceFirst(RegExp(r'^\./'), ''); }
+  static String _abs(String u) {
+    if (u.isEmpty) return '';
+    if (u.startsWith('http')) return u;
+    if (u.startsWith('//')) return 'https:$u';
+    if (u.startsWith('/')) return _base + u.substring(1);
+    return _base + u.replaceFirst(RegExp(r'^\./'), '');
+  }
 }

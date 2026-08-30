@@ -165,12 +165,13 @@ class _InlineContent extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final spans = <InlineSpan>[];
-    for (final node in nodes)
+    for (final node in nodes) {
       _appendSpan(
         spans,
         node,
         DefaultTextStyle.of(context).style.copyWith(fontSize: 16, height: 1.62),
       );
+    }
     return RichText(
       text: TextSpan(
         style: DefaultTextStyle.of(context).style,
@@ -186,20 +187,24 @@ class _InlineContent extends StatelessWidget {
       return;
     }
     if (node is! dom.Element) return;
-    final e = node as dom.Element;
+    final e = node;
     final tag = e.localName?.toLowerCase() ?? '';
     var next = style;
-    if (tag == 'strong' || tag == 'b')
+    if (tag == 'strong' || tag == 'b') {
       next = style.copyWith(fontWeight: FontWeight.w800);
-    if (tag == 'em' || tag == 'i')
+    }
+    if (tag == 'em' || tag == 'i') {
       next = style.copyWith(fontStyle: FontStyle.italic);
-    if (tag == 'del' || tag == 's')
+    }
+    if (tag == 'del' || tag == 's') {
       next = style.copyWith(decoration: TextDecoration.lineThrough);
-    if (tag == 'code')
+    }
+    if (tag == 'code') {
       next = style.copyWith(
         fontFamily: 'monospace',
         backgroundColor: const Color(0xfff0f2f6),
       );
+    }
     if (tag == 'a') {
       final href = e.attributes['href']?.trim() ?? '';
       final recognizer = TapGestureRecognizer()
@@ -220,7 +225,9 @@ class _InlineContent extends StatelessWidget {
       spans.add(const TextSpan(text: '\n'));
       return;
     }
-    for (final child in e.nodes) _appendSpan(spans, child, next);
+    for (final child in e.nodes) {
+      _appendSpan(spans, child, next);
+    }
   }
 }
 
@@ -335,8 +342,9 @@ String _resolveUrl(String value) {
   if (value.isEmpty) return '';
   if (value.startsWith('//')) return 'https:$value';
   if (value.startsWith('/')) return 'https://www.ycoo.net$value';
-  if (!value.startsWith('http://') && !value.startsWith('https://'))
+  if (!value.startsWith('http://') && !value.startsWith('https://')) {
     return 'https://www.ycoo.net/$value';
+  }
   return value;
 }
 
@@ -353,7 +361,7 @@ class _ImageBlock extends StatelessWidget {
         src,
         width: double.infinity,
         fit: BoxFit.contain,
-        errorBuilder: (_, __, ___) => Container(
+        errorBuilder: (_, _, _) => Container(
           padding: const EdgeInsets.all(14),
           color: Theme.of(context).colorScheme.surfaceContainerHighest,
           child: Text(alt?.isNotEmpty == true ? alt! : '图片加载失败'),

@@ -139,13 +139,17 @@ class _ThreadListViewState extends State<ThreadListView> {
     if (_error != null) {
       return const Padding(
         padding: EdgeInsets.all(14),
-        child: Center(child: Text('加载失败，点击下拉重试', style: TextStyle(color: Colors.grey))),
+        child: Center(
+          child: Text('加载失败，点击下拉重试', style: TextStyle(color: Colors.grey)),
+        ),
       );
     }
     if (_items.isEmpty) {
       return const Padding(
         padding: EdgeInsets.all(28),
-        child: Center(child: Text('暂无帖子', style: TextStyle(color: Colors.grey))),
+        child: Center(
+          child: Text('暂无帖子', style: TextStyle(color: Colors.grey)),
+        ),
       );
     }
     return const SizedBox(height: 8);
@@ -169,7 +173,13 @@ class _ErrorView extends StatelessWidget {
           const SizedBox(height: 4),
           Padding(
             padding: const EdgeInsets.symmetric(horizontal: 32),
-            child: Text(error, textAlign: TextAlign.center, maxLines: 3, overflow: TextOverflow.ellipsis, style: const TextStyle(fontSize: 12, color: Colors.grey)),
+            child: Text(
+              error,
+              textAlign: TextAlign.center,
+              maxLines: 3,
+              overflow: TextOverflow.ellipsis,
+              style: const TextStyle(fontSize: 12, color: Colors.grey),
+            ),
           ),
           const SizedBox(height: 12),
           FilledButton(onPressed: onRetry, child: const Text('重试')),

@@ -35,7 +35,8 @@ class _ResolvedUserAvatarState extends State<ResolvedUserAvatar> {
   @override
   void didUpdateWidget(covariant ResolvedUserAvatar oldWidget) {
     super.didUpdateWidget(oldWidget);
-    if (oldWidget.uid != widget.uid || oldWidget.username != widget.username) _load();
+    if (oldWidget.uid != widget.uid || oldWidget.username != widget.username)
+      _load();
   }
 
   Future<void> _load() async {
@@ -43,7 +44,9 @@ class _ResolvedUserAvatarState extends State<ResolvedUserAvatar> {
     try {
       var uid = suppliedUid;
       if (uid <= 0 && widget.username.trim().isNotEmpty) {
-        uid = await CommentProfileResolver.instance.resolveUid(widget.username) ?? 0;
+        uid =
+            await CommentProfileResolver.instance.resolveUid(widget.username) ??
+            0;
       }
       if (uid <= 0) return;
       final profile = await ProfileService.instance.fetchProfile(

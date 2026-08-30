@@ -23,7 +23,9 @@ class ThreadCard extends StatelessWidget {
           padding: const EdgeInsets.fromLTRB(14, 14, 14, 13),
           decoration: BoxDecoration(
             borderRadius: BorderRadius.circular(18),
-            border: Border.all(color: scheme.outlineVariant.withValues(alpha: .42)),
+            border: Border.all(
+              color: scheme.outlineVariant.withValues(alpha: .42),
+            ),
           ),
           child: Row(
             crossAxisAlignment: CrossAxisAlignment.start,
@@ -45,7 +47,10 @@ class ThreadCard extends StatelessWidget {
                         color: scheme.surfaceContainerHighest,
                         borderRadius: BorderRadius.circular(12),
                       ),
-                      child: Icon(Icons.image_not_supported_outlined, color: theme.hintColor),
+                      child: Icon(
+                        Icons.image_not_supported_outlined,
+                        color: theme.hintColor,
+                      ),
                     ),
                   ),
                 ),
@@ -66,7 +71,11 @@ class ThreadCard extends StatelessWidget {
           item.title,
           maxLines: 2,
           overflow: TextOverflow.ellipsis,
-          style: const TextStyle(fontSize: 15.5, fontWeight: FontWeight.w700, height: 1.28),
+          style: const TextStyle(
+            fontSize: 15.5,
+            fontWeight: FontWeight.w700,
+            height: 1.28,
+          ),
         ),
         if (item.subtitle.isNotEmpty) ...[
           const SizedBox(height: 6),
@@ -74,7 +83,11 @@ class ThreadCard extends StatelessWidget {
             item.subtitle,
             maxLines: 2,
             overflow: TextOverflow.ellipsis,
-            style: TextStyle(fontSize: 12.5, height: 1.35, color: theme.hintColor),
+            style: TextStyle(
+              fontSize: 12.5,
+              height: 1.35,
+              color: theme.hintColor,
+            ),
           ),
         ],
         const SizedBox(height: 10),
@@ -90,11 +103,21 @@ class ThreadCard extends StatelessWidget {
                   color: scheme.primary.withValues(alpha: .10),
                   borderRadius: BorderRadius.circular(7),
                 ),
-                child: Text(item.boardName, style: TextStyle(fontSize: 10.5, color: scheme.primary, fontWeight: FontWeight.w600)),
+                child: Text(
+                  item.boardName,
+                  style: TextStyle(
+                    fontSize: 10.5,
+                    color: scheme.primary,
+                    fontWeight: FontWeight.w600,
+                  ),
+                ),
               ),
             _meta(item.author, Icons.person_outline),
             if (item.time.isNotEmpty) _meta(item.time, Icons.schedule_outlined),
-            _meta(item.replyCount.toString(), Icons.chat_bubble_outline_rounded),
+            _meta(
+              item.replyCount.toString(),
+              Icons.chat_bubble_outline_rounded,
+            ),
           ],
         ),
       ],

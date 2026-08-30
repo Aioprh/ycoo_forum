@@ -119,10 +119,8 @@ class _BoardPageState extends State<BoardPage> {
           borderRadius: BorderRadius.circular(10),
           onTap: () => Navigator.of(context).push(
             MaterialPageRoute(
-              builder: (_) => BoardThreadListPage(
-                fid: b.fid,
-                filter: displayName,
-              ),
+              builder: (_) =>
+                  BoardThreadListPage(fid: b.fid, filter: displayName),
             ),
           ),
           child: Container(
@@ -144,7 +142,9 @@ class _BoardPageState extends State<BoardPage> {
                 else
                   CircleAvatar(
                     radius: 18,
-                    backgroundColor: theme.colorScheme.primary.withValues(alpha: 0.12),
+                    backgroundColor: theme.colorScheme.primary.withValues(
+                      alpha: 0.12,
+                    ),
                     child: Icon(
                       Icons.forum_outlined,
                       size: 18,
@@ -156,7 +156,10 @@ class _BoardPageState extends State<BoardPage> {
                   displayName,
                   maxLines: 1,
                   overflow: TextOverflow.ellipsis,
-                  style: const TextStyle(fontSize: 12.5, fontWeight: FontWeight.w500),
+                  style: const TextStyle(
+                    fontSize: 12.5,
+                    fontWeight: FontWeight.w500,
+                  ),
                 ),
                 if (b.today.isNotEmpty)
                   Text(

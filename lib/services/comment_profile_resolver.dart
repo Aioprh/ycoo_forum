@@ -18,21 +18,22 @@ class CommentProfileResolver {
 
     final client = await NetClient.instance.client;
     final urls = <Uri>[
-      Uri.parse('${_base}home.php').replace(queryParameters: {
-        'mod': 'space',
-        'username': name,
-        'do': 'profile',
-        'mobile': '2',
-      }),
-      Uri.parse('${_base}home.php').replace(queryParameters: {
-        'mod': 'space',
-        'username': name,
-        'mobile': '2',
-      }),
+      Uri.parse('${_base}home.php').replace(
+        queryParameters: {
+          'mod': 'space',
+          'username': name,
+          'do': 'profile',
+          'mobile': '2',
+        },
+      ),
+      Uri.parse('${_base}home.php').replace(
+        queryParameters: {'mod': 'space', 'username': name, 'mobile': '2'},
+      ),
     ];
     final headers = <String, String>{
       'User-Agent': NetClient.ua,
-      'Accept': 'text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8',
+      'Accept':
+          'text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8',
       'Accept-Language': 'zh-CN,zh;q=0.9',
       'Cache-Control': 'no-cache, no-store',
       'Pragma': 'no-cache',
@@ -41,7 +42,9 @@ class CommentProfileResolver {
     for (final url in urls) {
       try {
         final response = await NetClient.retry(
-          () => client.get(url, headers: headers).timeout(const Duration(seconds: 15)),
+          () => client
+              .get(url, headers: headers)
+              .timeout(const Duration(seconds: 15)),
           times: 2,
         );
         if (response.statusCode != 200) continue;
@@ -63,13 +66,19 @@ class CommentProfileResolver {
             }
           }
         }
-        final canonical = doc.querySelector('link[rel="canonical"]')?.attributes['href'] ?? '';
+        final canonical =
+            doc.querySelector('link[rel="canonical"]')?.attributes['href'] ??
+            '';
         final canonicalUid = _uidFromUrl(canonical);
         if (canonicalUid != null) {
           _cache[key] = canonicalUid;
           return canonicalUid;
         }
-        final meta = doc.querySelector('meta[property="og:url"], meta[name="og:url"]')?.attributes['content'] ?? '';
+        final meta =
+            doc
+                .querySelector('meta[property="og:url"], meta[name="og:url"]')
+                ?.attributes['content'] ??
+            '';
         final metaUid = _uidFromUrl(meta);
         if (metaUid != null) {
           _cache[key] = metaUid;
@@ -99,6 +108,8 @@ class CommentProfileResolver {
 
   bool _looksLikeProfileLink(String href) {
     final lower = href.toLowerCase();
-    return lower.contains('home.php?mod=space') || lower.contains('space-uid-') || lower.contains('space/uid/');
+    return lower.contains('home.php?mod=space') ||
+        lower.contains('space-uid-') ||
+        lower.contains('space/uid/');
   }
 }

@@ -17,7 +17,11 @@ class UploadedAttachment {
   final String name;
   final int size;
 
-  const UploadedAttachment({required this.aid, required this.name, required this.size});
+  const UploadedAttachment({
+    required this.aid,
+    required this.name,
+    required this.size,
+  });
 }
 
 class AttachmentUploadService {
@@ -28,18 +32,25 @@ class AttachmentUploadService {
   static const int maxBytes = 10 * 1024 * 1024;
 
   Map<String, String> _headers({String? referer, bool ajax = false}) => {
-        'User-Agent': NetClient.ua,
-        'Accept': ajax ? '*/*' : 'text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8',
-        'Accept-Language': 'zh-CN,zh;q=0.9',
-        'Cache-Control': 'no-cache, no-store',
-        'Pragma': 'no-cache',
-        if (referer != null) 'Referer': referer,
-        if (ajax) 'X-Requested-With': 'XMLHttpRequest',
-        if ((AuthService.instance.authCookie ?? '').isNotEmpty) 'Cookie': AuthService.instance.authCookie!,
-      };
+    'User-Agent': NetClient.ua,
+    'Accept': ajax
+        ? '*/*'
+        : 'text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8',
+    'Accept-Language': 'zh-CN,zh;q=0.9',
+    'Cache-Control': 'no-cache, no-store',
+    'Pragma': 'no-cache',
+    'Referer': ?referer,
+    if (ajax) 'X-Requested-With': 'XMLHttpRequest',
+    if ((AuthService.instance.authCookie ?? '').isNotEmpty)
+      'Cookie': AuthService.instance.authCookie!,
+  };
 
-  Future<UploadedAttachment> upload({required int fid, required PlatformFile file}) async {
-    if (!AuthService.instance.isLoggedIn || (AuthService.instance.authCookie ?? '').isEmpty) {
+  Future<UploadedAttachment> upload({
+    required int fid,
+    required PlatformFile file,
+  }) async {
+    if (!AuthService.instance.isLoggedIn ||
+        (AuthService.instance.authCookie ?? '').isEmpty) {
       throw Exception('请先登录论坛');
     }
     if (fid <= 0) throw Exception('未选择有效版块');
@@ -48,9 +59,16 @@ class AttachmentUploadService {
     if (size > maxBytes) throw Exception('附件不能超过 10 MB');
 
     final client = await NetClient.instance.client;
-    final pageUrl = Uri.parse('${_base}forum.php?mod=post&action=newthread&fid=$fid&mobile=2');
-    final pageResp = await NetClient.retry(() => client.get(pageUrl, headers: _headers(referer: _base)).timeout(NetClient.timeout));
-    if (pageResp.statusCode != 200) throw Exception('读取发帖页面失败 HTTP ${pageResp.statusCode}');
+    final pageUrl = Uri.parse(
+      '${_base}forum.php?mod=post&action=newthread&fid=$fid&mobile=2',
+    );
+    final pageResp = await NetClient.retry(
+      () => client
+          .get(pageUrl, headers: _headers(referer: _base))
+          .timeout(NetClient.timeout),
+    );
+    if (pageResp.statusCode != 200)
+      throw Exception('读取发帖页面失败 HTTP ${pageResp.statusCode}');
     final html = NetClient.decode(pageResp.bodyBytes);
     final doc = parser.parse(html);
     final formhash = _hidden(doc, 'formhash');
@@ -70,7 +88,13 @@ class AttachmentUploadService {
     request.fields['fid'] = '$fid';
     request.fields['simple'] = '2';
     request.fields['inajax'] = 'yes';
-    request.files.add(await http.MultipartFile.fromPath('Filedata', file.path!, filename: file.name));
+    request.files.add(
+      await http.MultipartFile.fromPath(
+        'Filedata',
+        file.path!,
+        filename: file.name,
+      ),
+    );
 
     final streamed = await request.send().timeout(NetClient.timeout);
     final response = await http.Response.fromStream(streamed);
@@ -80,7 +104,8 @@ class AttachmentUploadService {
     }
 
     final parsed = _parseUploadResponse(body, file.name, size);
-    if (parsed == null) throw Exception(_uploadError(body, response.statusCode));
+    if (parsed == null)
+      throw Exception(_uploadError(body, response.statusCode));
     return parsed;
   }
 
@@ -93,9 +118,18 @@ class AttachmentUploadService {
     final input = _hidden(doc, 'hash');
     if (input.isNotEmpty) return input;
     final patterns = <RegExp>[
-      RegExp(r'''["']hash["']\s*[:=]\s*["']([A-Za-z0-9_-]{16,128})["']''', caseSensitive: false),
-      RegExp(r'''\bhash\s*[:=]\s*["']([A-Za-z0-9_-]{16,128})["']''', caseSensitive: false),
-      RegExp(r'''["']hash["']\s*:\s*["']([A-Fa-f0-9]{16,128})["']''', caseSensitive: false),
+      RegExp(
+        r'''["']hash["']\s*[:=]\s*["']([A-Za-z0-9_-]{16,128})["']''',
+        caseSensitive: false,
+      ),
+      RegExp(
+        r'''\bhash\s*[:=]\s*["']([A-Za-z0-9_-]{16,128})["']''',
+        caseSensitive: false,
+      ),
+      RegExp(
+        r'''["']hash["']\s*:\s*["']([A-Fa-f0-9]{16,128})["']''',
+        caseSensitive: false,
+      ),
     ];
     for (final pattern in patterns) {
       final match = pattern.firstMatch(html);
@@ -106,33 +140,60 @@ class AttachmentUploadService {
 
   Uri _uploadUrl(dynamic doc, String html, int fid) {
     for (final element in doc.querySelectorAll('form[action],script')) {
-      final raw = element.localName == 'form' ? (element.attributes['action'] ?? '') : element.text;
-      final match = RegExp(r'''((?:https?:)?//[^\s"']*misc\.php[^\s"']*mod=swfupload[^\s"']*operation=upload[^\s"']*)''', caseSensitive: false).firstMatch(raw) ??
-          RegExp(r'''([\w./?=&:%-]*misc\.php[^\s"']*mod=swfupload[^\s"']*operation=upload[^\s"']*)''', caseSensitive: false).firstMatch(raw);
+      final raw = element.localName == 'form'
+          ? (element.attributes['action'] ?? '')
+          : element.text;
+      final match =
+          RegExp(
+            r'''((?:https?:)?//[^\s"']*misc\.php[^\s"']*mod=swfupload[^\s"']*operation=upload[^\s"']*)''',
+            caseSensitive: false,
+          ).firstMatch(raw) ??
+          RegExp(
+            r'''([\w./?=&:%-]*misc\.php[^\s"']*mod=swfupload[^\s"']*operation=upload[^\s"']*)''',
+            caseSensitive: false,
+          ).firstMatch(raw);
       if (match != null) {
-        final value = match.group(1)!.replaceAll('\\/', '/').replaceAll('&amp;', '&');
-        return Uri.parse(value.startsWith('http') ? value : '$_base${value.startsWith('/') ? value.substring(1) : value}');
+        final value = match
+            .group(1)!
+            .replaceAll('\\/', '/')
+            .replaceAll('&amp;', '&');
+        return Uri.parse(
+          value.startsWith('http')
+              ? value
+              : '$_base${value.startsWith('/') ? value.substring(1) : value}',
+        );
       }
     }
-    return Uri.parse('${_base}misc.php').replace(queryParameters: {
-      'mod': 'swfupload',
-      'action': 'swfupload',
-      'operation': 'upload',
-      'fid': '$fid',
-      'inajax': 'yes',
-      'infloat': 'yes',
-      'simple': '2',
-    });
+    return Uri.parse('${_base}misc.php').replace(
+      queryParameters: {
+        'mod': 'swfupload',
+        'action': 'swfupload',
+        'operation': 'upload',
+        'fid': '$fid',
+        'inajax': 'yes',
+        'infloat': 'yes',
+        'simple': '2',
+      },
+    );
   }
 
-  UploadedAttachment? _parseUploadResponse(String body, String fallbackName, int size) {
+  UploadedAttachment? _parseUploadResponse(
+    String body,
+    String fallbackName,
+    int size,
+  ) {
     if (body.isEmpty) return null;
     try {
       final json = jsonDecode(body);
       if (json is Map) {
         final dynamic data = json['data'] is Map ? json['data'] : json;
         final aid = int.tryParse('${data['aid'] ?? data['id'] ?? ''}') ?? 0;
-        if (aid > 0) return UploadedAttachment(aid: aid, name: '${data['filename'] ?? data['name'] ?? fallbackName}', size: size);
+        if (aid > 0)
+          return UploadedAttachment(
+            aid: aid,
+            name: '${data['filename'] ?? data['name'] ?? fallbackName}',
+            size: size,
+          );
       }
     } catch (_) {}
 
@@ -141,7 +202,9 @@ class AttachmentUploadService {
       final error = int.tryParse(parts[2].trim()) ?? -1;
       final aid = int.tryParse(parts[3].trim()) ?? 0;
       if (error == 0 && aid > 0) {
-        final name = parts.length > 6 && parts[6].trim().isNotEmpty ? parts[6].trim() : fallbackName;
+        final name = parts.length > 6 && parts[6].trim().isNotEmpty
+            ? parts[6].trim()
+            : fallbackName;
         return UploadedAttachment(aid: aid, name: name, size: size);
       }
     }
@@ -149,8 +212,12 @@ class AttachmentUploadService {
   }
 
   String _uploadError(String body, int status) {
-    final text = body.replaceAll(RegExp(r'<[^>]+>'), ' ').replaceAll(RegExp(r'\s+'), ' ').trim();
-    if (text.contains('formhash') || text.contains('非法操作')) return '附件上传令牌已失效，请刷新后重试';
+    final text = body
+        .replaceAll(RegExp(r'<[^>]+>'), ' ')
+        .replaceAll(RegExp(r'\s+'), ' ')
+        .trim();
+    if (text.contains('formhash') || text.contains('非法操作'))
+      return '附件上传令牌已失效，请刷新后重试';
     if (text.contains('不支持此类扩展名')) return '当前版块不允许上传该文件类型';
     if (text.contains('附件文件无法保存')) return '论坛服务器无法保存附件';
     if (text.contains('没有合法的文件')) return '没有合法的文件被上传';

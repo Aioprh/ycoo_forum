@@ -1,4 +1,5 @@
 import 'dart:io';
+
 import 'package:flutter/services.dart';
 
 /// 原生附件下载桥接。
@@ -20,7 +21,11 @@ class AttachmentDownloadService {
         path.contains('/download/');
   }
 
-  Future<bool> download({required String url, String? cookie, String? referer}) async {
+  Future<bool> download({
+    required String url,
+    String? cookie,
+    String? referer,
+  }) async {
     if (!Platform.isAndroid) return false;
     final result = await _channel.invokeMethod<bool>('download', {
       'url': url,

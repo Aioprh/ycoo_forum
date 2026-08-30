@@ -31,7 +31,10 @@ class NativeNoticeHubPage extends StatelessWidget {
                 Container(
                   width: 62,
                   height: 62,
-                  decoration: BoxDecoration(color: color.withValues(alpha: .18), shape: BoxShape.circle),
+                  decoration: BoxDecoration(
+                    color: color.withValues(alpha: .18),
+                    shape: BoxShape.circle,
+                  ),
                   child: Icon(icon, size: 31, color: color),
                 ),
                 const SizedBox(width: 16),
@@ -40,13 +43,29 @@ class NativeNoticeHubPage extends StatelessWidget {
                     mainAxisAlignment: MainAxisAlignment.center,
                     crossAxisAlignment: CrossAxisAlignment.start,
                     children: [
-                      Text(title, style: const TextStyle(fontSize: 18, fontWeight: FontWeight.w500)),
+                      Text(
+                        title,
+                        style: const TextStyle(
+                          fontSize: 18,
+                          fontWeight: FontWeight.w500,
+                        ),
+                      ),
                       const SizedBox(height: 4),
-                      Text(subtitle, style: TextStyle(fontSize: 12, color: Theme.of(context).colorScheme.onSurfaceVariant)),
+                      Text(
+                        subtitle,
+                        style: TextStyle(
+                          fontSize: 12,
+                          color: Theme.of(context).colorScheme.onSurfaceVariant,
+                        ),
+                      ),
                     ],
                   ),
                 ),
-                Icon(Icons.chevron_right_rounded, color: Theme.of(context).colorScheme.outline, size: 28),
+                Icon(
+                  Icons.chevron_right_rounded,
+                  color: Theme.of(context).colorScheme.outline,
+                  size: 28,
+                ),
               ],
             ),
           ),
@@ -69,7 +88,14 @@ class NativeNoticeHubPage extends StatelessWidget {
             color: Colors.lightBlue,
             title: '我的消息',
             subtitle: '站内私信',
-            onTap: () => _open(context, const MemberFeaturePage(title: '消息', path: 'home.php?mod=space&do=pm&mobile=2', type: MemberFeatureType.messages)),
+            onTap: () => _open(
+              context,
+              const MemberFeaturePage(
+                title: '消息',
+                path: 'home.php?mod=space&do=pm&mobile=2',
+                type: MemberFeatureType.messages,
+              ),
+            ),
           ),
           const Divider(height: 1),
           _item(
@@ -87,7 +113,14 @@ class NativeNoticeHubPage extends StatelessWidget {
             color: Colors.lightGreen,
             title: '我的帖子',
             subtitle: '我发布的主题和回帖',
-            onTap: () => _open(context, const MemberFeaturePage(title: '我的主题', path: 'home.php?mod=space&do=thread&view=me&mobile=2', type: MemberFeatureType.threads)),
+            onTap: () => _open(
+              context,
+              const MemberFeaturePage(
+                title: '我的主题',
+                path: 'home.php?mod=space&do=thread&view=me&mobile=2',
+                type: MemberFeatureType.threads,
+              ),
+            ),
           ),
           const Divider(height: 1),
           _item(
@@ -96,7 +129,14 @@ class NativeNoticeHubPage extends StatelessWidget {
             color: Colors.amber,
             title: '坛友互动',
             subtitle: '回复、评论、点赞和关注',
-            onTap: () => _open(context, const MemberFeaturePage(title: '坛友互动', path: 'home.php?mod=space&do=notice&mobile=2', type: MemberFeatureType.notices)),
+            onTap: () => _open(
+              context,
+              const MemberFeaturePage(
+                title: '坛友互动',
+                path: 'home.php?mod=space&do=notice&mobile=2',
+                type: MemberFeatureType.notices,
+              ),
+            ),
           ),
           const Divider(height: 1),
           _item(
@@ -105,7 +145,14 @@ class NativeNoticeHubPage extends StatelessWidget {
             color: Colors.redAccent,
             title: '系统提醒',
             subtitle: '系统消息和账号提醒',
-            onTap: () => _open(context, const MemberFeaturePage(title: '系统提醒', path: 'home.php?mod=space&do=notice&mobile=2', type: MemberFeatureType.notices)),
+            onTap: () => _open(
+              context,
+              const MemberFeaturePage(
+                title: '系统提醒',
+                path: 'home.php?mod=space&do=notice&mobile=2',
+                type: MemberFeatureType.notices,
+              ),
+            ),
           ),
           const Divider(height: 1),
           _item(
@@ -114,7 +161,14 @@ class NativeNoticeHubPage extends StatelessWidget {
             color: Colors.blueAccent,
             title: '应用提醒',
             subtitle: '应用和社区服务提醒',
-            onTap: () => _open(context, const MemberFeaturePage(title: '应用提醒', path: 'home.php?mod=space&do=notice&mobile=2', type: MemberFeatureType.notices)),
+            onTap: () => _open(
+              context,
+              const MemberFeaturePage(
+                title: '应用提醒',
+                path: 'home.php?mod=space&do=notice&mobile=2',
+                type: MemberFeatureType.notices,
+              ),
+            ),
           ),
           const Divider(height: 1),
         ],

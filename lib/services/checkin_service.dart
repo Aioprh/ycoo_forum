@@ -14,7 +14,9 @@ class CheckinService {
 
   Map<String, String> _headers(String referer, {bool ajax = false}) => {
     'User-Agent': NetClient.ua,
-    'Accept': ajax ? '*/*' : 'text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8',
+    'Accept': ajax
+        ? '*/*'
+        : 'text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8',
     'Accept-Language': 'zh-CN,zh;q=0.9',
     'Cache-Control': 'no-cache, no-store',
     'Pragma': 'no-cache',
@@ -27,7 +29,8 @@ class CheckinService {
   String? _hidden(String html, String name) {
     final document = parser.parse(html);
     for (final input in document.querySelectorAll('input')) {
-      if ((input.attributes['name'] ?? '').toLowerCase() == name.toLowerCase()) {
+      if ((input.attributes['name'] ?? '').toLowerCase() ==
+          name.toLowerCase()) {
         final value = input.attributes['value'];
         if (value != null && value.trim().isNotEmpty) return value.trim();
       }
@@ -42,8 +45,14 @@ class CheckinService {
     if (hidden != null && hidden.isNotEmpty) return hidden;
 
     final patterns = <RegExp>[
-      RegExp(r'''(?:[?&]|formhash\s*[=:"']\s*)formhash(?:=|%3D|\s*[=:]\s*)["']?([a-zA-Z0-9_-]{6,64})''', caseSensitive: false),
-      RegExp(r'''["']formhash["']\s*:\s*["']([a-zA-Z0-9_-]{6,64})["']''', caseSensitive: false),
+      RegExp(
+        r'''(?:[?&]|formhash\s*[=:"']\s*)formhash(?:=|%3D|\s*[=:]\s*)["']?([a-zA-Z0-9_-]{6,64})''',
+        caseSensitive: false,
+      ),
+      RegExp(
+        r'''["']formhash["']\s*:\s*["']([a-zA-Z0-9_-]{6,64})["']''',
+        caseSensitive: false,
+      ),
       RegExp(r'''formhash=([a-zA-Z0-9_-]{6,64})''', caseSensitive: false),
     ];
     for (final re in patterns) {
@@ -56,11 +65,16 @@ class CheckinService {
 
   bool _isLoggedInHtml(String html) {
     final doc = parser.parse(html);
-    if (doc.querySelector('a[href*="action=logout"], a[href*="logout"], .logout, #logout') != null) {
+    if (doc.querySelector(
+          'a[href*="action=logout"], a[href*="logout"], .logout, #logout',
+        ) !=
+        null) {
       return true;
     }
     final username = AuthService.instance.username?.trim();
-    if (username != null && username.isNotEmpty && (doc.body?.text ?? '').contains(username)) {
+    if (username != null &&
+        username.isNotEmpty &&
+        (doc.body?.text ?? '').contains(username)) {
       return true;
     }
     // 已保存的 Discuz 登录 Cookie 存在时，不因为模板中出现“登录”链接就误判。
@@ -70,7 +84,9 @@ class CheckinService {
   Uri? _findRealSignAction(String html, String pageUrl, String formhash) {
     final doc = parser.parse(html);
     final base = Uri.parse(pageUrl);
-    for (final element in doc.querySelectorAll('a[href], button[onclick], input[onclick]')) {
+    for (final element in doc.querySelectorAll(
+      'a[href], button[onclick], input[onclick]',
+    )) {
       final href = element.attributes['href'];
       final onclick = element.attributes['onclick'];
       final raw = href ?? onclick ?? '';
@@ -80,7 +96,9 @@ class CheckinService {
       if (href != null && href.trim().isNotEmpty) {
         url = href.trim();
       } else {
-        final match = RegExp(r'''["']([^"']*(?:operation=qiandao|qiandao)[^"']*)["']''').firstMatch(raw);
+        final match = RegExp(
+          r'''["']([^"']*(?:operation=qiandao|qiandao)[^"']*)["']''',
+        ).firstMatch(raw);
         url = match?.group(1);
       }
       if (url == null || url.isEmpty || url.startsWith('javascript:')) continue;
@@ -99,12 +117,17 @@ class CheckinService {
   }
 
   String? _resultMessage(String body) {
-    if (body.contains('今天已经签到') || body.contains('您今天已经签到') || body.contains('今日已签') || body.contains('btnvisted')) {
+    if (body.contains('今天已经签到') ||
+        body.contains('您今天已经签到') ||
+        body.contains('今日已签') ||
+        body.contains('btnvisted')) {
       return '今天已经签到';
     }
     if (body.contains('签到成功') || body.contains('恭喜')) return '签到成功';
     if (body.contains('请先登录') || body.contains('登录后')) return '登录状态已失效，请重新登录';
-    if ((body.contains('formhash') && (body.contains('非法') || body.contains('错误'))) || body.contains('操作令牌已失效')) {
+    if ((body.contains('formhash') &&
+            (body.contains('非法') || body.contains('错误'))) ||
+        body.contains('操作令牌已失效')) {
       return '签到令牌已失效，请刷新登录状态后重试';
     }
     return null;
@@ -128,10 +151,11 @@ class CheckinService {
       // 每次点击签到都重新请求当前登录会话的页面并提取新 token。
       for (final pageUri in pages) {
         try {
-          final response = await NetClient.retry(() => client.get(
-                pageUri,
-                headers: _headers(_base),
-              ).timeout(NetClient.timeout));
+          final response = await NetClient.retry(
+            () => client
+                .get(pageUri, headers: _headers(_base))
+                .timeout(NetClient.timeout),
+          );
           if (response.statusCode < 200 || response.statusCode >= 400) continue;
           final html = NetClient.decode(response.bodyBytes);
           final hash = _extractFormhash(html);
@@ -165,10 +189,11 @@ class CheckinService {
         },
       );
 
-      final response = await NetClient.retry(() => client.get(
-            signUri!,
-            headers: _headers(pageUrl, ajax: true),
-          ).timeout(NetClient.timeout));
+      final response = await NetClient.retry(
+        () => client
+            .get(signUri!, headers: _headers(pageUrl, ajax: true))
+            .timeout(NetClient.timeout),
+      );
       final body = NetClient.decode(response.bodyBytes);
       final result = _resultMessage(body);
       if (result != null) return result;

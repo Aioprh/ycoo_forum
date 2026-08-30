@@ -1,6 +1,8 @@
 import 'dart:async';
+
 import 'package:http/http.dart' as http;
 import 'package:shared_preferences/shared_preferences.dart';
+
 import 'login_log.dart';
 import 'net_client.dart';
 
@@ -8,8 +10,10 @@ class AuthService {
   AuthService._();
   static final AuthService instance = AuthService._();
   static const String base = 'https://www.ycoo.net/';
-  static const String loginPath = 'member.php?mod=logging&action=login&mobile=2';
-  static const String logoutPath = 'member.php?mod=logging&action=logout&mobile=2';
+  static const String loginPath =
+      'member.php?mod=logging&action=login&mobile=2';
+  static const String logoutPath =
+      'member.php?mod=logging&action=logout&mobile=2';
   static const String _prefUser = 'ycoo.session.username';
   static const String _prefUid = 'ycoo.session.uid';
   static const String _prefAvatar = 'ycoo.session.avatar';
@@ -26,14 +30,15 @@ class AuthService {
   int? get uid => _uid;
   String? get avatarUrl => _avatarUrl;
   String? get authCookie => _cookie;
-  Future<http.Client> _http() async => _client ??= await NetClient.instance.client;
+  Future<http.Client> _http() async =>
+      _client ??= await NetClient.instance.client;
 
   Map<String, String> _headers({String? referer}) => <String, String>{
     'User-Agent': NetClient.ua,
     'Accept': 'text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8',
     'Accept-Language': 'zh-CN,zh;q=0.9',
     'Cache-Control': 'no-cache',
-    if (referer != null) 'Referer': referer,
+    'Referer': ?referer,
     if (_cookie != null && _cookie!.isNotEmpty) 'Cookie': _cookie!,
   };
 
@@ -51,8 +56,14 @@ class AuthService {
   String? _hiddenValue(String html, String name) {
     final escaped = RegExp.escape(name);
     final inputRe = RegExp(r'<input\b[^>]*>', caseSensitive: false);
-    final nameFirst = RegExp('name\\s*=\\s*["\\\']$escaped["\\\'][^>]*value\\s*=\\s*["\\\']([^"\\\']+)["\\\']', caseSensitive: false);
-    final valueFirst = RegExp('value\\s*=\\s*["\\\']([^"\\\']+)["\\\'][^>]*name\\s*=\\s*["\\\']$escaped["\\\']', caseSensitive: false);
+    final nameFirst = RegExp(
+      'name\\s*=\\s*["\\\']$escaped["\\\'][^>]*value\\s*=\\s*["\\\']([^"\\\']+)["\\\']',
+      caseSensitive: false,
+    );
+    final valueFirst = RegExp(
+      'value\\s*=\\s*["\\\']([^"\\\']+)["\\\'][^>]*name\\s*=\\s*["\\\']$escaped["\\\']',
+      caseSensitive: false,
+    );
     for (final m in inputRe.allMatches(html)) {
       final tag = m.group(0)!;
       final a = nameFirst.firstMatch(tag)?.group(1);
@@ -66,8 +77,14 @@ class AuthService {
   String? _loginHash(String html) {
     for (final re in <RegExp>[
       RegExp(r'''loginhash\s*=\s*([A-Za-z0-9_-]+)''', caseSensitive: false),
-      RegExp(r'''[?&]loginhash(?:=|%3D)([A-Za-z0-9_-]+)''', caseSensitive: false),
-      RegExp(r'''id=["']main_messaqge_([A-Za-z0-9_-]+)["']''', caseSensitive: false),
+      RegExp(
+        r'''[?&]loginhash(?:=|%3D)([A-Za-z0-9_-]+)''',
+        caseSensitive: false,
+      ),
+      RegExp(
+        r'''id=["']main_messaqge_([A-Za-z0-9_-]+)["']''',
+        caseSensitive: false,
+      ),
     ]) {
       final m = re.firstMatch(html);
       if (m != null && m.group(1)!.isNotEmpty) return m.group(1);
@@ -75,7 +92,12 @@ class AuthService {
     return null;
   }
 
-  Future<String?> loginNative(String username, String password, {String questionId = '0', String answer = ''}) async {
+  Future<String?> loginNative(
+    String username,
+    String password, {
+    String questionId = '0',
+    String answer = '',
+  }) async {
     final user = username.trim();
     final cleanAnswer = answer.trim();
     if (user.isEmpty) return '请输入用户名';
@@ -84,38 +106,71 @@ class AuthService {
     try {
       final client = await _http();
       final loginUri = Uri.parse(base + loginPath);
-      final loginPage = await client.get(loginUri, headers: _headers(referer: base)).timeout(NetClient.timeout);
+      final loginPage = await client
+          .get(loginUri, headers: _headers(referer: base))
+          .timeout(NetClient.timeout);
       final page = NetClient.decode(loginPage.bodyBytes);
       final formhash = _hiddenValue(page, 'formhash');
-      LoginLog.instance.add('原生登录页: http=${loginPage.statusCode}, bytes=${loginPage.bodyBytes.length}, formhash=${formhash == null ? 'missing' : 'ok'}, loginhash=${_loginHash(page) == null ? 'missing' : 'ok'}');
+      LoginLog.instance.add(
+        '原生登录页: http=${loginPage.statusCode}, bytes=${loginPage.bodyBytes.length}, formhash=${formhash == null ? 'missing' : 'ok'}, loginhash=${_loginHash(page) == null ? 'missing' : 'ok'}',
+      );
       if (formhash == null || formhash.isEmpty) {
         if (_needsVerification(page)) return '网站要求验证码或安全验证，请使用网页验证完成登录';
         return '登录页面暂时无法取得登录令牌，请刷新后重试';
       }
       final loginHash = _loginHash(page);
-      final endpoint = Uri.parse('${base}member.php?mod=logging&action=login&loginsubmit=yes${loginHash == null ? '' : '&loginhash=${Uri.encodeQueryComponent(loginHash)}'}&inajax=1');
-      final response = await client.post(endpoint, headers: {..._headers(referer: loginUri.toString()), 'Content-Type': 'application/x-www-form-urlencoded; charset=UTF-8', 'Origin': base, 'X-Requested-With': 'XMLHttpRequest'}, body: {
-        'formhash': formhash, 'referer': base, 'loginfield': 'username', 'username': user, 'password': password,
-        'cookietime': '2592000', 'questionid': questionId, 'answer': cleanAnswer,
-      }).timeout(NetClient.timeout);
+      final endpoint = Uri.parse(
+        '${base}member.php?mod=logging&action=login&loginsubmit=yes${loginHash == null ? '' : '&loginhash=${Uri.encodeQueryComponent(loginHash)}'}&inajax=1',
+      );
+      final response = await client
+          .post(
+            endpoint,
+            headers: {
+              ..._headers(referer: loginUri.toString()),
+              'Content-Type':
+                  'application/x-www-form-urlencoded; charset=UTF-8',
+              'Origin': base,
+              'X-Requested-With': 'XMLHttpRequest',
+            },
+            body: {
+              'formhash': formhash,
+              'referer': base,
+              'loginfield': 'username',
+              'username': user,
+              'password': password,
+              'cookietime': '2592000',
+              'questionid': questionId,
+              'answer': cleanAnswer,
+            },
+          )
+          .timeout(NetClient.timeout);
       final body = NetClient.decode(response.bodyBytes);
       final setCookie = response.headers['set-cookie'];
       if (setCookie != null && setCookie.isNotEmpty) {
         final parsed = _cookieFromSetCookie(setCookie);
         if (parsed.isNotEmpty) _cookie = _mergeCookies(_cookie, parsed);
       }
-      LoginLog.instance.add('原生登录响应: http=${response.statusCode}, bytes=${response.bodyBytes.length}, cookie=${_cookie == null ? 'none' : 'present'}');
+      LoginLog.instance.add(
+        '原生登录响应: http=${response.statusCode}, bytes=${response.bodyBytes.length}, cookie=${_cookie == null ? 'none' : 'present'}',
+      );
       if (_looksLikeSuccess(body) || await _verifySession(client)) {
-        _loggedIn = true; _username = user; await _save(); await refreshProfile();
+        _loggedIn = true;
+        _username = user;
+        await _save();
+        await refreshProfile();
         LoginLog.instance.add('原生登录成功: ${_username ?? user}, uid=${_uid ?? 0}');
         return null;
       }
       if (_needsVerification(body)) return '网站要求验证码或安全验证，请使用网页验证完成登录';
       if (_looksLikeQuestionError(body)) return '安全提问或答案不正确，请检查后重试';
       if (body.contains('密码错误') || body.contains('用户名或密码错误')) return '用户名或密码错误';
-      if (body.contains('登录次数过多') || body.contains('请稍后再试')) return '登录尝试过于频繁，请稍后再试';
+      if (body.contains('登录次数过多') || body.contains('请稍后再试'))
+        return '登录尝试过于频繁，请稍后再试';
       final serverMessage = _extractServerMessage(body);
-      if (serverMessage != null) { LoginLog.instance.add('原生登录服务器返回: $serverMessage'); return serverMessage; }
+      if (serverMessage != null) {
+        LoginLog.instance.add('原生登录服务器返回: $serverMessage');
+        return serverMessage;
+      }
       return '登录失败，请检查账号信息';
     } catch (e) {
       LoginLog.instance.add('原生登录异常: $e');
@@ -125,35 +180,80 @@ class AuthService {
 
   bool _looksLikeSuccess(String body) {
     final lower = body.toLowerCase();
-    return lower.contains('login_succeed') || lower.contains('succeed') || body.contains('登录成功') || body.contains('欢迎您回来') || body.contains('现在将转入');
+    return lower.contains('login_succeed') ||
+        lower.contains('succeed') ||
+        body.contains('登录成功') ||
+        body.contains('欢迎您回来') ||
+        body.contains('现在将转入');
   }
+
   bool _needsVerification(String body) {
     final lower = body.toLowerCase();
-    return body.contains('seccode') || body.contains('验证码') || body.contains('安全验证') || lower.contains('verifycode') || body.contains('验证问答') || body.contains('seccodeverify');
+    return body.contains('seccode') ||
+        body.contains('验证码') ||
+        body.contains('安全验证') ||
+        lower.contains('verifycode') ||
+        body.contains('验证问答') ||
+        body.contains('seccodeverify');
   }
-  bool _looksLikeQuestionError(String body) => body.contains('login_question_invalid') || body.contains('安全提问错误') || body.contains('验证问答错误') || body.contains('问题答案错误');
+
+  bool _looksLikeQuestionError(String body) =>
+      body.contains('login_question_invalid') ||
+      body.contains('安全提问错误') ||
+      body.contains('验证问答错误') ||
+      body.contains('问题答案错误');
 
   String? _extractServerMessage(String body) {
-    final cdata = RegExp(r'<!\[CDATA\[(.*?)\]\]>', dotAll: true).firstMatch(body)?.group(1);
-    final source = (cdata ?? body).replaceAll(RegExp(r'<script\b[^>]*>.*?</script>', caseSensitive: false, dotAll: true), ' ').replaceAll(RegExp(r'<[^>]+>'), ' ').replaceAll(RegExp(r'\s+'), ' ').trim();
+    final cdata = RegExp(
+      r'<!\[CDATA\[(.*?)\]\]>',
+      dotAll: true,
+    ).firstMatch(body)?.group(1);
+    final source = (cdata ?? body)
+        .replaceAll(
+          RegExp(
+            r'<script\b[^>]*>.*?</script>',
+            caseSensitive: false,
+            dotAll: true,
+          ),
+          ' ',
+        )
+        .replaceAll(RegExp(r'<[^>]+>'), ' ')
+        .replaceAll(RegExp(r'\s+'), ' ')
+        .trim();
     if (source.isEmpty || source.length > 120) return null;
-    if (source.contains('登录') || source.contains('密码') || source.contains('账号') || source.contains('验证')) return source;
+    if (source.contains('登录') ||
+        source.contains('密码') ||
+        source.contains('账号') ||
+        source.contains('验证'))
+      return source;
     return null;
   }
 
   Future<bool> _verifySession(http.Client client) async {
     try {
-      final resp = await client.get(Uri.parse('${base}forum.php?mobile=2'), headers: _headers(referer: base)).timeout(const Duration(seconds: 10));
+      final resp = await client
+          .get(
+            Uri.parse('${base}forum.php?mobile=2'),
+            headers: _headers(referer: base),
+          )
+          .timeout(const Duration(seconds: 10));
       final body = NetClient.decode(resp.bodyBytes);
       return body.contains('action=logout') || body.contains('退出登录');
-    } catch (_) { return false; }
+    } catch (_) {
+      return false;
+    }
   }
 
-  String _cookieFromSetCookie(String raw) => raw.split(RegExp(r',\s*(?=[A-Za-z0-9_]+=[^;]+)')).map((v) => v.trim().split(';').first.trim()).where((v) => v.contains('=')).join('; ');
+  String _cookieFromSetCookie(String raw) => raw
+      .split(RegExp(r',\s*(?=[A-Za-z0-9_]+=[^;]+)'))
+      .map((v) => v.trim().split(';').first.trim())
+      .where((v) => v.contains('='))
+      .join('; ');
   String _mergeCookies(String? oldCookie, String newCookie) {
     final map = <String, String>{};
     for (final part in [...?oldCookie?.split(';'), ...newCookie.split(';')]) {
-      final p = part.trim(); final i = p.indexOf('=');
+      final p = part.trim();
+      final i = p.indexOf('=');
       if (i > 0) map[p.substring(0, i)] = p.substring(i + 1);
     }
     return map.entries.map((e) => '${e.key}=${e.value}').join('; ');
@@ -162,63 +262,125 @@ class AuthService {
   Future<void> refreshProfile() async {
     try {
       final client = await _http();
-      final url = _uid != null && _uid! > 0 ? '${base}home.php?mod=space&uid=$_uid&mobile=2' : '${base}home.php?mod=space&mobile=2';
-      final resp = await client.get(Uri.parse(url), headers: _headers()).timeout(NetClient.timeout);
+      final url = _uid != null && _uid! > 0
+          ? '${base}home.php?mod=space&uid=$_uid&mobile=2'
+          : '${base}home.php?mod=space&mobile=2';
+      final resp = await client
+          .get(Uri.parse(url), headers: _headers())
+          .timeout(NetClient.timeout);
       final body = NetClient.decode(resp.bodyBytes);
       if (_isGuestPage(body)) return;
-      final uidText = RegExp(r'(?:uid=|space&uid=)(\d+)').firstMatch(body)?.group(1);
-      final parsedUid = int.tryParse(uidText ?? ''); if (parsedUid != null && parsedUid > 0) _uid = parsedUid;
+      final uidText = RegExp(r'(?:uid=|space&uid=)(\d+)')
+          .firstMatch(body)
+          ?.group(1);
+      final parsedUid = int.tryParse(uidText ?? '');
+      if (parsedUid != null && parsedUid > 0) _uid = parsedUid;
       final values = <String?>[
-        RegExp(r'''class=["'][^"']*(?:vwmy|mn_avatar)[^"']*["'][^>]*>\s*<a[^>]*>([^<]+)''').firstMatch(body)?.group(1),
-        RegExp(r'''class=["'][^"']*top_user[^"']*["'][^>]*>([^<]+)''').firstMatch(body)?.group(1),
-        RegExp(r'''id=["']ihavefriends["'][^>]*>\s*<a[^>]*>([^<]+)''').firstMatch(body)?.group(1),
+        RegExp(
+          r'''class=["'][^"']*(?:vwmy|mn_avatar)[^"']*["'][^>]*>\s*<a[^>]*>([^<]+)''',
+        ).firstMatch(body)?.group(1),
+        RegExp(r'''class=["'][^"']*top_user[^"']*["'][^>]*>([^<]+)''')
+            .firstMatch(body)
+            ?.group(1),
+        RegExp(r'''id=["']ihavefriends["'][^>]*>\s*<a[^>]*>([^<]+)''')
+            .firstMatch(body)
+            ?.group(1),
       ];
-      final name = values.firstWhere((v) => v != null && v.trim().isNotEmpty, orElse: () => null);
+      final name = values.firstWhere(
+        (v) => v != null && v.trim().isNotEmpty,
+        orElse: () => null,
+      );
       if (name != null) _username = _cleanText(name);
-      final avatar = RegExp(r'''(?:src|data-src)=["']([^"']*(?:avatar|uc_server)[^"']*)["']''', caseSensitive: false).firstMatch(body)?.group(1);
-      if (avatar != null && avatar.isNotEmpty) _avatarUrl = _absoluteUrl(avatar);
-      else if (_uid != null && _uid! > 0) _avatarUrl = '${base}uc_server/avatar.php?uid=$_uid&size=middle';
+      final avatar = RegExp(
+        r'''(?:src|data-src)=["']([^"']*(?:avatar|uc_server)[^"']*)["']''',
+        caseSensitive: false,
+      ).firstMatch(body)?.group(1);
+      if (avatar != null && avatar.isNotEmpty) {
+        _avatarUrl = _absoluteUrl(avatar);
+      } else if (_uid != null && _uid! > 0)
+        _avatarUrl = '${base}uc_server/avatar.php?uid=$_uid&size=middle';
       await _save();
-    } catch (e) { LoginLog.instance.add('刷新用户资料失败: $e'); }
+    } catch (e) {
+      LoginLog.instance.add('刷新用户资料失败: $e');
+    }
   }
 
-  bool _isGuestPage(String body) => body.contains('请登录') && !body.contains('退出') && !body.contains('退出登录');
-  String _cleanText(String value) => value.replaceAll(RegExp(r'\s+'), ' ').trim();
+  bool _isGuestPage(String body) =>
+      body.contains('请登录') && !body.contains('退出') && !body.contains('退出登录');
+  String _cleanText(String value) =>
+      value.replaceAll(RegExp(r'\s+'), ' ').trim();
   String _absoluteUrl(String value) {
     if (value.startsWith('//')) return 'https:$value';
-    if (value.startsWith('http://') || value.startsWith('https://')) return value;
+    if (value.startsWith('http://') || value.startsWith('https://'))
+      return value;
     if (value.startsWith('/')) return 'https://www.ycoo.net$value';
     return base + value;
   }
 
-  Future<void> markLoggedInFromWeb(String username, String cookie, {int? uid, String? avatar}) async {
-    _loggedIn = true; _username = username.trim().isEmpty ? null : username.trim(); _uid = uid; _avatarUrl = avatar; _cookie = cookie.trim().isEmpty ? null : cookie.trim();
-    await _save(); await refreshProfile();
-    LoginLog.instance.add('登录成功: ${_username ?? '(未取到用户名)'}${_uid == null ? '' : ', uid=$_uid'}${_cookie == null ? '' : ', 已保存 Cookie(${_cookie!.length} 字符)'}');
+  Future<void> markLoggedInFromWeb(
+    String username,
+    String cookie, {
+    int? uid,
+    String? avatar,
+  }) async {
+    _loggedIn = true;
+    _username = username.trim().isEmpty ? null : username.trim();
+    _uid = uid;
+    _avatarUrl = avatar;
+    _cookie = cookie.trim().isEmpty ? null : cookie.trim();
+    await _save();
+    await refreshProfile();
+    LoginLog.instance.add(
+      '登录成功: ${_username ?? '(未取到用户名)'}${_uid == null ? '' : ', uid=$_uid'}${_cookie == null ? '' : ', 已保存 Cookie(${_cookie!.length} 字符)'}',
+    );
   }
 
   Future<bool> checkLoggedIn() async {
     try {
       final client = await _http();
-      final resp = await client.get(Uri.parse('${base}forum.php?mobile=2'), headers: _headers()).timeout(NetClient.timeout);
+      final resp = await client
+          .get(Uri.parse('${base}forum.php?mobile=2'), headers: _headers())
+          .timeout(NetClient.timeout);
       final body = NetClient.decode(resp.bodyBytes);
       final ok = body.contains('action=logout') || body.contains('退出登录');
       if (_loggedIn != ok) {
         _loggedIn = ok;
-        if (!ok) { _username = null; _uid = null; _avatarUrl = null; }
+        if (!ok) {
+          _username = null;
+          _uid = null;
+          _avatarUrl = null;
+        }
         await _save();
       }
       if (ok) await refreshProfile();
       return _loggedIn;
-    } catch (_) { return _loggedIn; }
+    } catch (_) {
+      return _loggedIn;
+    }
   }
 
   Future<void> logout() async {
-    try { final client = await _http(); await client.get(Uri.parse(base + logoutPath), headers: _headers()).timeout(const Duration(seconds: 8)); } catch (_) {}
-    _loggedIn = false; _username = null; _uid = null; _avatarUrl = null; _cookie = null; await _save();
+    try {
+      final client = await _http();
+      await client
+          .get(Uri.parse(base + logoutPath), headers: _headers())
+          .timeout(const Duration(seconds: 8));
+    } catch (_) {}
+    _loggedIn = false;
+    _username = null;
+    _uid = null;
+    _avatarUrl = null;
+    _cookie = null;
+    await _save();
   }
 
-  Future<String?> reply(int tid, int fid, String message, {int? replyPid, bool firstPost = false}) async {
+  Future<String?> reply(
+    int tid,
+    int fid,
+    String message, {
+    int? replyPid,
+    bool firstPost = false,
+  }) async {
     final text = message.trim();
     if (text.isEmpty) return '回帖内容不能为空';
     if (!_loggedIn || (_cookie ?? '').isEmpty) return '请先登录论坛';
@@ -226,23 +388,38 @@ class AuthService {
     try {
       // 回帖必须以当前帖子的最新 formhash + posttime 提交；只发 formhash
       // 会被 Discuz 的 submitcheck/anti-flood 校验拒绝为“操作令牌失效”。
-      final pageUrl = '${base}thread-$tid-1-1.html?mobile=2&_ycoo_reply=${DateTime.now().millisecondsSinceEpoch}';
-      final pageResp = await NetClient.retry(() => client.get(Uri.parse(pageUrl), headers: _headers(referer: base)).timeout(NetClient.timeout));
-      if (pageResp.statusCode != 200) return '读取帖子页面失败 HTTP ${pageResp.statusCode}';
+      final pageUrl =
+          '${base}thread-$tid-1-1.html?mobile=2&_ycoo_reply=${DateTime.now().millisecondsSinceEpoch}';
+      final pageResp = await NetClient.retry(
+        () => client
+            .get(Uri.parse(pageUrl), headers: _headers(referer: base))
+            .timeout(NetClient.timeout),
+      );
+      if (pageResp.statusCode != 200)
+        return '读取帖子页面失败 HTTP ${pageResp.statusCode}';
       final page = NetClient.decode(pageResp.bodyBytes);
       final formhash = _hiddenValue(page, 'formhash') ?? '';
       final posttimeValue = _hiddenValue(page, 'posttime');
       if (formhash.isEmpty) return '未取得回帖令牌(formhash)，请刷新帖子后重试';
-      final posttime = posttimeValue.isNotEmpty ? posttimeValue : '${DateTime.now().millisecondsSinceEpoch ~/ 1000}';
+      final posttime = (posttimeValue ?? '').trim().isNotEmpty
+          ? posttimeValue!.trim()
+          : '${DateTime.now().millisecondsSinceEpoch ~/ 1000}';
       final extra = 'page%3D1';
       final urlParams = <String, String>{
-        'mod': 'post', 'action': 'reply', 'fid': '$fid', 'tid': '$tid',
-        'extra': extra, 'replysubmit': 'yes', 'mobile': '2', 'inajax': '1',
+        'mod': 'post',
+        'action': 'reply',
+        'fid': '$fid',
+        'tid': '$tid',
+        'extra': extra,
+        'replysubmit': 'yes',
+        'mobile': '2',
+        'inajax': '1',
       };
       if (replyPid != null && replyPid > 0) {
         urlParams[firstPost ? 'reppost' : 'repquote'] = '$replyPid';
       }
-      final uri = Uri.parse('${base}forum.php').replace(queryParameters: urlParams);
+      final uri = Uri.parse('${base}forum.php')
+          .replace(queryParameters: urlParams);
       final body = <String, String>{
         'formhash': formhash,
         'posttime': posttime,
@@ -253,27 +430,62 @@ class AuthService {
         'infloat': 'yes',
         'listextra': extra,
       };
-      if (replyPid != null && replyPid > 0) body[firstPost ? 'reppost' : 'repquote'] = '$replyPid';
-      final resp = await NetClient.retry(() => client.post(uri, headers: {..._headers(referer: '${base}thread-$tid-1-1.html'), 'Content-Type': 'application/x-www-form-urlencoded; charset=UTF-8', 'Origin': base, 'X-Requested-With': 'XMLHttpRequest'}, body: body).timeout(NetClient.timeout));
+      if (replyPid != null && replyPid > 0)
+        body[firstPost ? 'reppost' : 'repquote'] = '$replyPid';
+      final resp = await NetClient.retry(
+        () => client
+            .post(
+              uri,
+              headers: {
+                ..._headers(referer: '${base}thread-$tid-1-1.html'),
+                'Content-Type':
+                    'application/x-www-form-urlencoded; charset=UTF-8',
+                'Origin': base,
+                'X-Requested-With': 'XMLHttpRequest',
+              },
+              body: body,
+            )
+            .timeout(NetClient.timeout),
+      );
       final responseText = NetClient.decode(resp.bodyBytes);
       if (_replySuccess(responseText, text)) return null;
-      if (responseText.contains('请先登录') || responseText.contains('登录后')) return '请先登录后回帖';
-      if (responseText.contains('操作令牌已失效') || responseText.contains('表单验证串不符') || responseText.contains('请求来路不正确') || responseText.contains('formhash错误') || responseText.contains('验证失败')) return '回帖令牌已失效，请刷新帖子后重试';
+      if (responseText.contains('请先登录') || responseText.contains('登录后'))
+        return '请先登录后回帖';
+      if (responseText.contains('操作令牌已失效') ||
+          responseText.contains('表单验证串不符') ||
+          responseText.contains('请求来路不正确') ||
+          responseText.contains('formhash错误') ||
+          responseText.contains('验证失败'))
+        return '回帖令牌已失效，请刷新帖子后重试';
       final messageText = _extractServerMessage(responseText);
       return messageText ?? '回帖失败，请重试';
-    } catch (_) { return '回帖请求失败，请稍后重试'; }
+    } catch (_) {
+      return '回帖请求失败，请稍后重试';
+    }
   }
 
   bool _replySuccess(String body, String message) {
     final lower = body.toLowerCase();
-    return lower.contains('succeed') || lower.contains('reply_succeed') || body.contains('回帖成功') || body.contains('发表成功') || body.contains('评论成功') || (body.contains('pid=') && body.contains(message.substring(0, message.length > 20 ? 20 : message.length)));
+    return lower.contains('succeed') ||
+        lower.contains('reply_succeed') ||
+        body.contains('回帖成功') ||
+        body.contains('发表成功') ||
+        body.contains('评论成功') ||
+        (body.contains('pid=') &&
+            body.contains(
+              message.substring(0, message.length > 20 ? 20 : message.length),
+            ));
   }
 
   Future<void> _save() async {
     try {
       final sp = await SharedPreferences.getInstance();
       await sp.setString(_prefUser, _username ?? '');
-      if (_uid == null) await sp.remove(_prefUid); else await sp.setInt(_prefUid, _uid!);
+      if (_uid == null) {
+        await sp.remove(_prefUid);
+      } else {
+        await sp.setInt(_prefUid, _uid!);
+      }
       await sp.setString(_prefAvatar, _avatarUrl ?? '');
       await sp.setBool(_prefFlag, _loggedIn);
       await sp.setString(_prefCookie, _cookie ?? '');
