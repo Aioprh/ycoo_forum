@@ -16,8 +16,15 @@ class UploadedAttachment {
   final int aid;
   final String name;
   final int size;
+  /// 本地文件路径仅用于移动端上传后的即时预览，不参与服务端提交。
+  final String? localPath;
 
-  const UploadedAttachment({required this.aid, required this.name, required this.size});
+  const UploadedAttachment({
+    required this.aid,
+    required this.name,
+    required this.size,
+    this.localPath,
+  });
 }
 
 class AttachmentUploadService {
@@ -79,7 +86,7 @@ class AttachmentUploadService {
       throw Exception(_uploadError(body, response.statusCode));
     }
 
-    final parsed = _parseUploadResponse(body, file.name, size);
+    final parsed = _parseUploadResponse(body, file.name, size, file.path);
     if (parsed == null) throw Exception(_uploadError(body, response.statusCode));
     return parsed;
   }
@@ -125,14 +132,19 @@ class AttachmentUploadService {
     });
   }
 
-  UploadedAttachment? _parseUploadResponse(String body, String fallbackName, int size) {
+  UploadedAttachment? _parseUploadResponse(String body, String fallbackName, int size, String? localPath) {
     if (body.isEmpty) return null;
     try {
       final json = jsonDecode(body);
       if (json is Map) {
         final dynamic data = json['data'] is Map ? json['data'] : json;
         final aid = int.tryParse('${data['aid'] ?? data['id'] ?? ''}') ?? 0;
-        if (aid > 0) return UploadedAttachment(aid: aid, name: '${data['filename'] ?? data['name'] ?? fallbackName}', size: size);
+        if (aid > 0) return UploadedAttachment(
+          aid: aid,
+          name: '${data['filename'] ?? data['name'] ?? fallbackName}',
+          size: size,
+          localPath: localPath,
+        );
       }
     } catch (_) {}
 
@@ -142,7 +154,7 @@ class AttachmentUploadService {
       final aid = int.tryParse(parts[3].trim()) ?? 0;
       if (error == 0 && aid > 0) {
         final name = parts.length > 6 && parts[6].trim().isNotEmpty ? parts[6].trim() : fallbackName;
-        return UploadedAttachment(aid: aid, name: name, size: size);
+        return UploadedAttachment(aid: aid, name: name, size: size, localPath: localPath);
       }
     }
     return null;
