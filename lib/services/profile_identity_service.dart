@@ -92,7 +92,8 @@ class ProfileIdentityService {
       ).timeout(const Duration(seconds: 15));
       if (response.statusCode == 200) {
         final doc = parser.parse(NetClient.decode(response.bodyBytes));
-        coins ??= _elementNumber(doc, 'hcredit_2');
+        // 不要写死 hcredit_2 —— 该论坛 hcredit_2 可能是“经验”。按名称标签匹配真正的星币/源币。
+        coins ??= _findNumericByLabelsInCreditMenu(doc, ['星币', '源币']);
         points ??= _findNumberByLabels(doc, ['积分', '总积分']);
         points ??= _elementNumber(doc, 'hcredit_1');
       }
@@ -189,6 +190,18 @@ class ProfileIdentityService {
     final text = _clean(doc.querySelector('#$id')?.text ?? '');
     final m = RegExp(r'([0-9]{1,12})').firstMatch(text);
     return m == null ? null : int.tryParse(m.group(1)!);
+  }
+
+  // 在扩展积分菜单里按名称标签（如“星币/源币”）匹配真正的 hcredit 元素，
+  // 而不是写死 hcredit_2（该论坛 hcredit_2 可能是“经验”）。
+  int? _findNumericByLabelsInCreditMenu(dynamic doc, List<String> labels) {
+    for (final node in doc.querySelectorAll('[id^="hcredit_"]')) {
+      final text = _clean(node.text);
+      if (!labels.any(text.contains)) continue;
+      final m = RegExp(r'([0-9]{1,12})').lastMatch(text);
+      if (m != null) return int.tryParse(m.group(1)!);
+    }
+    return null;
   }
 
   String? _findNicknameNode(dynamic doc) {
