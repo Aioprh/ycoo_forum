@@ -18,7 +18,8 @@ class ThreadDetail {
   String get bodyHtml => _sanitizeForumHtml(_bodyHtml);
   String get commentsHtml => _sanitizeForumHtml(_commentsHtml);
 
-  /// 已购买的付费主题可能仍残留“购买主题”节点，因此只在没有正文时显示购买 UI。
+  /// 付费主题在原站未购买时正文会被清洗成空内容；此时必须保留购买状态，
+  /// 否则 Flutter 会误显示“暂无正文”而没有购买入口。
   final bool _paid;
   bool get isPaid => _paid && bodyHtml.trim().isEmpty;
   final int? price;
