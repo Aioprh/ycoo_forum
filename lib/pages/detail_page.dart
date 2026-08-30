@@ -1,5 +1,4 @@
 import 'package:flutter/material.dart';
-import 'package:webview_flutter/webview_flutter.dart';
 
 import '../models/thread_detail.dart';
 import '../services/api_service.dart';
@@ -7,6 +6,7 @@ import '../services/auth_service.dart';
 import '../services/attachment_download_service.dart';
 import '../services/thread_interaction_service.dart';
 import '../widgets/native_comment_list.dart';
+import '../widgets/native_post_content.dart';
 import 'login_page.dart';
 import 'thread_list_page.dart';
 
@@ -20,14 +20,12 @@ class DetailPage extends StatefulWidget {
 
 class _DetailPageState extends State<DetailPage> {
   ThreadDetail? _detail;
-  WebViewController? _bodyController;
   final _replyCtrl = TextEditingController();
   final _replyFocus = FocusNode();
   bool _loading = true, _sending = false, _buying = false, _rewarding = false;
   bool _loggedIn = false, _favorited = false, _liked = false, _interacting = false;
   bool _commentsExpanded = true;
   String? _error;
-  double _bodyHeight = 0;
   int _likeCount = 0;
 
   @override
@@ -53,12 +51,7 @@ class _DetailPageState extends State<DetailPage> {
       final changed = oldBody != newBody;
       setState(() {
         _detail = d; _likeCount = d.likeCount; _liked = d.likedByMe;
-        if (newBody.isEmpty) { _bodyController = null; _bodyHeight = 0; }
-        else if (changed || _bodyController == null) { _bodyHeight = 0; }
       });
-      if (newBody.isNotEmpty && (changed || _bodyController == null)) {
-        _bodyController = _web(newBody);
-      }
       if (_loggedIn) await _loadInteractionState();
     } catch (e) {
       if (mounted) setState(() => _error = '$e');
@@ -75,40 +68,6 @@ class _DetailPageState extends State<DetailPage> {
       if (!mounted) return;
       setState(() { _likeCount = state.likeCount; _liked = state.likedByMe; _favorited = state.favorited; });
     } catch (_) {}
-  }
-
-  WebViewController _web(String html) {
-    final doc = '''<!doctype html><html><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1,maximum-scale=1,user-scalable=no"><base href="https://www.ycoo.net/"><style>
-*{box-sizing:border-box}html,body{margin:0!important;padding:0!important;width:100%!important;height:auto!important;min-height:0!important;background:transparent;color:#20232b;overflow:hidden;overflow-wrap:anywhere;-webkit-font-smoothing:antialiased}body{font-size:16px;line-height:1.55}#content{display:block;width:100%;height:auto;min-height:0;margin:0;padding:0}p{margin:0 0 13px}p:last-child{margin-bottom:0}h1,h2,h3,h4{line-height:1.4;margin:20px 0 10px;color:#12151c}h1:first-child,h2:first-child,h3:first-child,h4:first-child{margin-top:0}a{color:#4d63d8;text-decoration:none;overflow-wrap:anywhere}strong,b{color:#12151c}ul,ol{padding-left:22px;margin:8px 0 13px}li{margin:5px 0}img{display:block!important;width:auto!important;max-width:100%!important;height:auto!important;max-height:72vh!important;object-fit:contain!important;border-radius:14px;margin:14px auto!important}img:first-child{margin-top:0!important}video,iframe{display:block;max-width:100%!important;border-radius:14px}table{width:100%!important;border-collapse:collapse;margin:12px 0}td,th{padding:8px;overflow-wrap:anywhere;border:1px solid #e1e4ea}pre,code{white-space:pre-wrap;word-break:break-word}code{background:#f0f2f6;padding:2px 6px;border-radius:6px}pre{background:#f3f4f7;padding:14px;border-radius:12px;overflow:hidden}blockquote{margin:14px 0;padding:10px 14px;border-left:3px solid #7184e8;background:#f4f6ff;color:#687080;border-radius:0 12px 12px 0}</style></head><body><div id="content">$html</div><script>
-(function(){var last=0;function measure(){var c=document.getElementById('content');if(!c)return;var r=c.getBoundingClientRect();var h=Math.ceil(Math.max(r.height,c.scrollHeight,c.offsetHeight));if(h!==last){last=h;if(window.HeightChannel)window.HeightChannel.postMessage(String(h));}}window.measureContentHeight=measure;if(document.fonts&&document.fonts.ready)document.fonts.ready.then(measure);new MutationObserver(measure).observe(document.getElementById('content'),{subtree:true,childList:true,attributes:true});Array.prototype.forEach.call(document.images,function(i){i.addEventListener('load',measure);i.addEventListener('error',measure);});window.addEventListener('load',measure);window.addEventListener('resize',measure);[0,50,150,300,600,1000].forEach(function(ms){setTimeout(measure,ms);});measure();})();
-</script></body></html>''';
-    late WebViewController controller;
-    controller = WebViewController()
-      ..setJavaScriptMode(JavaScriptMode.unrestricted)
-      ..setBackgroundColor(Colors.transparent)
-      ..addJavaScriptChannel('HeightChannel', onMessageReceived: (message) {
-        final parsed = double.tryParse(message.message);
-        if (!mounted || parsed == null || parsed <= 0) return;
-        final height = parsed.clamp(80.0, 20000.0).toDouble();
-        if ((_bodyHeight - height).abs() > 1) setState(() => _bodyHeight = height + 2);
-      })
-      ..setNavigationDelegate(NavigationDelegate(
-        onNavigationRequest: (request) async {
-          final url = request.url;
-          if (!AttachmentDownloadService.instance.isAttachmentUrl(url)) return NavigationDecision.navigate;
-          if (!_loggedIn) { if (mounted) await _login(); return NavigationDecision.prevent; }
-          try {
-            final started = await AttachmentDownloadService.instance.download(url: url, cookie: AuthService.instance.authCookie, referer: 'https://www.ycoo.net/');
-            if (mounted) _snack(started ? '已开始下载附件' : '当前平台暂不支持原生附件下载');
-          } catch (e) { if (mounted) _snack('附件下载失败：$e'); }
-          return NavigationDecision.prevent;
-        },
-        onPageFinished: (_) async {
-          try { await controller.runJavaScript('window.measureContentHeight && window.measureContentHeight();'); } catch (_) {}
-        },
-      ))
-      ..loadHtmlString(doc, baseUrl: 'https://www.ycoo.net/');
-    return controller;
   }
 
   void _snack(String text) => ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text(text)));
@@ -194,9 +153,41 @@ class _DetailPageState extends State<DetailPage> {
     final d = _detail!;
     return RefreshIndicator(onRefresh: _fetch, child: ListView(physics: const AlwaysScrollableScrollPhysics(), padding: const EdgeInsets.fromLTRB(12, 4, 12, 28), children: [
       _hero(context, d), _quickActions(context, d), _sectionHeader(context, '正文', '楼主发布的主题内容', Icons.article_rounded),
-      d.isPaid ? _paidNotice(context, d) : (_bodyController == null ? _empty(context, '暂无正文内容') : _webCard(context, _bodyController!, _bodyHeight)),
+      d.isPaid ? _paidNotice(context, d) : (d.bodyHtml.trim().isEmpty ? _empty(context, '暂无正文内容') : _nativeBodyCard(context, d.bodyHtml)),
       if (d.commentsHtml.trim().isNotEmpty) _commentsSection(context, d),
     ]));
+  }
+
+  Widget _nativeBodyCard(BuildContext context, String html) {
+    final c = Theme.of(context).colorScheme;
+    return Container(
+      margin: const EdgeInsets.only(bottom: 14),
+      padding: const EdgeInsets.fromLTRB(16, 16, 16, 8),
+      decoration: BoxDecoration(
+        color: c.surface,
+        borderRadius: BorderRadius.circular(22),
+        border: Border.all(color: c.outlineVariant.withValues(alpha: .5)),
+      ),
+      child: NativePostContent(
+        html: html,
+        onLinkTap: _handlePostLink,
+      ),
+    );
+  }
+
+  Future<void> _handlePostLink(String url) async {
+    if (url.trim().isEmpty) return;
+    final uri = Uri.tryParse(url.trim());
+    if (uri == null) { _snack('链接格式无效'); return; }
+    if (AttachmentDownloadService.instance.isAttachmentUrl(uri.toString())) {
+      if (!_loggedIn) { if (mounted) await _login(); return; }
+      try {
+        final started = await AttachmentDownloadService.instance.download(url: uri.toString(), cookie: AuthService.instance.authCookie, referer: 'https://www.ycoo.net/');
+        if (mounted) _snack(started ? '已开始下载附件' : '当前平台暂不支持原生附件下载');
+      } catch (e) { if (mounted) _snack('附件下载失败：$e'); }
+      return;
+    }
+    _snack('链接：${uri.toString()}');
   }
 
   Widget _errorView(BuildContext context) {
