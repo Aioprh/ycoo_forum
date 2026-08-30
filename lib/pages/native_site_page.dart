@@ -3,6 +3,7 @@ import 'package:html/dom.dart' as dom;
 import 'package:html/parser.dart' as parser;
 import '../services/auth_service.dart';
 import '../services/net_client.dart';
+import 'credit_recharge_page.dart';
 
 class NativeSitePage extends StatefulWidget {
   final String path;
@@ -17,11 +18,13 @@ class _NativeSitePageState extends State<NativeSitePage> {
   final Map<String, TextEditingController> _fields = {};
   final Map<String, String> _selectValues = {};
 
+  bool get _isRecharge => widget.path.contains('boan_buycredit:buycredit');
   String _abs(String href) => Uri.parse(widget.path.startsWith('http') ? widget.path : '$_base${widget.path}').resolve(href).toString();
   String _clean(String s) => s.replaceAll(RegExp(r'[\uE000-\uF8FF\uFFFD□]'), '').replaceAll(RegExp(r'[ \t\u00a0\u3000]+'), ' ').replaceAll(RegExp(r'\n{2,}'), '\n').trim();
   String _label(dom.Element e) { final s = _clean(e.text); return s.length > 80 ? s.substring(0,80) : s; }
 
   Future<void> _load() async {
+    if (_isRecharge) return;
     if (mounted) setState(() { _loading=true; _error=null; });
     try {
       final client = await NetClient.instance.client; await AuthService.instance.init();
@@ -92,8 +95,15 @@ class _NativeSitePageState extends State<NativeSitePage> {
     for(final e in form.querySelectorAll('input[type="hidden"]')){final n=e.attributes['name'];if(n!=null)data[n]=e.attributes['value']??'';}
     for(final e in _fields.entries)data[e.key]=e.value.text;
     data.addAll(_selectValues);
-    try{final client=await NetClient.instance.client;await AuthService.instance.init();final r=await client.post(Uri.parse(_abs(form.attributes['action']??widget.path)),headers:{'User-Agent':NetClient.ua,'Referer':_abs(widget.path),'Content-Type':'application/x-www-form-urlencoded; charset=UTF-8',if((AuthService.instance.authCookie??'').isNotEmpty)'Cookie':AuthService.instance.authCookie!},body:data).timeout(const Duration(seconds:20));if(!mounted)return;final ok=r.statusCode>=200&&r.statusCode<400;ScaffoldMessenger.of(context).showSnackBar(SnackBar(content:Text(ok?'保存成功':'保存失败：HTTP ${r.statusCode}')));if(ok)await _load();}catch(e){if(mounted)ScaffoldMessenger.of(context).showSnackBar(SnackBar(content:Text('保存失败：$e')));}
+    final formhash = data['formhash']?.trim() ?? '';
+    if (formhash.isEmpty) {
+      if (mounted) ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('当前页面没有有效 formhash，请刷新后重试')));
+      return;
+    }
+    try{final client=await NetClient.instance.client;await AuthService.instance.init();final r=await client.post(Uri.parse(_abs(form.attributes['action']??widget.path)),headers:{'User-Agent':NetClient.ua,'Referer':_abs(widget.path),'Content-Type':'application/x-www-form-urlencoded; charset=UTF-8',if((AuthService.instance.authCookie??'').isNotEmpty)'Cookie':AuthService.instance.authCookie!},body:data).timeout(const Duration(seconds:20));if(!mounted)return;final body=NetClient.decode(r.bodyBytes);if(_tokenFailed(body)){ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('操作令牌已失效，请刷新页面后重试')));return;}final ok=r.statusCode>=200&&r.statusCode<400;ScaffoldMessenger.of(context).showSnackBar(SnackBar(content:Text(ok?'保存成功':'保存失败：HTTP ${r.statusCode}')));if(ok)await _load();}catch(e){if(mounted)ScaffoldMessenger.of(context).showSnackBar(SnackBar(content:Text('保存失败：$e')));}
   }
+
+  bool _tokenFailed(String body) => body.contains('formhash') && (body.contains('错误') || body.contains('失效') || body.contains('非法') || body.contains('验证失败'));
 
   Widget _node(dom.Node n){
     if(n is dom.Text){final t=_clean(n.data??'');return t.isEmpty?const SizedBox.shrink():Text(t,style:const TextStyle(height:1.55));}
@@ -122,6 +132,6 @@ class _NativeSitePageState extends State<NativeSitePage> {
   void _openLink(String url,String title){if(url.startsWith(_base))Navigator.push(context,MaterialPageRoute(builder:(_)=>NativeSitePage(path:url,title:title)));}
 
   @override void dispose(){for(final c in _fields.values)c.dispose();super.dispose();}
-  @override void initState(){super.initState();_load();}
-  @override Widget build(BuildContext context){Widget body;if(_loading)body=const Center(child:CircularProgressIndicator());else if(_error!=null)body=Center(child:Column(mainAxisSize:MainAxisSize.min,children:[Text(_error!,textAlign:TextAlign.center),const SizedBox(height:12),FilledButton(onPressed:_load,child:const Text('重试'))]));else body=RefreshIndicator(onRefresh:_load,child:ListView(padding:const EdgeInsets.fromLTRB(14,8,14,32),children:[_root==null?const Text('页面暂无可显示内容'):_children(_root!)]));return Scaffold(appBar:AppBar(title:Text(widget.title),actions:[IconButton(onPressed:_load,icon:const Icon(Icons.refresh))]),body:body);}
+  @override void initState(){super.initState();if(!_isRecharge)_load();}
+  @override Widget build(BuildContext context){if(_isRecharge)return const CreditRechargePage();Widget body;if(_loading)body=const Center(child:CircularProgressIndicator());else if(_error!=null)body=Center(child:Column(mainAxisSize:MainAxisSize.min,children:[Text(_error!,textAlign:TextAlign.center),const SizedBox(height:12),FilledButton(onPressed:_load,child:const Text('重试'))]));else body=RefreshIndicator(onRefresh:_load,child:ListView(padding:const EdgeInsets.fromLTRB(14,8,14,32),children:[_root==null?const Text('页面暂无可显示内容'):_children(_root!)]));return Scaffold(appBar:AppBar(title:Text(widget.title),actions:[IconButton(onPressed:_load,icon:const Icon(Icons.refresh))]),body:body);}
 }
