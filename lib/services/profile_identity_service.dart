@@ -92,8 +92,10 @@ class ProfileIdentityService {
       ).timeout(const Duration(seconds: 15));
       if (response.statusCode == 200) {
         final doc = parser.parse(NetClient.decode(response.bodyBytes));
-        // 不要写死 hcredit_2 —— 该论坛 hcredit_2 可能是“经验”。按名称标签匹配真正的星币/源币。
+        // 按标签匹配 hcredit（兼容不同论坛把星币放在不同的 hcredit 下）。
         coins ??= _findNumericByLabelsInCreditMenu(doc, ['星币', '源币']);
+        // 页面正文（该论坛用“星币:82 经验:84 贡献:25”这种行）的正则兜底。
+        coins ??= _firstNumericByLabelRegex(_clean(doc.body?.text ?? ''), ['星币', '源币']);
         points ??= _findNumberByLabels(doc, ['积分', '总积分']);
         points ??= _elementNumber(doc, 'hcredit_1');
       }
@@ -199,6 +201,15 @@ class ProfileIdentityService {
       final text = _clean(node.text);
       if (!labels.any(text.contains)) continue;
       final m = RegExp(r'([0-9]{1,12})').lastMatch(text);
+      if (m != null) return int.tryParse(m.group(1)!);
+    }
+    return null;
+  }
+
+  // 在纯文本里按“标签:数字”抓取，如 “星币:82 经验:84 贡献:25”。
+  int? _firstNumericByLabelRegex(String text, List<String> labels) {
+    for (final label in labels) {
+      final m = RegExp(RegExp.escape(label) + r'\s*[:：]\s*([0-9]{1,12})').firstMatch(text);
       if (m != null) return int.tryParse(m.group(1)!);
     }
     return null;
