@@ -96,7 +96,7 @@ class _NativeProfilePageState extends State<NativeProfilePage> with SingleTicker
     final v = _NameParts.parse(value).name.trim();
     if (v.isEmpty || v == '用户' || v.contains('�') || v.contains('\uFFFD')) return false;
     final compact = v.replaceAll(RegExp(r'[\s\u2000-\u206F\u25A0-\u27BF\uE000-\uF8FF]+'), '');
-    return !RegExp(r'^(?:资料|个人资料|用户资料|用户|用户名|昵称|关注|已关注|聊天|私信|回复|主题|回帖|帖子|帖子数|粉丝|积分|星币|登录|注册|退出|刷新|个人中心|Ta的空间|空间|我的)$', caseSensitive: false).hasMatch(compact);
+    return !RegExp(r'^(?:资料|个人资料|用户资料|用户|用户名|昵称|关注|已关注|聊天|私信|回复|主题|回帖|帖子|帖子数|粉丝|积分|星币|登录|注册|退出|刷新|个人中心|Ta的空间|空间|我的|提示信息|系统提示|温馨提示|提示|抱歉|无权|没有权限|不存在|该用户)$', caseSensitive: false).hasMatch(compact);
   }
 }
 
@@ -123,7 +123,7 @@ class _NameParts {
     return _NameParts(name.isEmpty ? '用户' : name, List.unmodifiable(badges));
   }
 
-  static bool _isUiLabel(String value) => RegExp(r'^(?:资料|个人资料|用户资料|用户|用户名|昵称|关注|已关注|聊天|私信|回复|主题|回帖|帖子|帖子数|粉丝|积分|星币|登录|注册|退出|刷新|个人中心|Ta的空间|空间|我的)$', caseSensitive: false).hasMatch(value.trim());
+  static bool _isUiLabel(String value) => RegExp(r'^(?:资料|个人资料|用户资料|用户|用户名|昵称|关注|已关注|聊天|私信|回复|主题|回帖|帖子|帖子数|粉丝|积分|星币|登录|注册|退出|刷新|个人中心|Ta的空间|空间|我的|提示信息|系统提示|温馨提示|提示|抱歉|无权|没有权限|不存在|该用户)$', caseSensitive: false).hasMatch(value.trim());
 }
 
 class _Header extends StatelessWidget {

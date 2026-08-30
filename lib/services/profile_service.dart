@@ -185,7 +185,7 @@ class ProfileService {
     return true;
   }
 
-  static bool _uiLabel(String value) => RegExp(r'^(?:关注|已关注|聊天|私信|回复|主题|回帖|帖子|帖子数|粉丝|积分|星币|登录|注册|退出|刷新|用户|用户名|昵称|资料|个人资料|用户资料|个人中心|Ta的空间|空间|我的)$').hasMatch(_clean(value));
+  static bool _uiLabel(String value) => RegExp(r'^(?:关注|已关注|聊天|私信|回复|主题|回帖|帖子|帖子数|粉丝|积分|星币|登录|注册|退出|刷新|用户|用户名|昵称|资料|个人资料|用户资料|个人中心|Ta的空间|空间|我的|提示信息|系统提示|温馨提示|提示|抱歉|无权|没有权限|不存在|该用户)$').hasMatch(_clean(value));
 
   static int? _numberFromHref(dom.Document doc, bool Function(String href) matches) {
     for (final a in doc.querySelectorAll('a[href]')) {
@@ -238,8 +238,8 @@ class ProfileService {
     if (v.isEmpty || v.length > 32) return false;
     if (v.contains('\uFFFD') || v.contains('�')) return false;
     if (RegExp(r'[\x00-\x1F]').hasMatch(v)) return false;
-    if (RegExp(r'^(?:资料|个人资料|用户资料|用户|用户名|昵称|登录|注册|退出|主题|回帖|帖子|帖子数|关注|已关注|聊天|私信|刷新|个人中心|Ta的空间|空间|我的)$', caseSensitive: false).hasMatch(v)) return false;
-    return !RegExp(r'^(UID|用户|用户名|昵称|登录|注册|退出|主题|回帖|帖子|帖子数|个人中心|空间|我的)\s*[:：]?$', caseSensitive: false).hasMatch(v);
+    if (RegExp(r'^(?:资料|个人资料|用户资料|用户|用户名|昵称|登录|注册|退出|主题|回帖|帖子|帖子数|关注|已关注|聊天|私信|刷新|个人中心|Ta的空间|空间|我的|提示信息|系统提示|温馨提示|提示|抱歉|无权|没有权限|不存在|该用户)$', caseSensitive: false).hasMatch(v)) return false;
+    return !RegExp(r'^(UID|用户|用户名|昵称|登录|注册|退出|主题|回帖|帖子|帖子数|个人中心|空间|我的|提示信息)\s*[:：]?$', caseSensitive: false).hasMatch(v);
   }
 
   Future<List<ThreadItem>> fetchThreads(int uid, {bool replies = false}) {

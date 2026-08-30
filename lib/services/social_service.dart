@@ -278,7 +278,7 @@ class SocialService {
   static bool _badName(String value) {
     final v = _clean(value);
     if (v.isEmpty || v.length > 40) return true;
-    if (const {'首页','下一页','上一页','更多','关注','粉丝','好友','删除','取消关注','帖子','主题','回帖','资料','个人资料','昵称','用户名','设置','个人中心','Ta的空间','空间','我的','×','x','X','××'}.contains(v)) return true;
+    if (const {'首页','下一页','上一页','更多','关注','粉丝','好友','删除','取消关注','帖子','主题','回帖','资料','个人资料','昵称','用户名','设置','个人中心','Ta的空间','空间','我的','提示信息','系统提示','温馨提示','提示','抱歉','无权','没有权限','不存在','该用户','×','x','X','××'}.contains(v)) return true;
     if (v.contains('�') || v.contains('\uFFFD')) return true;
     if (!RegExp(r'[\u4e00-\u9fffA-Za-z0-9]').hasMatch(v)) return true;
     return false;
