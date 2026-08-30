@@ -55,8 +55,7 @@ class ProfileUsernameService {
           )
           .timeout(const Duration(seconds: 15)),
     );
-    if (response.statusCode != 200)
-      throw Exception('HTTP ${response.statusCode}');
+    if (response.statusCode != 200) throw Exception('HTTP ${response.statusCode}');
     return NetClient.decode(response.bodyBytes);
   }
 
@@ -133,7 +132,6 @@ class ProfileUsernameService {
 
   static String _stripUi(String value) {
     var v = _clean(value);
-    // Missing icon fonts can become a square/box glyph followed by the label.
     v = v
         .replaceAll(
           RegExp(r'^[\u2000-\u206F\u25A0-\u25FF\u2600-\u27BF\uE000-\uF8FF]+'),
@@ -154,12 +152,12 @@ class ProfileUsernameService {
       '',
     );
     if (RegExp(
-      r'^(?:资料|个人资料|用户资料|用户|用户名|昵称|关注|已关注|聊天|私信|回复|主题|回帖|粉丝|积分|星币|登录|注册|退出|刷新)$',
+      r'^(?:提示信息|资料|个人资料|用户资料|用户|用户名|昵称|关注|已关注|聊天|私信|回复|主题|回帖|粉丝|积分|星币|登录|注册|退出|刷新)$',
       caseSensitive: false,
     ).hasMatch(compact))
       return false;
     return !RegExp(
-      r'^(?:UID|用户|用户名|昵称)\s*[:：]?$',
+      r'^(?:UID|用户|用户名|昵称|提示信息)\s*[:：]?$',
       caseSensitive: false,
     ).hasMatch(v);
   }
