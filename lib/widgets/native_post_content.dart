@@ -59,7 +59,8 @@ class _NodeWidget extends StatelessWidget {
       case 'pre': return _CodeBlock(text: e.text);
       case 'code': return _InlineCode(text: e.text);
       case 'img':
-        final src = e.attributes['src']?.trim() ?? '';
+        final rawSrc = e.attributes['src']?.trim() ?? '';
+        final src = _resolveUrl(rawSrc);
         return src.isEmpty ? const SizedBox.shrink() : _ImageBlock(src: src, alt: e.attributes['alt']);
       case 'hr': return const Padding(padding: EdgeInsets.symmetric(vertical: 12), child: Divider(height: 1));
       case 'table': return _TableBlock(element: e, onLinkTap: onLinkTap);
@@ -194,6 +195,14 @@ class _InlineCode extends StatelessWidget {
   const _InlineCode({required this.text});
   @override
   Widget build(BuildContext context) => Container(padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 2), decoration: BoxDecoration(color: Theme.of(context).colorScheme.surfaceContainerHighest, borderRadius: BorderRadius.circular(6)), child: Text(text, style: const TextStyle(fontFamily: 'monospace', fontSize: 14)));
+}
+
+String _resolveUrl(String value) {
+  if (value.isEmpty) return '';
+  if (value.startsWith('//')) return 'https:$value';
+  if (value.startsWith('/')) return 'https://www.ycoo.net$value';
+  if (!value.startsWith('http://') && !value.startsWith('https://')) return 'https://www.ycoo.net/$value';
+  return value;
 }
 
 class _ImageBlock extends StatelessWidget {

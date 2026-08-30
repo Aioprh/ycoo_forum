@@ -48,7 +48,6 @@ class _DetailPageState extends State<DetailPage> {
       if (!mounted) return;
       final oldBody = _detail?.bodyHtml.trim() ?? '';
       final newBody = d.bodyHtml.trim();
-      final changed = oldBody != newBody;
       setState(() {
         _detail = d; _likeCount = d.likeCount; _liked = d.likedByMe;
       });
