@@ -117,9 +117,6 @@ class MemberServiceV2 {
     final doc = _doc(html);
     final result = <NativeMessage>[];
     final seen = <String>{};
-
-    // Discuz X 的私信详情节点通常是 dl.pml / #pmlist_xxx。
-    // 旧实现同时扫描 li、tr、article、list 等父子节点，会把同一条私信解析多次。
     final structured = doc.querySelectorAll('dl.pml, dl[id^="pmlist_"]');
     if (structured.isNotEmpty) {
       for (final node in structured) {
@@ -132,8 +129,6 @@ class MemberServiceV2 {
       }
       return result;
     }
-
-    // 移动模板没有 pml 时，只选择真正的私信条目，避免扫描通用 .list 父节点。
     final candidates = doc.querySelectorAll('li.pm_list, li.pml, li[class*="pm"], .pm_list > li, .pml > li');
     for (final node in candidates) {
       final parsed = _parsePmNode(node);
@@ -143,7 +138,6 @@ class MemberServiceV2 {
       result.add(parsed);
       if (result.length >= 100) break;
     }
-
     return result;
   }
 
@@ -151,17 +145,13 @@ class MemberServiceV2 {
     final authorLink = node.querySelector('a[href*="mod=space"][href*="uid="], a[href*="uid="]');
     var sender = _clean(authorLink?.text ?? '');
     if (_looksLikeNavigation(sender) || sender.length > 40) sender = '';
-
     final timeNode = node.querySelector('.xg1, .xg2, time, [class*="time"], [class*="date"]');
     final time = _clean(timeNode?.text ?? '');
-
     final messageNode = node.querySelector('.ptm');
     var body = _clean(messageNode?.text ?? node.text);
     if (sender.isNotEmpty) body = body.replaceFirst(sender, '').trim();
     if (time.isNotEmpty) body = body.replaceFirst(time, '').trim();
     body = body.replaceAll(RegExp(r'^[:：\-·\s]+|[:：\-·\s]+$'), '').trim();
-
-    // 某些移动模板只有“站内私信”导航链接，没有真正的会话内容，直接忽略。
     if (body.isEmpty || body == '站内私信' || body == '私信') return null;
     if (sender.isEmpty) {
       final title = node.querySelector('strong,b,h3,h4,.xw1,.title,.name');
@@ -169,13 +159,7 @@ class MemberServiceV2 {
       if (_looksLikeNavigation(sender)) sender = '';
     }
     if (sender.isEmpty) sender = '站内私信';
-
-    return NativeMessage(
-      title: sender,
-      sender: sender,
-      subtitle: body,
-      time: time,
-    );
+    return NativeMessage(title: sender, sender: sender, subtitle: body, time: time);
   }
 
   Future<List<NativeFriend>> fetchFriends() async {
@@ -230,36 +214,98 @@ class MemberServiceV2 {
         'Pragma': 'no-cache',
         if (cookie != null && cookie.isNotEmpty) 'Cookie': cookie,
       };
-      final sendPath = 'home.php?mod=spacecp&ac=pm&op=send&mobile=2';
-      final pageResp = await NetClient.retry(() => client.get(Uri.parse('$_base$sendPath'), headers: headers).timeout(const Duration(seconds: 20)));
-      final page = NetClient.decode(pageResp.bodyBytes);
-      final formhash = _hiddenValue(page, 'formhash');
-      if (formhash == null || formhash.isEmpty) {
-        if (_looksLikeLogin(page)) return '登录态已失效，请重新登录论坛';
-        return '未取得私信令牌(formhash)，请稍后重试';
+
+      // Discuz 的 formhash 是会话级令牌，不应只依赖 PM 新建页。
+      // 某些移动模板会把新建私信页改成无 form 的页面，因此按多个已登录页面兜底获取。
+      final tokenPages = <String>[
+        'home.php?mod=spacecp&ac=pm&op=send&mobile=2',
+        'home.php?mod=space&do=pm&mobile=2',
+        'forum.php?mobile=2',
+      ];
+      String? formhash;
+      String? tokenReferer;
+      String? lastTokenFailure;
+      for (final path in tokenPages) {
+        try {
+          final uri = Uri.parse('$_base$path').replace(queryParameters: {
+            ...Uri.parse('$_base$path').queryParameters,
+            '_ycoo_ts': DateTime.now().millisecondsSinceEpoch.toString(),
+          });
+          final pageResp = await NetClient.retry(() => client.get(uri, headers: headers).timeout(const Duration(seconds: 20)));
+          final page = NetClient.decode(pageResp.bodyBytes);
+          final candidate = _extractFormhash(page);
+          if (candidate != null && candidate.isNotEmpty) {
+            formhash = candidate;
+            tokenReferer = uri.toString();
+            break;
+          }
+          if (_looksLikeLogin(page)) return '登录态已失效，请重新登录论坛';
+          lastTokenFailure = 'HTTP ${pageResp.statusCode}, bytes=${pageResp.bodyBytes.length}';
+        } catch (e) {
+          lastTokenFailure = e.toString();
+        }
       }
+      if (formhash == null || formhash.isEmpty) {
+        return '未取得私信令牌(formhash)，请刷新登录状态后重试';
+      }
+
+      final sendUri = Uri.parse('$_base/home.php?mod=spacecp&ac=pm&op=send&mobile=2');
       final resp = await NetClient.retry(() => client.post(
-        Uri.parse('$_base$sendPath'),
-        headers: {...headers, 'Referer': '$_base$sendPath', 'Content-Type': 'application/x-www-form-urlencoded; charset=UTF-8', 'X-Requested-With': 'XMLHttpRequest'},
-        body: <String, String>{'formhash': formhash, 'username': target, 'message': text, 'pmsubmit': 'yes', 'sendpm': 'true'},
+        sendUri,
+        headers: {
+          ...headers,
+          'Referer': tokenReferer ?? '$_base',
+          'Content-Type': 'application/x-www-form-urlencoded; charset=UTF-8',
+          'Origin': _base,
+          'X-Requested-With': 'XMLHttpRequest',
+        },
+        body: <String, String>{
+          'formhash': formhash!,
+          'username': target,
+          'message': text,
+          'pmsubmit': 'yes',
+          'sendpm': 'true',
+        },
       ).timeout(const Duration(seconds: 20)));
       final body = NetClient.decode(resp.bodyBytes);
-      if (body.contains('succeed') || body.contains('发送成功') || body.contains('操作成功') || body.contains('do_success')) return null;
-      if (body.contains('请先登录') || body.contains('登录后才能')) return '登录态已失效，请重新登录论坛';
+      if (_looksLikeSuccess(body) || body.contains('发送成功') || body.contains('操作成功') || body.contains('do_success')) return null;
+      if (body.contains('请先登录') || body.contains('登录后才能') || _looksLikeLogin(body)) return '登录态已失效，请重新登录论坛';
       final msg = RegExp(r'''showError\(\s*['"]([^'"]+)['"]''').firstMatch(body)?.group(1);
       if (msg != null) return msg.trim();
       if (body.contains('不允许') || body.contains('没有权限')) return '当前账号不允许发送私信';
+      if (body.contains('formhash') || body.contains('操作令牌') || body.contains('安全验证')) return '私信令牌已失效，请刷新登录状态后重试';
       return '私信发送失败，请稍后重试';
     } catch (_) {
       return '私信请求失败，请检查网络后重试';
     }
   }
 
-  static String? _hiddenValue(String html, String name) {
-    final escaped = RegExp.escape(name);
-    final nameFirst = RegExp('name\\s*=\\s*[\"\\\']$escaped[\"\\\'][^>]*value\\s*=\\s*[\"\\\']([^\"\\\']+)[\"\\\']', caseSensitive: false);
-    final valueFirst = RegExp('value\\s*=\\s*[\"\\\']([^\"\\\']+)[\"\\\'][^>]*name\\s*=\\s*[\"\\\']$escaped[\"\\\']', caseSensitive: false);
-    return nameFirst.firstMatch(html)?.group(1) ?? valueFirst.firstMatch(html)?.group(1);
+  static bool _looksLikeSuccess(String body) {
+    final lower = body.toLowerCase();
+    return lower.contains('succeed') || lower.contains('do_success') || body.contains('发送成功') || body.contains('操作成功');
+  }
+
+  static String? _extractFormhash(String html) {
+    final inputRe = RegExp(r'<input\b[^>]*>', caseSensitive: false);
+    final nameFirst = RegExp(r'name\s*=\s*["\']formhash["\'][^>]*value\s*=\s*["\']([^"\']+)["\']', caseSensitive: false);
+    final valueFirst = RegExp(r'value\s*=\s*["\']([^"\']+)["\'][^>]*name\s*=\s*["\']formhash["\']', caseSensitive: false);
+    for (final m in inputRe.allMatches(html)) {
+      final tag = m.group(0)!;
+      final a = nameFirst.firstMatch(tag)?.group(1);
+      if (a != null && a.trim().isNotEmpty) return a.trim();
+      final b = valueFirst.firstMatch(tag)?.group(1);
+      if (b != null && b.trim().isNotEmpty) return b.trim();
+    }
+    // 一些 Discuz 模板把 formhash 放在 JS/内联配置中，而不是 input。
+    final jsPatterns = <RegExp>[
+      RegExp(r'formhash\s*[:=]\s*["\']([A-Za-z0-9_-]{6,64})["\']', caseSensitive: false),
+      RegExp(r'[?&]formhash=([A-Za-z0-9_-]{6,64})', caseSensitive: false),
+    ];
+    for (final re in jsPatterns) {
+      final m = re.firstMatch(html);
+      if (m != null && m.group(1)!.isNotEmpty) return m.group(1);
+    }
+    return null;
   }
 
   static String _withoutMobile(String path) {
