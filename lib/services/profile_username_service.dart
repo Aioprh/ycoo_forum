@@ -127,7 +127,7 @@ class ProfileUsernameService {
     final v = _stripUi(value);
     if (v.isEmpty || v.length > 32 || v.contains('�') || v.contains('\uFFFD')) return false;
     final compact = v.replaceAll(RegExp(r'[\s\u2000-\u206F\u25A0-\u27BF\uE000-\uF8FF]+'), '');
-    if (RegExp(r'^(?:资料|个人资料|用户资料|用户|用户名|昵称|关注|已关注|聊天|私信|回复|主题|回帖|粉丝|积分|星币|登录|注册|退出|刷新)$', caseSensitive: false).hasMatch(compact)) return false;
+    if (RegExp(r'^(?:资料|个人资料|用户资料|用户|用户名|昵称|关注|已关注|聊天|私信|回复|主题|回帖|帖子|帖子数|粉丝|积分|星币|登录|注册|退出|刷新)$', caseSensitive: false).hasMatch(compact)) return false;
     return !RegExp(r'^(?:UID|用户|用户名|昵称)\s*[:：]?$', caseSensitive: false).hasMatch(v);
   }
 
