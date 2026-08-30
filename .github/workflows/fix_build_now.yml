@@ -3,7 +3,7 @@ name: Repair current Android build
 on:
   push:
     branches: [main]
-    paths: ['.github/workflows/fix_build_now.yml']
+  workflow_dispatch:
 
 permissions:
   contents: write
@@ -27,7 +27,6 @@ jobs:
           python3 - <<'PY'
           from pathlib import Path
 
-          # The previous UI refactor left _composer with unbalanced delimiters.
           p = Path('lib/pages/detail_page.dart')
           s = p.read_text()
           start = s.find('  Widget _composer(BuildContext context) {')
