@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 import 'package:html/dom.dart' as dom;
 import 'package:html/parser.dart' as parser;
+import '../services/auth_service.dart';
 
 class NativeCommentList extends StatelessWidget {
   final String html;
@@ -15,8 +16,7 @@ class NativeCommentList extends StatelessWidget {
     for (final card in cards) {
       final body = card.querySelector('.p-body');
       if (body == null) continue;
-      final pid = int.tryParse(card.attributes['data-pid'] ?? '0') ?? 0;
-      result.add(_CommentFloor(pid: pid, floor: _text(card.querySelector('.p-floor')), author: _text(card.querySelector('.p-author')), level: _text(card.querySelector('.p-level')), time: _text(card.querySelector('.p-time')), body: body));
+      result.add(_CommentFloor(pid: int.tryParse(card.attributes['data-pid'] ?? '0') ?? 0, floor: _text(card.querySelector('.p-floor')), author: _text(card.querySelector('.p-author')), level: _text(card.querySelector('.p-level')), time: _text(card.querySelector('.p-time')), body: body));
     }
     return result;
   }
@@ -27,14 +27,49 @@ class NativeCommentList extends StatelessWidget {
   Widget build(BuildContext context) {
     final comments = _parse();
     if (comments.isEmpty) return const Padding(padding: EdgeInsets.all(24), child: Center(child: Text('暂无评论', style: TextStyle(color: Colors.grey))));
+    final root = parser.parseFragment(html);
+    final tid = int.tryParse(root.querySelector('.comments-section')?.attributes['data-tid'] ?? '0') ?? 0;
+    final fid = int.tryParse(root.querySelector('.comments-section')?.attributes['data-fid'] ?? '0') ?? 0;
     return ListView.separated(
       shrinkWrap: true,
       physics: const NeverScrollableScrollPhysics(),
       padding: const EdgeInsets.fromLTRB(12, 4, 12, 14),
       itemCount: comments.length,
       separatorBuilder: (_, __) => const SizedBox(height: 10),
-      itemBuilder: (context, index) => _CommentCard(comment: comments[index], index: index, onReply: onReply),
+      itemBuilder: (context, index) => _CommentCard(comment: comments[index], index: index, onReply: onReply ?? (pid, author) => _replyDialog(context, tid, fid, pid, author)),
     );
+  }
+
+  Future<void> _replyDialog(BuildContext context, int tid, int fid, int pid, String author) async {
+    if (tid <= 0 || fid <= 0 || pid <= 0) {
+      ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('未取得楼层信息，请刷新帖子后重试')));
+      return;
+    }
+    await AuthService.instance.init();
+    if (!AuthService.instance.isLoggedIn) {
+      ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('请先登录后回复')));
+      return;
+    }
+    final controller = TextEditingController();
+    final message = await showDialog<String>(
+      context: context,
+      builder: (dialogContext) => AlertDialog(
+        title: Text(author.isEmpty ? '回复本楼' : '回复 $author'),
+        content: TextField(controller: controller, autofocus: true, minLines: 2, maxLines: 6, textInputAction: TextInputAction.newline, decoration: const InputDecoration(hintText: '输入回复内容…', border: OutlineInputBorder())),
+        actions: [
+          TextButton(onPressed: () => Navigator.pop(dialogContext), child: const Text('取消')),
+          FilledButton(onPressed: () { if (controller.text.trim().isNotEmpty) Navigator.pop(dialogContext, controller.text.trim()); }, child: const Text('发送')),
+        ],
+      ),
+    );
+    controller.dispose();
+    if (message == null || message.isEmpty || !context.mounted) return;
+    final messenger = ScaffoldMessenger.of(context);
+    messenger.showSnackBar(const SnackBar(content: Text('正在回复…')));
+    final error = await AuthService.instance.reply(tid, fid, message, replyPid: pid);
+    if (!context.mounted) return;
+    messenger.hideCurrentSnackBar();
+    messenger.showSnackBar(SnackBar(content: Text(error ?? '已回复本楼')));
   }
 }
 
@@ -51,9 +86,8 @@ class _CommentFloor {
 class _CommentCard extends StatelessWidget {
   final _CommentFloor comment;
   final int index;
-  final void Function(int pid, String author)? onReply;
-  const _CommentCard({required this.comment, required this.index, this.onReply});
-
+  final void Function(int pid, String author) onReply;
+  const _CommentCard({required this.comment, required this.index, required this.onReply});
   @override
   Widget build(BuildContext context) {
     final s = Theme.of(context).colorScheme;
@@ -74,10 +108,7 @@ class _CommentCard extends StatelessWidget {
         Container(height: 1, color: s.outlineVariant.withValues(alpha: .35)),
         const SizedBox(height: 10),
         _HtmlNodes(element: comment.body),
-        if (onReply != null && comment.pid > 0) ...[
-          const SizedBox(height: 7),
-          Align(alignment: Alignment.centerRight, child: TextButton.icon(onPressed: () => onReply!(comment.pid, comment.author), icon: const Icon(Icons.reply_rounded, size: 17), label: const Text('回复本楼'))),
-        ],
+        if (comment.pid > 0) Align(alignment: Alignment.centerRight, child: TextButton.icon(onPressed: () => onReply(comment.pid, comment.author), icon: const Icon(Icons.reply_rounded, size: 17), label: const Text('回复本楼'))),
       ]),
     );
   }
@@ -90,18 +121,10 @@ class _HtmlNodes extends StatelessWidget {
   Widget build(BuildContext context) => Column(crossAxisAlignment: CrossAxisAlignment.start, children: element.nodes.map((n) => _node(context, n)).toList());
   Widget _node(BuildContext context, dom.Node node) {
     final s = Theme.of(context).colorScheme;
-    if (node is dom.Text) {
-      final text = node.data.replaceAll(RegExp(r'\s+'), ' ').trim();
-      return text.isEmpty ? const SizedBox.shrink() : Padding(padding: const EdgeInsets.only(bottom: 7), child: Text(text, style: const TextStyle(fontSize: 14, height: 1.7)));
-    }
+    if (node is dom.Text) { final text = node.data.replaceAll(RegExp(r'\s+'), ' ').trim(); return text.isEmpty ? const SizedBox.shrink() : Padding(padding: const EdgeInsets.only(bottom: 7), child: Text(text, style: const TextStyle(fontSize: 14, height: 1.7))); }
     if (node is! dom.Element) return const SizedBox.shrink();
     final tag = node.localName?.toLowerCase() ?? '';
-    if (tag == 'img') {
-      var src = node.attributes['src'] ?? node.attributes['data-src'] ?? '';
-      if (src.startsWith('//')) src = 'https:$src'; else if (src.startsWith('/')) src = 'https://www.ycoo.net$src'; else if (!src.startsWith('http://') && !src.startsWith('https://')) src = 'https://www.ycoo.net/$src';
-      if (src.isEmpty) return const SizedBox.shrink();
-      return Padding(padding: const EdgeInsets.symmetric(vertical: 6), child: ClipRRect(borderRadius: BorderRadius.circular(12), child: Image.network(src, width: double.infinity, fit: BoxFit.contain, errorBuilder: (_, __, ___) => const SizedBox.shrink())));
-    }
+    if (tag == 'img') { var src = node.attributes['src'] ?? node.attributes['data-src'] ?? ''; if (src.startsWith('//')) src = 'https:$src'; else if (src.startsWith('/')) src = 'https://www.ycoo.net$src'; else if (!src.startsWith('http://') && !src.startsWith('https://')) src = 'https://www.ycoo.net/$src'; if (src.isEmpty) return const SizedBox.shrink(); return Padding(padding: const EdgeInsets.symmetric(vertical: 6), child: ClipRRect(borderRadius: BorderRadius.circular(12), child: Image.network(src, width: double.infinity, fit: BoxFit.contain, errorBuilder: (_, __, ___) => const SizedBox.shrink()))); }
     if (tag == 'br') return const SizedBox(height: 5);
     if (tag == 'blockquote') return Container(margin: const EdgeInsets.symmetric(vertical: 6), padding: const EdgeInsets.fromLTRB(12, 8, 10, 8), decoration: BoxDecoration(color: s.primaryContainer.withValues(alpha: .42), borderRadius: BorderRadius.circular(10), border: Border(left: BorderSide(color: s.primary, width: 3))), child: _HtmlNodes(element: node));
     if (tag == 'pre' || tag == 'code') return Container(width: double.infinity, margin: const EdgeInsets.symmetric(vertical: 6), padding: const EdgeInsets.all(10), decoration: BoxDecoration(color: s.surfaceContainerHighest, borderRadius: BorderRadius.circular(9)), child: Text(node.text.trim(), style: const TextStyle(fontSize: 12.5, height: 1.55, fontFamily: 'monospace')));
