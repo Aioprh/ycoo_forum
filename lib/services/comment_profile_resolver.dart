@@ -8,10 +8,14 @@ class CommentProfileResolver {
   CommentProfileResolver._();
   static final instance = CommentProfileResolver._();
   static const _base = 'https://www.ycoo.net/';
+  final Map<String, int?> _cache = <String, int?>{};
 
   Future<int?> resolveUid(String username) async {
     final name = username.trim();
     if (name.isEmpty) return null;
+    final key = name.toLowerCase();
+    if (_cache.containsKey(key)) return _cache[key];
+
     final client = await NetClient.instance.client;
     final urls = <Uri>[
       Uri.parse('${_base}home.php').replace(queryParameters: {
@@ -43,24 +47,37 @@ class CommentProfileResolver {
         if (response.statusCode != 200) continue;
         final html = NetClient.decode(response.bodyBytes);
         final uid = _uidFromUrl(response.request?.url.toString() ?? '');
-        if (uid != null) return uid;
+        if (uid != null) {
+          _cache[key] = uid;
+          return uid;
+        }
         final doc = parser.parse(html);
         for (final a in doc.querySelectorAll('a[href]')) {
           final href = a.attributes['href'] ?? '';
           final candidate = _uidFromUrl(href);
           if (candidate != null) {
             final text = a.text.replaceAll(RegExp(r'\s+'), ' ').trim();
-            if (text.isEmpty || text == name || _looksLikeProfileLink(href)) return candidate;
+            if (text.isEmpty || text == name || _looksLikeProfileLink(href)) {
+              _cache[key] = candidate;
+              return candidate;
+            }
           }
         }
         final canonical = doc.querySelector('link[rel="canonical"]')?.attributes['href'] ?? '';
         final canonicalUid = _uidFromUrl(canonical);
-        if (canonicalUid != null) return canonicalUid;
+        if (canonicalUid != null) {
+          _cache[key] = canonicalUid;
+          return canonicalUid;
+        }
         final meta = doc.querySelector('meta[property="og:url"], meta[name="og:url"]')?.attributes['content'] ?? '';
         final metaUid = _uidFromUrl(meta);
-        if (metaUid != null) return metaUid;
+        if (metaUid != null) {
+          _cache[key] = metaUid;
+          return metaUid;
+        }
       } catch (_) {}
     }
+    _cache[key] = null;
     return null;
   }
 
