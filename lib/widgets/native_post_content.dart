@@ -17,10 +17,12 @@ class NativePostContent extends StatelessWidget {
     final document = html_parser.parse(html);
     final body = document.body;
     if (body == null) return const SizedBox.shrink();
-    final nodes = body.nodes.where((node) => !(node is dom.Text && node.text.trim().isEmpty)).toList();
+    final nodes = body.nodes.where((node) => node is! dom.Text || _nodeText(node).trim().isNotEmpty).toList();
     return _NodeList(nodes: nodes, onLinkTap: onLinkTap);
   }
 }
+
+String _nodeText(dom.Node node) => node is dom.Text ? node.text : node.text;
 
 class _NodeList extends StatelessWidget {
   final List<dom.Node> nodes;
@@ -42,7 +44,7 @@ class _NodeWidget extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     if (node is dom.Text) {
-      final text = node.text.trim();
+      final text = _nodeText(node).trim();
       return text.isEmpty ? const SizedBox.shrink() : _Paragraph(text: text);
     }
     if (node is! dom.Element) return const SizedBox.shrink();
@@ -114,7 +116,8 @@ class _InlineContent extends StatelessWidget {
 
   void _appendSpan(List<InlineSpan> spans, dom.Node node, TextStyle style) {
     if (node is dom.Text) {
-      if (node.text.isNotEmpty) spans.add(TextSpan(text: node.text, style: style));
+      final text = _nodeText(node);
+      if (text.isNotEmpty) spans.add(TextSpan(text: text, style: style));
       return;
     }
     if (node is! dom.Element) return;
