@@ -225,6 +225,13 @@ class _ProfilePageState extends State<ProfilePage> {
     return text.isEmpty ? '用户' : text;
   }
 
+  // 品级铭牌只保留“童生”这类文字，去掉“积分:138”之类的后缀。
+  String _cleanRankText(String? rank) {
+    if (rank == null) return '品级';
+    final value = rank.replaceAll(RegExp(r'积分\s*[:：]?\s*\d*'), '').replaceAll(RegExp(r'\s+'), ' ').trim();
+    return value.isEmpty ? '品级' : value;
+  }
+
   Widget _accountBadge({required IconData icon, required String text}) {
     final scheme = Theme.of(context).colorScheme;
     return Container(
@@ -308,7 +315,7 @@ class _ProfilePageState extends State<ProfilePage> {
                             runSpacing: 5,
                             children: [
                               _accountBadge(icon: Icons.diamond_outlined, text: _level ?? '等级'),
-                              _accountBadge(icon: Icons.school_outlined, text: _rank ?? '品级'),
+                              _accountBadge(icon: Icons.school_outlined, text: _cleanRankText(_rank)),
                               _accountBadge(icon: Icons.stars_outlined, text: _points == null ? '积分' : '积分 $_points'),
                             ],
                           ),
