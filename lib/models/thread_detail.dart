@@ -30,7 +30,7 @@ class ThreadDetail {
   final int likeCount;
   final bool likedByMe;
 
-  const ThreadDetail({
+  ThreadDetail({
     required this.tid,
     required this.title,
     required this.author,
