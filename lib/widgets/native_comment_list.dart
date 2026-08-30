@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 import 'package:html/dom.dart' as dom;
 import 'package:html/parser.dart' as parser;
 import '../services/auth_service.dart';
+import '../pages/native_profile_page.dart';
 
 class NativeCommentList extends StatelessWidget {
   final String html;
@@ -16,7 +17,10 @@ class NativeCommentList extends StatelessWidget {
     for (final card in cards) {
       final body = card.querySelector('.p-body');
       if (body == null) continue;
-      result.add(_CommentFloor(pid: int.tryParse(card.attributes['data-pid'] ?? '0') ?? 0, floor: _text(card.querySelector('.p-floor')), author: _text(card.querySelector('.p-author')), level: _text(card.querySelector('.p-level')), time: _text(card.querySelector('.p-time')), body: body));
+      final authorNode = card.querySelector('.p-author');
+      final href = authorNode?.querySelector('a[href]')?.attributes['href'] ?? authorNode?.attributes['href'] ?? '';
+      final uid = int.tryParse(RegExp(r'[?&]uid=(\d+)').firstMatch(href)?.group(1) ?? '0') ?? 0;
+      result.add(_CommentFloor(pid: int.tryParse(card.attributes['data-pid'] ?? '0') ?? 0, uid: uid, floor: _text(card.querySelector('.p-floor')), author: _text(authorNode), level: _text(card.querySelector('.p-level')), time: _text(card.querySelector('.p-time')), body: body));
     }
     return result;
   }
@@ -36,8 +40,20 @@ class NativeCommentList extends StatelessWidget {
       padding: const EdgeInsets.fromLTRB(12, 4, 12, 14),
       itemCount: comments.length,
       separatorBuilder: (_, __) => const SizedBox(height: 10),
-      itemBuilder: (context, index) => _CommentCard(comment: comments[index], index: index, onReply: onReply ?? (pid, author) => _replyDialog(context, tid, fid, pid, author)),
+      itemBuilder: (context, index) => _CommentCard(
+        comment: comments[index], index: index,
+        onReply: onReply ?? (pid, author) => _replyDialog(context, tid, fid, pid, author),
+        onProfile: () => _openProfile(context, comments[index]),
+      ),
     );
+  }
+
+  void _openProfile(BuildContext context, _CommentFloor comment) {
+    if (comment.uid <= 0) {
+      ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('未取得用户资料，请刷新帖子后重试')));
+      return;
+    }
+    Navigator.of(context).push(MaterialPageRoute(builder: (_) => NativeProfilePage(uid: comment.uid, username: comment.author)));
   }
 
   Future<void> _replyDialog(BuildContext context, int tid, int fid, int pid, String author) async {
@@ -74,39 +90,34 @@ class NativeCommentList extends StatelessWidget {
 }
 
 class _CommentFloor {
-  final int pid;
-  final String floor;
-  final String author;
-  final String level;
-  final String time;
+  final int pid, uid;
+  final String floor, author, level, time;
   final dom.Element body;
-  const _CommentFloor({required this.pid, required this.floor, required this.author, required this.level, required this.time, required this.body});
+  const _CommentFloor({required this.pid, required this.uid, required this.floor, required this.author, required this.level, required this.time, required this.body});
 }
 
 class _CommentCard extends StatelessWidget {
   final _CommentFloor comment;
   final int index;
   final void Function(int pid, String author) onReply;
-  const _CommentCard({required this.comment, required this.index, required this.onReply});
-  @override
-  Widget build(BuildContext context) {
+  final VoidCallback onProfile;
+  const _CommentCard({required this.comment, required this.index, required this.onReply, required this.onProfile});
+  @override Widget build(BuildContext context) {
     final s = Theme.of(context).colorScheme;
     return Container(
       padding: const EdgeInsets.fromLTRB(14, 13, 14, 10),
       decoration: BoxDecoration(color: s.surfaceContainerLowest, borderRadius: BorderRadius.circular(18), border: Border.all(color: s.outlineVariant.withValues(alpha: .55)), boxShadow: [BoxShadow(color: s.shadow.withValues(alpha: .035), blurRadius: 8, offset: const Offset(0, 2))]),
       child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
         Row(crossAxisAlignment: CrossAxisAlignment.center, children: [
-          CircleAvatar(radius: 18, backgroundColor: s.secondaryContainer, child: Text(comment.author.isEmpty ? '?' : comment.author.characters.first, style: TextStyle(fontWeight: FontWeight.w800, color: s.onSecondaryContainer))),
+          InkWell(onTap: onProfile, borderRadius: BorderRadius.circular(22), child: CircleAvatar(radius: 18, backgroundColor: s.secondaryContainer, child: Text(comment.author.isEmpty ? '?' : comment.author.characters.first, style: TextStyle(fontWeight: FontWeight.w800, color: s.onSecondaryContainer)))),
           const SizedBox(width: 9),
-          Expanded(child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
+          Expanded(child: InkWell(onTap: onProfile, child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
             Row(children: [Flexible(child: Text(comment.author.isEmpty ? '匿名用户' : comment.author, maxLines: 1, overflow: TextOverflow.ellipsis, style: const TextStyle(fontSize: 14, fontWeight: FontWeight.w800))), if (comment.level.isNotEmpty) ...[const SizedBox(width: 6), Container(padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 2), decoration: BoxDecoration(color: s.secondaryContainer, borderRadius: BorderRadius.circular(7)), child: Text(comment.level, style: TextStyle(fontSize: 9.5, color: s.onSecondaryContainer)))]],),
             if (comment.time.isNotEmpty) Text(comment.time, style: TextStyle(fontSize: 10.5, color: s.onSurfaceVariant)),
-          ])),
+          ]))),
           Container(padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4), decoration: BoxDecoration(color: s.surfaceContainerHighest, borderRadius: BorderRadius.circular(9)), child: Text(comment.floor.isEmpty ? '${index + 2}楼' : comment.floor, style: TextStyle(fontSize: 10, fontWeight: FontWeight.w700, color: s.onSurfaceVariant))),
         ]),
-        const SizedBox(height: 11),
-        Container(height: 1, color: s.outlineVariant.withValues(alpha: .35)),
-        const SizedBox(height: 10),
+        const SizedBox(height: 11), Container(height: 1, color: s.outlineVariant.withValues(alpha: .35)), const SizedBox(height: 10),
         _HtmlNodes(element: comment.body),
         if (comment.pid > 0) Align(alignment: Alignment.centerRight, child: TextButton.icon(onPressed: () => onReply(comment.pid, comment.author), icon: const Icon(Icons.reply_rounded, size: 17), label: const Text('回复本楼'))),
       ]),
@@ -117,8 +128,7 @@ class _CommentCard extends StatelessWidget {
 class _HtmlNodes extends StatelessWidget {
   final dom.Element element;
   const _HtmlNodes({required this.element});
-  @override
-  Widget build(BuildContext context) => Column(crossAxisAlignment: CrossAxisAlignment.start, children: element.nodes.map((n) => _node(context, n)).toList());
+  @override Widget build(BuildContext context) => Column(crossAxisAlignment: CrossAxisAlignment.start, children: element.nodes.map((n) => _node(context, n)).toList());
   Widget _node(BuildContext context, dom.Node node) {
     final s = Theme.of(context).colorScheme;
     if (node is dom.Text) { final text = node.data.replaceAll(RegExp(r'\s+'), ' ').trim(); return text.isEmpty ? const SizedBox.shrink() : Padding(padding: const EdgeInsets.only(bottom: 7), child: Text(text, style: const TextStyle(fontSize: 14, height: 1.7))); }
