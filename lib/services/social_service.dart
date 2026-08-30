@@ -2,6 +2,7 @@ import 'package:html/parser.dart' as parser;
 
 import 'auth_service.dart';
 import 'net_client.dart';
+import 'profile_service.dart';
 
 class SocialUser {
   final int uid;
@@ -83,70 +84,138 @@ class SocialService {
       node.remove();
     }
 
-    final result = <SocialUser>[];
-    final seen = <int>{};
+    // Discuz pages contain several links carrying the same UID.  The first
+    // matching link is not necessarily the profile link; it can be the
+    // remove/follow action whose visible text is just "×".  Group by UID and
+    // resolve the profile link before extracting display data.
     final links = doc.querySelectorAll('a[href*="uid="],a[href*="space-uid-"]');
-    for (final a in links) {
-      final href = a.attributes['href'] ?? '';
+    final byUid = <int, List<dynamic>>{};
+    for (final link in links) {
+      final href = link.attributes['href'] ?? '';
       final uid = _uidFrom(href);
-      if (uid <= 0 || seen.contains(uid)) continue;
+      if (uid <= 0) continue;
+      (byUid[uid] ??= <dynamic>[]).add(link);
+    }
 
-      var name = _clean(a.text);
-      if (_badName(name)) name = _clean(a.attributes['title'] ?? a.attributes['aria-label'] ?? '');
-      if (_badName(name)) name = _clean(a.querySelector('img')?.attributes['alt'] ?? '');
-      if (_badName(name)) {
-        final parent = a.parent;
-        final candidates = <String>[
-          _clean(parent?.querySelector('.xw1,.xi2,.name,.username,.title')?.text ?? ''),
-          _clean(parent?.attributes['title'] ?? ''),
-        ];
-        for (final candidate in candidates) {
-          if (!_badName(candidate)) {
-            name = candidate;
-            break;
-          }
-        }
+    final result = <SocialUser>[];
+    for (final entry in byUid.entries) {
+      final uid = entry.key;
+      final candidates = entry.value;
+      candidates.sort((a, b) {
+        final ap = _isProfileHref(a.attributes['href'] ?? '') ? 0 : 1;
+        final bp = _isProfileHref(b.attributes['href'] ?? '') ? 0 : 1;
+        if (ap != bp) return ap - bp;
+        return _nameScore(_clean(a.text)).compareTo(_nameScore(_clean(b.text)));
+      });
+
+      String name = '';
+      String avatar = '';
+      dynamic bestAnchor;
+      for (final anchor in candidates) {
+        final container = _userContainer(anchor);
+        final candidateName = _extractName(anchor, container, uid);
+        final candidateAvatar = _extractAvatar(anchor, container);
+        if (_badName(candidateName)) continue;
+        name = candidateName;
+        avatar = candidateAvatar;
+        bestAnchor = anchor;
+        if (_isProfileHref(anchor.attributes['href'] ?? '')) break;
       }
-      if (_badName(name)) continue;
 
-      final container = _userContainer(a);
+      final container = _userContainer(bestAnchor ?? candidates.first);
       final containerText = _clean(container?.text ?? '');
-      var subtitle = containerText.replaceFirst(name, '').trim();
+      var subtitle = _clean(containerText.replaceFirst(name, ''));
       if (subtitle.length > 120 || _isNavigation(subtitle)) subtitle = '';
       if (subtitle.isEmpty) subtitle = 'UID $uid';
 
-      var avatar = '';
-      final image = a.querySelector('img') ?? container?.querySelector('img');
-      if (image != null) {
-        avatar = _absolute((image.attributes['data-src'] ?? image.attributes['data-original'] ?? image.attributes['src'] ?? '').trim());
+      // The social page's markup is a little inconsistent.  When it only
+      // exposes the placeholder/action link, use the canonical profile page
+      // for the authoritative nickname and avatar.  This also fixes stale or
+      // unrelated avatars without changing the social-page UI.
+      if (_badName(name) || avatar.isEmpty) {
+        try {
+          final profile = await ProfileService.instance.fetchProfile(uid);
+          if (_validProfileName(profile.username)) name = profile.username.trim();
+          if (avatar.isEmpty && profile.avatar.isNotEmpty) avatar = profile.avatar;
+          if (subtitle == 'UID $uid' && profile.group.isNotEmpty) subtitle = 'UID $uid · ${profile.group}';
+        } catch (_) {
+          // Keep the UID fallback when the profile endpoint is unavailable.
+        }
       }
 
-      seen.add(uid);
+      if (_badName(name)) continue;
       result.add(SocialUser(uid: uid, name: name, avatar: avatar, subtitle: subtitle));
       if (result.length >= 200) break;
     }
     return result;
   }
 
+  String _extractName(dynamic anchor, dynamic container, int uid) {
+    final values = <String>[
+      _clean(anchor.text),
+      _clean(anchor.attributes['title'] ?? ''),
+      _clean(anchor.attributes['aria-label'] ?? ''),
+      _clean(anchor.querySelector('img')?.attributes['alt'] ?? ''),
+      _clean(container?.querySelector('.xw1,.xi2,.name,.username,.nickname,.title,[class*="username"],[class*="nickname"],[class*="name"]')?.text ?? ''),
+      _clean(container?.attributes['title'] ?? ''),
+    ];
+
+    // Some templates put the real nickname in a second profile anchor while
+    // the first anchor is the avatar or action control.
+    if (container != null) {
+      for (final a in container.querySelectorAll('a[href]')) {
+        final href = a.attributes['href'] ?? '';
+        if (_uidFrom(href) == uid) values.add(_clean(a.text));
+      }
+    }
+
+    for (final value in values) {
+      if (!_badName(value)) return value;
+    }
+    return '';
+  }
+
+  String _extractAvatar(dynamic anchor, dynamic container) {
+    final images = <dynamic>[];
+    final anchorImage = anchor.querySelector('img');
+    if (anchorImage != null) images.add(anchorImage);
+    if (container != null) images.addAll(container.querySelectorAll('img'));
+    for (final image in images) {
+      final raw = (image.attributes['data-src'] ?? image.attributes['data-original'] ?? image.attributes['src'] ?? '').trim();
+      if (!_validImageSource(raw)) continue;
+      return _absolute(raw);
+    }
+    return '';
+  }
+
   dynamic _userContainer(dynamic anchor) {
-    var node = anchor.parent;
-    for (var i = 0; i < 4 && node != null; i++) {
+    var node = anchor?.parent;
+    for (var i = 0; i < 5 && node != null; i++) {
       final text = _clean(node.text ?? '');
       final hasUserAction = node.querySelector('a[href*="space"],a[href*="uid="],img') != null;
-      if (hasUserAction && text.length <= 240) return node;
+      if (hasUserAction && text.length <= 300) return node;
       node = node.parent;
     }
-    return anchor.parent;
+    return anchor?.parent;
+  }
+
+  int _nameScore(String value) {
+    if (_badName(value)) return -100;
+    var score = 0;
+    if (RegExp(r'[\u4e00-\u9fffA-Za-z0-9]').hasMatch(value)) score += 5;
+    if (value.length >= 2) score += 2;
+    if (value.length <= 32) score += 1;
+    return score;
   }
 
   int _qualityScore(List<SocialUser> users) {
     if (users.isEmpty) return 0;
     var score = users.length * 2;
     for (final user in users) {
-      if (user.name.contains('�')) score -= 5;
+      if (_badName(user.name)) score -= 8;
       if (user.name.length >= 2) score += 2;
       if (RegExp(r'[\u4e00-\u9fffA-Za-z0-9]').hasMatch(user.name)) score += 1;
-      if (user.avatar.isNotEmpty) score += 1;
+      if (user.avatar.isNotEmpty) score += 2;
     }
     return score;
   }
@@ -186,6 +255,13 @@ class SocialService {
     return int.tryParse(m?.group(1) ?? '') ?? 0;
   }
 
+  static bool _isProfileHref(String href) {
+    final lower = href.toLowerCase();
+    if (!lower.contains('uid=')) return lower.contains('space-uid-');
+    if (!lower.contains('mod=space')) return false;
+    return !lower.contains('mod=spacecp') && (!lower.contains('do=') || lower.contains('do=profile'));
+  }
+
   static String _absolute(String value) {
     if (value.isEmpty) return '';
     if (value.startsWith('//')) return 'https:$value';
@@ -193,21 +269,34 @@ class SocialService {
     return value.startsWith('/') ? '$_base${value.substring(1)}' : '$_base$value';
   }
 
-  static String _hiddenValue(String html, String name) {
-    final doc = parser.parse(html);
-    final input = doc.querySelector('input[name="$name"]');
-    return (input?.attributes['value'] ?? '').trim();
+  static bool _validImageSource(String value) {
+    if (value.isEmpty || value == '×' || value == 'x' || value == 'X') return false;
+    if (value.contains('\uFFFD') || value.contains('�')) return false;
+    return value.startsWith('http://') || value.startsWith('https://') || value.startsWith('//') || value.startsWith('/');
   }
 
+  static bool _validProfileName(String value) => !_badName(value) && !RegExp(r'^(?:用户|资料|个人资料|用户名|昵称)$').hasMatch(value.trim());
+
   static bool _badName(String value) {
-    if (value.isEmpty || value.length > 40) return true;
-    if (const {'首页', '下一页', '上一页', '更多', '关注', '粉丝', '好友', '删除'}.contains(value)) return true;
-    return value.replaceAll('�', '').trim().isEmpty;
+    final v = _clean(value);
+    if (v.isEmpty || v.length > 40) return true;
+    if (const {'首页', '下一页', '上一页', '更多', '关注', '粉丝', '好友', '删除', '取消关注', '×', 'x', 'X', '××'}.contains(v)) return true;
+    if (v.contains('�') || v.contains('\uFFFD')) return true;
+    // Reject symbol-only placeholders such as the boxed multiplication mark
+    // rendered by the site when an icon/close control has no text fallback.
+    if (!RegExp(r'[\u4e00-\u9fffA-Za-z0-9]').hasMatch(v)) return true;
+    return false;
   }
 
   static String _clean(String value) => value.replaceAll('\uFFFD', '�').replaceAll(RegExp(r'\s+'), ' ').trim();
 
   static bool _isNavigation(String value) => const {'首页', '下一页', '上一页', '更多', '关注', '粉丝', '好友', '删除', '取消关注'}.contains(value);
+
+  static String _hiddenValue(String html, String name) {
+    final doc = parser.parse(html);
+    final input = doc.querySelector('input[name="$name"]');
+    return (input?.attributes['value'] ?? '').trim();
+  }
 
   static bool _looksLikeLogin(String html) {
     final doc = parser.parse(html);
