@@ -6,50 +6,55 @@ on:
   workflow_dispatch:
 
 permissions:
-  contents: write
+  contents: read
+
+concurrency:
+  group: repair-${{ github.ref }}
+  cancel-in-progress: true
 
 jobs:
   repair:
     if: github.event_name == 'workflow_dispatch' || github.actor != 'github-actions[bot]'
     runs-on: ubuntu-latest
+    timeout-minutes: 45
     steps:
-      - uses: actions/checkout@v4
+      - name: Checkout main
+        uses: actions/checkout@v4
         with:
           ref: main
-          fetch-depth: 0
-      - uses: subosito/flutter-action@v2
-        with:
-          flutter-version: 3.47.2
-          channel: stable
-      - name: Repair, verify and commit
-        shell: bash
-        run: |
-          set -euo pipefail
-          python3 - <<'PY'
-          from pathlib import Path
-          p = Path('lib/widgets/native_comment_list.dart')
-          s = p.read_text()
-          old = """      final href = authorNode?.querySelector('a[href]')?.attributes['href'] ?? authorNode?.attributes['href'] ?? '';\n      final uid = int.tryParse(RegExp(r'[?&]uid=(\\d+)').firstMatch(href)?.group(1) ?? '0') ?? 0;"""
-          new = r'''      final uid = _extractUid(card, authorNode);'''
-          if old in s:
-              s = s.replace(old, new)
-          helper = r'''\n  static int _extractUid(dom.Element card, dom.Element? author) {\n    for (final key in const ['data-uid', 'data-user-id', 'data-author-id', 'uid', 'userid', 'user-id', 'author-id']) {\n      final value = card.attributes[key] ?? author?.attributes[key];\n      final uid = _firstInt(value);\n      if (uid != null && uid > 0) return uid;\n    }\n    final nodes = <dom.Element>[card, if (author != null) author, ...card.querySelectorAll('a[href], img[src], img[data-src]')];\n    for (final node in nodes) {\n      final raw = '${node.attributes['href'] ?? ''} ${node.attributes['src'] ?? ''} ${node.attributes['data-src'] ?? ''}';\n      final uid = _uidFromUrl(raw);\n      if (uid > 0) return uid;\n    }\n    return 0;\n  }\n\n  static int _uidFromUrl(String value) {\n    for (final pattern in const [\n      r'(?:[?&]|%3F|%26)uid(?:=|%3D)(\\d+)',\n      r'(?:^|[/?_-])uid[-_/](\\d+)',\n      r'(?:^|[/?_-])space[-_/](\\d+)',\n      r'(?:^|[/?_-])home\\.php[^\\s]*uid(?:=|%3D)(\\d+)',\n    ]) {\n      final m = RegExp(pattern, caseSensitive: false).firstMatch(value);\n      if (m != null) {\n        final uid = int.tryParse(m.group(1)!);\n        if (uid != null && uid > 0) return uid;\n      }\n    }\n    return 0;\n  }\n\n  static int? _firstInt(String? value) {\n    if (value == null || value.isEmpty) return null;\n    final m = RegExp(r'(\\d+)').firstMatch(value);\n    return m == null ? null : int.tryParse(m.group(1)!);\n  }\n'''
-          marker = "\n  static String _text(dom.Element? e) =>"
-          if '_extractUid(dom.Element card' not in s:
-              s = s.replace(marker, helper + marker)
-          p.write_text(s)
+          fetch-depth: 1
 
-          p = Path('android/gradle/wrapper/gradle-wrapper.properties')
-          s = p.read_text().replace('https\\://mirrors.cloud.tencent.com/gradle/gradle-8.14-all.zip', 'https\\://services.gradle.org/distributions/gradle-8.14-all.zip')
-          p.write_text(s)
-          PY
-          dart format lib/widgets/native_comment_list.dart
-          flutter pub get
-          flutter analyze --no-fatal-infos --no-fatal-warnings
-          flutter test
-          flutter build apk --release
-          git config user.name 'github-actions[bot]'
-          git config user.email '41898282+github-actions[bot]@users.noreply.github.com'
-          git add lib/widgets/native_comment_list.dart android/gradle/wrapper/gradle-wrapper.properties
-          git commit -m 'fix: resolve comment author uid for profile navigation' || true
-          git push origin main
+      - name: Setup JDK 17
+        uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: '17'
+          cache: gradle
+
+      - name: Setup Flutter 3.47.2
+        uses: subosito/flutter-action@v2
+        with:
+          flutter-version: '3.47.2'
+          channel: stable
+          cache: true
+
+      - name: Verify toolchain
+        run: flutter --version && dart --version && java -version
+
+      - name: Get dependencies
+        run: flutter pub get
+
+      - name: Format check
+        run: dart format --output=none --set-exit-if-changed lib test
+
+      - name: Static analysis
+        run: flutter analyze --no-fatal-infos --no-fatal-warnings
+
+      - name: Tests
+        run: flutter test --dart-define=cronetHttpNoPlay=true
+
+      - name: Release APK build
+        run: flutter build apk --release --dart-define=cronetHttpNoPlay=true
+
+      - name: Verify APK
+        run: test -s build/app/outputs/flutter-apk/app-release.apk && ls -lh build/app/outputs/flutter-apk/app-release.apk
