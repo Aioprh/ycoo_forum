@@ -70,21 +70,10 @@ class ProfileService {
     final group = _clean(doc.querySelector('.comiis_space_level, .gm, .xg1, a[href*="gid="]')?.text ?? '');
     final signature = _clean(doc.querySelector('.comiis_space_signature, .personal_signature, .spv, .sign, [class*="signature"]')?.text ?? '');
 
-    // Discuz exposes these values as links on profile pages. Prefer the link
-    // targets over text-label scraping because custom mobile templates often
-    // separate the number and label into different sibling nodes.
-    final threads = _numberFromHref(doc, (href) =>
-        href.contains('do=thread') && href.contains('type=thread')) ??
-        _numberNearLabel(doc, ['主题', '主题数']);
-    final replies = _numberFromHref(doc, (href) =>
-        href.contains('do=thread') && href.contains('type=reply')) ??
-        _numberNearLabel(doc, ['回帖', '回帖数', '帖子']);
-    final followers = _numberFromHref(doc, (href) =>
-        href.contains('mod=follow') && href.contains('do=follower')) ??
-        _numberNearLabel(doc, ['粉丝']);
-    final following = _numberFromHref(doc, (href) =>
-        href.contains('mod=follow') && (href.contains('do=following') || href.contains('do=friend'))) ??
-        _numberNearLabel(doc, ['关注', '好友']);
+    final threads = _numberFromHref(doc, (href) => href.contains('do=thread') && href.contains('type=thread')) ?? _numberNearLabel(doc, ['主题', '主题数']);
+    final replies = _numberFromHref(doc, (href) => href.contains('do=thread') && href.contains('type=reply')) ?? _numberNearLabel(doc, ['回帖', '回帖数', '帖子']);
+    final followers = _numberFromHref(doc, (href) => href.contains('mod=follow') && href.contains('do=follower')) ?? _numberNearLabel(doc, ['粉丝']);
+    final following = _numberFromHref(doc, (href) => href.contains('mod=follow') && (href.contains('do=following') || href.contains('do=friend'))) ?? _numberNearLabel(doc, ['关注', '好友']);
     final credits = _numberNearLabel(doc, ['星币', '源币', '金币', '余额']);
     final points = _numberNearLabel(doc, ['积分', '贡献']);
 
@@ -121,10 +110,7 @@ class ProfileService {
   }
 
   static String _avatar(dom.Document doc) {
-    for (final selector in [
-      '.avatar img', '.avtm img', '.user_avatar img', '.comiis_space_avatar img',
-      'img[src*="avatar"]', 'img[data-src*="avatar"]',
-    ]) {
+    for (final selector in ['.avatar img', '.avtm img', '.user_avatar img', '.comiis_space_avatar img', 'img[src*="avatar"]', 'img[data-src*="avatar"]']) {
       final node = doc.querySelector(selector);
       if (node == null) continue;
       final src = node.attributes['src'] ?? node.attributes['data-src'] ?? '';
@@ -160,7 +146,7 @@ class ProfileService {
           final match = after ?? before;
           if (match == null) continue;
           final n = int.tryParse(match.group(1)!);
-          if (n != null && n != 29113) return n;
+          if (n != null) return n;
         }
       }
     }
@@ -180,10 +166,7 @@ class ProfileService {
   }
 
   static String? _visibleName(dom.Document doc) {
-    for (final selector in [
-      '.vwmy a', '.vwmy', '.pf_username', '.userinfo a', '.user-info a',
-      '.member-name', '.username', '.nickname', '[class*="username"]', '[class*="nickname"]',
-    ]) {
+    for (final selector in ['.vwmy a', '.vwmy', '.pf_username', '.userinfo a', '.user-info a', '.member-name', '.username', '.nickname', '[class*="username"]', '[class*="nickname"]']) {
       final value = _clean(doc.querySelector(selector)?.text ?? '');
       if (_validName(value)) return value;
     }
