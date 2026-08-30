@@ -1,0 +1,46 @@
+name: Repair profile author UI
+
+on:
+  push:
+    branches: [main]
+
+permissions:
+  contents: write
+
+jobs:
+  repair:
+    if: github.actor != 'github-actions[bot]'
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Patch detail page author profile
+        shell: python
+        run: |
+          from pathlib import Path
+          p = Path('lib/pages/detail_page.dart')
+          s = p.read_text(encoding='utf-8')
+          s = s.replace("import '../widgets/native_comment_list.dart';", "import '../widgets/native_comment_list.dart';\nimport '../widgets/resolved_user_avatar.dart';\nimport '../services/comment_profile_resolver.dart';\nimport 'native_profile_page.dart';")
+          old = '''              CircleAvatar(\n                radius: 22,\n                backgroundColor: c.primaryContainer,\n                backgroundImage: d.avatar.isNotEmpty\n                    ? NetworkImage(d.avatar)\n                    : null,\n                child: d.avatar.isNotEmpty\n                    ? null\n                    : Icon(Icons.person_rounded, color: c.primary),\n              ),'''
+          new = '''              ResolvedUserAvatar(\n                uid: 0,\n                username: d.author,\n                radius: 22,\n                onTap: () => _openAuthorProfile(context, d.author),\n              ),'''
+          if old not in s:
+              raise SystemExit('detail hero avatar block not found')
+          s = s.replace(old, new, 1)
+          marker = '  Widget _hero(BuildContext context, ThreadDetail d) {'
+          method = '''  Future<void> _openAuthorProfile(BuildContext context, String author) async {\n    final name = author.trim();\n    if (name.isEmpty) return;\n    final uid = await CommentProfileResolver.instance.resolveUid(name);\n    if (!context.mounted) return;\n    if (uid == null || uid <= 0) {\n      _snack('未找到该用户资料，请稍后重试');\n      return;\n    }\n    Navigator.of(context).push(\n      MaterialPageRoute(builder: (_) => NativeProfilePage(uid: uid, username: name)),\n    );\n  }\n\n'''
+          if marker not in s:
+              raise SystemExit('hero marker not found')
+          s = s.replace(marker, method + marker, 1)
+          p.write_text(s, encoding='utf-8')
+
+          # Remove this one-shot workflow after applying the patch.
+          wf = Path('.github/workflows/repair_profile_author_ui.yml')
+          wf.unlink(missing_ok=True)
+      - name: Commit and push
+        shell: bash
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add lib/pages/detail_page.dart .github/workflows/repair_profile_author_ui.yml
+          git diff --cached --quiet && exit 0
+          git commit -m "fix thread author profile avatar and navigation"
+          git push
