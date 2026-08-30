@@ -16,20 +16,24 @@ jobs:
       - name: Checkout
         uses: actions/checkout@v4
 
+      - name: Install Flutter
+        uses: subosito/flutter-action@v2
+        with:
+          channel: stable
+          flutter-version: 3.47.2
+          cache: true
+
       - name: Repair Dart syntax and nullability
         shell: python
         run: |
           from pathlib import Path
-          import re
 
           detail = Path('lib/pages/detail_page.dart')
           text = detail.read_text(encoding='utf-8')
 
-          # Rebuild the composer widget from a clean, formatted implementation.
           start = text.find('  Widget _composer(BuildContext context) {')
           if start == -1:
               raise SystemExit('composer function not found')
-
           end = text.find('\n  }\n}', start)
           if end == -1:
               raise SystemExit('composer function end not found')
@@ -113,25 +117,19 @@ jobs:
       ),
     );
   }'''
-
           text = text[:start] + composer + text[end:]
           detail.write_text(text, encoding='utf-8')
 
           post = Path('lib/widgets/native_post_content.dart')
           ptext = post.read_text(encoding='utf-8')
-          old = "String _nodeText(dom.Node node) => node is dom.Text ? node.text : node.text;"
-          new = "String _nodeText(dom.Node node) => node.text ?? '';"
-          if old in ptext:
-              ptext = ptext.replace(old, new)
+          ptext = ptext.replace(
+              "String _nodeText(dom.Node node) => node is dom.Text ? node.text : node.text;",
+              "String _nodeText(dom.Node node) => node.text ?? '';",
+          )
           post.write_text(ptext, encoding='utf-8')
 
       - name: Verify analyzer
         run: |
-          flutter_version="3.47.2"
-          if [ ! -d "$HOME/flutter" ]; then
-            git clone --depth 1 --branch "$flutter_version" https://github.com/flutter/flutter.git "$HOME/flutter"
-          fi
-          export PATH="$HOME/flutter/bin:$PATH"
           flutter pub get
           flutter analyze --no-fatal-infos --no-fatal-warnings
 
