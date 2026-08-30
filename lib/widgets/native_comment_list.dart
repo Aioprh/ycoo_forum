@@ -5,6 +5,7 @@ import 'package:html/parser.dart' as parser;
 import '../pages/native_profile_page.dart';
 import '../services/auth_service.dart';
 import '../services/comment_profile_resolver.dart';
+import 'resolved_user_avatar.dart';
 
 class NativeCommentList extends StatelessWidget {
   final String html;
@@ -209,14 +210,11 @@ class _CommentCard extends StatelessWidget {
       ),
       child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
         Row(crossAxisAlignment: CrossAxisAlignment.center, children: [
-          InkWell(
+          ResolvedUserAvatar(
+            uid: comment.uid,
+            username: comment.author,
+            radius: 18,
             onTap: onProfile,
-            borderRadius: BorderRadius.circular(22),
-            child: CircleAvatar(
-              radius: 18,
-              backgroundColor: s.secondaryContainer,
-              child: Text(comment.author.isEmpty ? '?' : comment.author.characters.first, style: TextStyle(fontWeight: FontWeight.w800, color: s.onSecondaryContainer)),
-            ),
           ),
           const SizedBox(width: 9),
           Expanded(
@@ -284,7 +282,7 @@ class _HtmlNodes extends StatelessWidget {
     if (tag == 'br') return const SizedBox(height: 5);
     if (tag == 'blockquote') return Container(margin: const EdgeInsets.symmetric(vertical: 6), padding: const EdgeInsets.fromLTRB(12, 8, 10, 8), decoration: BoxDecoration(color: s.primaryContainer.withValues(alpha: .42), borderRadius: BorderRadius.circular(10), border: Border(left: BorderSide(color: s.primary, width: 3))), child: _HtmlNodes(element: node));
     if (tag == 'pre' || tag == 'code') return Container(width: double.infinity, margin: const EdgeInsets.symmetric(vertical: 6), padding: const EdgeInsets.all(10), decoration: BoxDecoration(color: s.surfaceContainerHighest, borderRadius: BorderRadius.circular(9)), child: Text(node.text.trim(), style: const TextStyle(fontSize: 12.5, height: 1.55, fontFamily: 'monospace')));
-    if (tag == 'a') return Padding(padding: const EdgeInsets.only(bottom: 6), child: Text(node.text.trim(), style: TextStyle(fontSize: 14, height: 1.7, color: s.primary, decoration: TextDecoration.underline)));
+    if (tag == 'a') return Padding(padding: const EdgeInsets.only(bottom: 6), child: Text(node.text.trim(), style: TextStyle(fontSize: 14, height: 1.7, color: s.primary, decoration: TextDecoration.underline));
     if (tag == 'p' || tag == 'div' || tag == 'section' || tag == 'article' || tag == 'li') return Padding(padding: const EdgeInsets.only(bottom: 5), child: _HtmlNodes(element: node));
     return _HtmlNodes(element: node);
   }
