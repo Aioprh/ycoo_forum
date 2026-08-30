@@ -20,6 +20,7 @@ class _NativeProfilePageState extends State<NativeProfilePage> with SingleTicker
   bool _loading = true, _loadingList = false, _followBusy = false;
   String? _error;
   String? _displayUsername;
+  List<String> _displayBadges = const [];
 
   @override void initState() { super.initState(); _tabs = TabController(length: 2, vsync: this)..addListener(_tabChanged); _load(); }
   @override void dispose() { _tabs.removeListener(_tabChanged); _tabs.dispose(); super.dispose(); }
@@ -30,9 +31,11 @@ class _NativeProfilePageState extends State<NativeProfilePage> with SingleTicker
     try {
       final p = await ProfileService.instance.fetchProfile(widget.uid, fallbackUsername: widget.username, forceRefresh: true);
       final resolvedName = await ProfileUsernameService.instance.resolve(widget.uid, fallback: widget.username);
+      final identity = _NameParts.parse(resolvedName ?? p.username, group: p.group);
       if (mounted) setState(() {
         _profile = p;
-        _displayUsername = resolvedName ?? (_isUsableName(p.username) ? p.username : null);
+        _displayUsername = identity.name;
+        _displayBadges = identity.badges;
       });
       await _loadList(replies: _tabs.index == 1);
     } catch (e) { if (mounted) setState(() => _error = e.toString().replaceFirst('Exception: ', '')); }
@@ -58,7 +61,7 @@ class _NativeProfilePageState extends State<NativeProfilePage> with SingleTicker
 
   void _chat() {
     final p = _profile; if (p == null || p.uid <= 0) return;
-    final name = _displayUsername ?? p.username;
+    final name = _displayUsername ?? _NameParts.parse(p.username, group: p.group).name;
     Navigator.of(context).push(MaterialPageRoute(builder: (_) => NativeChatPage(uid: p.uid, username: name)));
   }
 
@@ -66,7 +69,9 @@ class _NativeProfilePageState extends State<NativeProfilePage> with SingleTicker
     final p = _profile;
     if (_loading && p == null) return const Scaffold(body: Center(child: CircularProgressIndicator()));
     if (p == null) return Scaffold(appBar: AppBar(title: const Text('个人资料')), body: _Error(message: _error ?? '加载失败', retry: _load));
-    final name = _displayUsername ?? (_isUsableName(p.username) ? p.username : '用户');
+    final identity = _NameParts.parse(_displayUsername ?? p.username, group: p.group, preferredBadges: _displayBadges);
+    final name = identity.name;
+    final badges = identity.badges;
     return Scaffold(
       backgroundColor: Theme.of(context).colorScheme.surfaceContainerLowest,
       body: RefreshIndicator(
@@ -75,7 +80,7 @@ class _NativeProfilePageState extends State<NativeProfilePage> with SingleTicker
           SliverAppBar(
             expandedHeight: 238, pinned: true, title: const Text('个人资料'),
             actions: [IconButton(onPressed: _chat, tooltip: '聊天', icon: const Icon(Icons.chat_bubble_outline_rounded)), IconButton(onPressed: _load, tooltip: '刷新', icon: const Icon(Icons.refresh))],
-            flexibleSpace: FlexibleSpaceBar(background: _Header(profile: p, username: name, onFollow: _follow, onChat: _chat, busy: _followBusy)),
+            flexibleSpace: FlexibleSpaceBar(background: _Header(profile: p, username: name, badges: badges, onFollow: _follow, onChat: _chat, busy: _followBusy)),
           ),
           SliverToBoxAdapter(child: _Stats(profile: p)),
           SliverPersistentHeader(pinned: true, delegate: _TabHeader(TabBar(controller: _tabs, tabs: const [Tab(icon: Icon(Icons.article_outlined), text: '主题'), Tab(icon: Icon(Icons.forum_outlined), text: '回帖')]))),
@@ -88,33 +93,49 @@ class _NativeProfilePageState extends State<NativeProfilePage> with SingleTicker
   }
 
   static bool _isUsableName(String value) {
-    final v = value.trim();
+    final v = _NameParts.parse(value).name.trim();
     if (v.isEmpty || v == '用户' || v.contains('�') || v.contains('\uFFFD')) return false;
     final compact = v.replaceAll(RegExp(r'[\s\u2000-\u206F\u25A0-\u27BF\uE000-\uF8FF]+'), '');
     return !RegExp(r'^(?:资料|个人资料|用户资料|用户|用户名|昵称|关注|已关注|聊天|私信|回复|主题|回帖|粉丝|积分|星币|登录|注册|退出|刷新)$', caseSensitive: false).hasMatch(compact);
   }
 }
 
+class _NameParts {
+  final String name;
+  final List<String> badges;
+  const _NameParts(this.name, this.badges);
+
+  static _NameParts parse(String? source, {String? group, List<String>? preferredBadges}) {
+    final raw = (source ?? '').replaceAll(RegExp(r'\s+'), ' ').trim();
+    final badgeSource = '${preferredBadges?.join(' ') ?? ''} ${group ?? ''} $raw';
+    final badges = <String>[];
+    final level = RegExp(r'Lv\.?\s*\d+', caseSensitive: false).firstMatch(badgeSource)?.group(0);
+    if (level != null) badges.add(level.replaceAll(RegExp(r'\s+'), ''));
+    const ranks = ['童生','秀才','举人','进士','探花','榜眼','状元','九品','八品','七品','六品','五品','四品','三品','二品','一品'];
+    for (final rank in ranks) {
+      if (badgeSource.contains(rank)) { badges.add(rank); break; }
+    }
+
+    var name = raw;
+    // The Discuz mobile template may concatenate username + user-group text
+    // into one DOM node, e.g. “烟雨客Lv.1童生积分…”. Never render the group
+    // metadata as part of the username.
+    name = name.replaceFirst(RegExp(r'Lv\.?\s*\d+.*$', caseSensitive: false), '').trim();
+    if (name.isEmpty || _isUiLabel(name)) name = raw;
+    if (name.length > 32) name = name.substring(0, 32).trim();
+    return _NameParts(name.isEmpty ? '用户' : name, List.unmodifiable(badges));
+  }
+
+  static bool _isUiLabel(String value) => RegExp(r'^(?:资料|个人资料|用户资料|用户|用户名|昵称|关注|已关注|聊天|私信|回复|主题|回帖|粉丝|积分|星币|登录|注册|退出|刷新)$', caseSensitive: false).hasMatch(value.trim());
+}
+
 class _Header extends StatelessWidget {
   final ProfileData profile;
   final String username;
+  final List<String> badges;
   final VoidCallback onFollow, onChat;
   final bool busy;
-  const _Header({required this.profile, required this.username, required this.onFollow, required this.onChat, required this.busy});
-
-  List<String> _badges() {
-    final value = profile.group.trim();
-    if (value.isEmpty) return const [];
-    final result = <String>[];
-    final level = RegExp(r'Lv[.]?\s*\d+', caseSensitive: false).firstMatch(value)?.group(0);
-    if (level != null && level.isNotEmpty) result.add(level.replaceAll(RegExp(r'\s+'), ''));
-    const ranks = ['童生','秀才','举人','进士','探花','榜眼','状元','九品','八品','七品','六品','五品','四品','三品','二品','一品'];
-    for (final rank in ranks) {
-      if (value.contains(rank)) { result.add(rank); break; }
-    }
-    // 积分属于统计数据，不再从用户组信息生成铭牌。
-    return result;
-  }
+  const _Header({required this.profile, required this.username, required this.badges, required this.onFollow, required this.onChat, required this.busy});
 
   Widget _badge(BuildContext context, String text, IconData icon) {
     final s = Theme.of(context).colorScheme;
@@ -135,7 +156,6 @@ class _Header extends StatelessWidget {
 
   @override Widget build(BuildContext context) {
     final s = Theme.of(context).colorScheme;
-    final badges = _badges();
     return Container(
       decoration: BoxDecoration(gradient: LinearGradient(begin: Alignment.topLeft, end: Alignment.bottomRight, colors: [s.primaryContainer, s.surface])),
       child: SafeArea(bottom: false, child: Padding(
@@ -149,9 +169,7 @@ class _Header extends StatelessWidget {
           ),
           const SizedBox(width: 13),
           Expanded(child: Column(mainAxisAlignment: MainAxisAlignment.end, crossAxisAlignment: CrossAxisAlignment.start, children: [
-            Row(children: [
-              Flexible(child: Text(username, maxLines: 1, overflow: TextOverflow.ellipsis, style: const TextStyle(fontSize: 21, fontWeight: FontWeight.w800))),
-            ]),
+            Text(username, maxLines: 1, overflow: TextOverflow.ellipsis, style: const TextStyle(fontSize: 21, fontWeight: FontWeight.w800)),
             if (badges.isNotEmpty) ...[
               const SizedBox(height: 6),
               Wrap(spacing: 5, runSpacing: 4, children: [
