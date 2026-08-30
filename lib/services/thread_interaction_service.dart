@@ -64,7 +64,6 @@ class ThreadInteractionService {
     final normalized = text.replaceAll(RegExp(r'\s+'), ' ');
     if (normalized.contains('succeedhandle_') || normalized.contains('succeed') || normalized.contains('do_success') || normalized.contains('操作成功')) return null;
     if (normalized.contains('请先登录') || normalized.contains('登录后才能')) return '请先登录论坛';
-    // 不再因为响应 HTML 中包含 input[name=formhash] 就误判令牌失败。
     if (normalized.contains('操作令牌已失效') || normalized.contains('表单验证串不符') || normalized.contains('请求来路不正确') || normalized.contains('formhash错误') || normalized.contains('验证失败') || normalized.contains('非法请求')) return '操作令牌已失效，请刷新帖子后重试';
     final error = RegExp(r'''showError\(\s*['"]([^'"]+)['"]''').firstMatch(text)?.group(1) ?? RegExp(r'''(?:alert_error|error_message)[^>]*>\s*(?:<[^>]+>\s*)?([^<]{2,120})''').firstMatch(text)?.group(1);
     return error?.trim();
@@ -78,7 +77,6 @@ class ThreadInteractionService {
       final hash = _formhash(html);
       final client = await NetClient.instance.client;
       final referer = '${_base}thread-$tid-1-1.html';
-      // Discuz 原生帖子点赞入口使用 hash + tid；这里不再把 pid 当作核心令牌参数。
       final uri = Uri.parse('${_base}forum.php').replace(queryParameters: {
         'mod': 'misc', 'action': 'recommend', 'do': like ? 'add' : 'subtract',
         'tid': '$tid', 'hash': hash, 'inajax': '1', 'mobile': '2',
@@ -87,7 +85,6 @@ class ThreadInteractionService {
       var response = await NetClient.retry(() => client.get(uri, headers: headers).timeout(NetClient.timeout));
       var result = _parseResponse(response.bodyBytes);
       if (result == null) return null;
-      // 某些自定义模板把动作改成 POST；同一个新鲜 hash 再兼容一次。
       if (response.statusCode != 200 || result != '请先登录论坛') {
         response = await NetClient.retry(() => client.post(uri, headers: {...headers, 'Content-Type': 'application/x-www-form-urlencoded; charset=UTF-8'}, body: {'hash': hash, 'formhash': hash, 'tid': '$tid', 'pid': '$pid', if (like) 'recommendsubmit': 'yes'}).timeout(NetClient.timeout));
         result = _parseResponse(response.bodyBytes);
@@ -101,7 +98,8 @@ class ThreadInteractionService {
   Future<String?> reward({required int tid, required int pid, required int amount}) async {
     if (!_loggedIn) return '请先登录论坛';
     if (tid <= 0 || pid <= 0) return '未取得有效的帖子楼层，请刷新帖子后重试';
-    if (amount <= 0) return '请输入有效的打赏数量';
+    // 源论坛原生打赏使用星币，当前原站入口只允许 1～3 星币。
+    if (amount < 1 || amount > 3) return '打赏数量只能选择 1～3 星币';
     try {
       final html = await _fetchThreadHtml(tid);
       final doc = parser.parse(html);
@@ -126,7 +124,7 @@ class ThreadInteractionService {
           fields['amount'] = '$amount';
           fields['reward'] = '$amount';
           final resp = await client.post(Uri.parse(action), headers: {..._headers(referer, ajax: true), 'Content-Type': 'application/x-www-form-urlencoded; charset=UTF-8'}, body: fields).timeout(NetClient.timeout);
-          return _parseResponse(resp.bodyBytes) ?? '打赏成功';
+          return _parseResponse(resp.bodyBytes) ?? '已打赏 $amount 星币';
         }
         var href = e.attributes['href'] ?? '';
         if (href.isEmpty || href.startsWith('javascript:')) href = _extractUrl(e.attributes['onclick'] ?? '');
@@ -134,11 +132,13 @@ class ThreadInteractionService {
           var uri = Uri.parse(_abs(href));
           uri = uri.replace(queryParameters: {...uri.queryParameters, 'formhash': hash, 'hash': hash, 'tid': '$tid', 'pid': '$pid', 'amount': '$amount', 'reward': '$amount'});
           final resp = await client.get(uri, headers: _headers(referer, ajax: true)).timeout(NetClient.timeout);
-          return _parseResponse(resp.bodyBytes) ?? '打赏成功';
+          return _parseResponse(resp.bodyBytes) ?? '已打赏 $amount 星币';
         }
       }
       return '当前帖子没有可用的原站打赏入口';
-    } catch (_) { return '打赏请求失败，请检查网络后重试'; }
+    } catch (_) {
+      return '打赏请求失败，请检查网络后重试';
+    }
   }
 
   String _extractUrl(String js) {
@@ -190,7 +190,6 @@ class ThreadInteractionService {
       final hash = _formhash(await _fetchThreadHtml(tid));
       final referer = '${_base}thread-$tid-1-1.html';
       if (favorite) {
-        // Discuz 默认模板：home.php?mod=spacecp&ac=favorite&type=thread&id=tid&formhash=FORMHASH
         final uri = Uri.parse('${_base}home.php').replace(queryParameters: {'mod': 'spacecp', 'ac': 'favorite', 'type': 'thread', 'id': '$tid', 'formhash': hash, 'handlekey': 'favoritebtn', 'inajax': '1', 'mobile': '2'});
         final resp = await client.get(uri, headers: _headers(referer, ajax: true)).timeout(NetClient.timeout);
         return _parseResponse(resp.bodyBytes);
