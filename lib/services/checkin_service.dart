@@ -16,7 +16,7 @@ class CheckinService {
     'User-Agent': NetClient.ua,
     'Accept': ajax ? '*/*' : 'text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8',
     'Accept-Language': 'zh-CN,zh;q=0.9',
-    'Cache-Control': 'no-cache',
+    'Cache-Control': 'no-cache, no-store',
     'Referer': referer,
     if (ajax) 'X-Requested-With': 'XMLHttpRequest',
     if ((AuthService.instance.authCookie ?? '').isNotEmpty) 'Cookie': AuthService.instance.authCookie!,
@@ -34,8 +34,8 @@ class CheckinService {
   }
 
   Future<String?> _getFormhash(http.Client client) async {
-    // K-Misign 的入口通常是 plugin.php?id=k_misign:sign；部分站点同时
-    // 提供 /k_misign-sign.html。两个入口都尝试，避免只依赖其中一个模板。
+    // 每次签到前都从当前登录会话重新获取令牌；不要复用旧页面中的 formhash。
+    // 优先使用 K-Misign 入口，必要时回退论坛首页。
     final urls = <String>[
       '${_base}plugin.php?id=k_misign:sign',
       '${_base}k_misign-sign.html',
@@ -59,11 +59,21 @@ class CheckinService {
 
     final client = await _client;
     try {
-      final formhash = await NetClient.retry(() => _getFormhash(client));
-      if (formhash == null || formhash.isEmpty) return '签到页面缺少 formhash，请刷新登录状态后重试';
+      // 先确认当前会话仍有效，避免 SharedPreferences 中的旧 Cookie 被误认为登录状态。
+      final sessionPage = await client.get(
+        Uri.parse('${_base}forum.php?mobile=2'),
+        headers: _headers(_base),
+      ).timeout(NetClient.timeout);
+      final sessionHtml = NetClient.decode(sessionPage.bodyBytes);
+      if (sessionHtml.contains('登录') && !sessionHtml.contains('退出登录')) {
+        return '登录状态已失效，请重新登录';
+      }
 
-      // K-Misign 的签到动作是 GET，不是 POST。使用 plugin.php 入口兼容
-      // 不同版本的 rewrite 配置；失败时再尝试重写后的 k_misign-sign.html。
+      final formhash = await NetClient.retry(() => _getFormhash(client));
+      if (formhash == null || formhash.isEmpty) {
+        return '签到页面缺少有效的操作令牌，请刷新登录状态后重试';
+      }
+
       final params = <String, String>{
         'operation': 'qiandao',
         'formhash': formhash,
@@ -89,7 +99,9 @@ class CheckinService {
       }
 
       if (lastBody.contains('请先登录') || lastBody.contains('登录后')) return '登录状态已失效，请重新登录';
-      if (lastBody.contains('formhash') && lastBody.contains('非法')) return '签到令牌已失效，请刷新后重试';
+      if ((lastBody.contains('formhash') && (lastBody.contains('非法') || lastBody.contains('错误'))) || lastBody.contains('操作令牌已失效')) {
+        return '签到令牌已失效，请刷新登录状态后重试';
+      }
       return '签到失败，请稍后重试';
     } catch (_) {
       return '签到请求失败，请检查网络后重试';
