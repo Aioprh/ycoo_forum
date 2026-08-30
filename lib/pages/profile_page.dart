@@ -197,6 +197,14 @@ class _ProfilePageState extends State<ProfilePage> {
     return CircleAvatar(radius: 34, backgroundImage: NetworkImage(_avatarUrl!));
   }
 
+  // 铭牌只保留品级文字（如“童生”），去掉“积分X”之类的后缀。
+  String _cleanBadgeText(String? text) {
+    if (text == null) return '品级';
+    final m = RegExp(r'^(.*?)(?:\s*积分\s*[:：]?\s*\d*)?\s*$').firstMatch(text);
+    final value = (m?.group(1) ?? '').trim();
+    return value.isEmpty ? '品级' : value;
+  }
+
   Widget _accountBadge({required IconData icon, required String text}) {
     final scheme = Theme.of(context).colorScheme;
     return Container(
@@ -279,9 +287,8 @@ class _ProfilePageState extends State<ProfilePage> {
                             spacing: 5,
                             runSpacing: 5,
                             children: [
-                              _accountBadge(icon: Icons.diamond_outlined, text: _level ?? '等级'),
-                              _accountBadge(icon: Icons.school_outlined, text: _rank ?? '品级'),
-                              _accountBadge(icon: Icons.stars_outlined, text: _points == null ? '积分' : '积分 $_points'),
+                              // 只保留“童生”这个铭牌，去掉“积分X”后缀；等级、积分徽章已移除。
+                              _accountBadge(icon: Icons.school_outlined, text: _cleanBadgeText(_rank)),
                             ],
                           ),
                         ],
