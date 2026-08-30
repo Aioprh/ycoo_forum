@@ -2,7 +2,7 @@ import 'package:html/parser.dart' as parser;
 
 import 'net_client.dart';
 
-/// Resolves a Discuz author UID when the normalized comment HTML no longer
+/// Resolves a Discuz author UID when normalized comment HTML no longer
 /// contains the original author link.
 class CommentProfileResolver {
   CommentProfileResolver._();
@@ -49,7 +49,7 @@ class CommentProfileResolver {
           final href = a.attributes['href'] ?? '';
           final candidate = _uidFromUrl(href);
           if (candidate != null) {
-            final text = a.text.replaceAll(RegExp(r'\\s+'), ' ').trim();
+            final text = a.text.replaceAll(RegExp(r'\s+'), ' ').trim();
             if (text.isEmpty || text == name || _looksLikeProfileLink(href)) return candidate;
           }
         }
@@ -67,10 +67,10 @@ class CommentProfileResolver {
   int? _uidFromUrl(String value) {
     if (value.isEmpty) return null;
     final patterns = <RegExp>[
-      RegExp(r'(?:[?&]|%3F|%26)uid(?:=|%3D)(\\d+)', caseSensitive: false),
-      RegExp(r'(?:^|[/?_-])space-uid-(\\d+)', caseSensitive: false),
-      RegExp(r'(?:^|[/?_-])space/uid/(\\d+)', caseSensitive: false),
-      RegExp(r'home\\.php[^\\s#]*[?&]uid=(\\d+)', caseSensitive: false),
+      RegExp(r'(?:[?&]|%3F|%26)uid(?:=|%3D)(\d+)', caseSensitive: false),
+      RegExp(r'(?:^|[/?_-])space-uid-(\d+)', caseSensitive: false),
+      RegExp(r'(?:^|[/?_-])space/uid/(\d+)', caseSensitive: false),
+      RegExp(r'home\.php[^\s#]*[?&]uid=(\d+)', caseSensitive: false),
     ];
     for (final pattern in patterns) {
       final match = pattern.firstMatch(value);
