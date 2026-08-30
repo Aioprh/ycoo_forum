@@ -26,7 +26,7 @@ class _NativeProfilePageState extends State<NativeProfilePage> with SingleTicker
   Future<void> _load() async {
     if (mounted) setState(() { _loading = true; _error = null; });
     try {
-      final p = await ProfileService.instance.fetchProfile(widget.uid, fallbackUsername: widget.username);
+      final p = await ProfileService.instance.fetchProfile(widget.uid, fallbackUsername: widget.username, forceRefresh: true);
       if (mounted) setState(() => _profile = p);
       await _loadList(replies: _tabs.index == 1);
     } catch (e) { if (mounted) setState(() => _error = e.toString().replaceFirst('Exception: ', '')); }
@@ -58,14 +58,14 @@ class _NativeProfilePageState extends State<NativeProfilePage> with SingleTicker
   @override Widget build(BuildContext context) {
     final p = _profile;
     if (_loading && p == null) return const Scaffold(body: Center(child: CircularProgressIndicator()));
-    if (p == null) return Scaffold(appBar: AppBar(), body: _Error(message: _error ?? '加载失败', retry: _load));
+    if (p == null) return Scaffold(appBar: AppBar(title: const Text('个人资料')), body: _Error(message: _error ?? '加载失败', retry: _load));
     return Scaffold(
       backgroundColor: Theme.of(context).colorScheme.surfaceContainerLowest,
       body: RefreshIndicator(
         onRefresh: _load,
         child: CustomScrollView(slivers: [
           SliverAppBar(
-            expandedHeight: 238, pinned: true, title: Text(p.username),
+            expandedHeight: 238, pinned: true, title: const Text('个人资料'),
             actions: [IconButton(onPressed: _chat, tooltip: '聊天', icon: const Icon(Icons.chat_bubble_outline_rounded)), IconButton(onPressed: _load, tooltip: '刷新', icon: const Icon(Icons.refresh))],
             flexibleSpace: FlexibleSpaceBar(background: _Header(profile: p, onFollow: _follow, onChat: _chat, busy: _followBusy)),
           ),
@@ -90,7 +90,13 @@ class _Header extends StatelessWidget {
       child: SafeArea(bottom: false, child: Padding(padding: const EdgeInsets.fromLTRB(20, 70, 20, 18), child: Row(crossAxisAlignment: CrossAxisAlignment.end, children: [
         CircleAvatar(radius: 38, backgroundColor: s.surface, backgroundImage: profile.avatar.isNotEmpty ? NetworkImage(profile.avatar) : null, child: profile.avatar.isEmpty ? Text(profile.username.isEmpty ? '?' : profile.username.characters.first, style: const TextStyle(fontSize: 28, fontWeight: FontWeight.w700)) : null),
         const SizedBox(width: 14),
-        Expanded(child: Column(mainAxisAlignment: MainAxisAlignment.end, crossAxisAlignment: CrossAxisAlignment.start, children: [Text(profile.username, maxLines: 1, overflow: TextOverflow.ellipsis, style: const TextStyle(fontSize: 22, fontWeight: FontWeight.w800)), if (profile.group.isNotEmpty) Text(profile.group, style: TextStyle(color: s.primary, fontWeight: FontWeight.w600)), if (profile.signature.isNotEmpty) Padding(padding: const EdgeInsets.only(top: 4), child: Text(profile.signature, maxLines: 2, overflow: TextOverflow.ellipsis, style: TextStyle(color: s.onSurfaceVariant)))])),
+        Expanded(child: Column(mainAxisAlignment: MainAxisAlignment.end, crossAxisAlignment: CrossAxisAlignment.start, children: [
+          Text(profile.username, maxLines: 1, overflow: TextOverflow.ellipsis, style: const TextStyle(fontSize: 22, fontWeight: FontWeight.w800)),
+          const SizedBox(height: 3),
+          Text('UID ${profile.uid}', style: TextStyle(fontSize: 13, color: s.onSurfaceVariant, fontWeight: FontWeight.w600)),
+          if (profile.group.isNotEmpty) Text(profile.group, style: TextStyle(color: s.primary, fontWeight: FontWeight.w600)),
+          if (profile.signature.isNotEmpty) Padding(padding: const EdgeInsets.only(top: 4), child: Text(profile.signature, maxLines: 2, overflow: TextOverflow.ellipsis, style: TextStyle(color: s.onSurfaceVariant)))
+        ])),
         Column(mainAxisSize: MainAxisSize.min, children: [FilledButton.tonalIcon(onPressed: busy ? null : onFollow, icon: Icon(profile.followedByMe ? Icons.check : Icons.person_add_alt_1), label: Text(profile.followedByMe ? '已关注' : '关注')), const SizedBox(height: 6), OutlinedButton.icon(onPressed: onChat, icon: const Icon(Icons.chat_bubble_outline, size: 18), label: const Text('聊天'))]),
       ]))));
   }
