@@ -1,8 +1,8 @@
 import 'dart:convert';
 
 import 'package:file_picker/file_picker.dart';
-import 'package:http/http.dart' as http;
 import 'package:html/parser.dart' as parser;
+import 'package:http/http.dart' as http;
 
 import 'auth_service.dart';
 import 'net_client.dart';
@@ -151,12 +151,12 @@ class AttachmentUploadService {
   String _uploadError(String body, int status) {
     final text = body.replaceAll(RegExp(r'<[^>]+>'), ' ').replaceAll(RegExp(r'\s+'), ' ').trim();
     if (text.contains('formhash') || text.contains('非法操作')) return '附件上传令牌已失效，请刷新后重试';
-    if (text.contains('2') && text.contains('大小')) return '附件超过论坛允许的大小';
-    if (text.contains('3') && text.contains('用户组')) return '当前用户组没有上传该大小附件的权限';
     if (text.contains('不支持此类扩展名')) return '当前版块不允许上传该文件类型';
     if (text.contains('附件文件无法保存')) return '论坛服务器无法保存附件';
     if (text.contains('没有合法的文件')) return '没有合法的文件被上传';
     if (text.contains('登录')) return '登录态已失效，请重新登录论坛';
-    return text.isEmpty ? '附件上传失败 HTTP $status' : text.substring(0, text.length.clamp(0, 120));
+    if (text.isEmpty) return '附件上传失败 HTTP $status';
+    final end = text.length < 120 ? text.length : 120;
+    return text.substring(0, end);
   }
 }
