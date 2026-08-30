@@ -197,12 +197,32 @@ class _ProfilePageState extends State<ProfilePage> {
     return CircleAvatar(radius: 34, backgroundImage: NetworkImage(_avatarUrl!));
   }
 
-  // 铭牌只保留品级文字（如“童生”），去掉“积分X”之类的后缀。
-  String _cleanBadgeText(String? text) {
-    if (text == null) return '品级';
-    final m = RegExp(r'^(.*?)(?:\s*积分\s*[:：]?\s*\d*)?\s*$').firstMatch(text);
-    final value = (m?.group(1) ?? '').trim();
-    return value.isEmpty ? '品级' : value;
+  // 昵称去掉尾部的 Lv.X / 品级（如“童生”）/ 积分 信息，只保留纯昵称。
+  String _stripAccountMetaFromNick(String? value) {
+    if (value == null) return '用户';
+    var text = value.trim();
+    if (text.isEmpty) return '用户';
+
+    // 去掉“积分:138”或“童生积分:138”类的尾巴。
+    final points = RegExp(r'积分\s*[:：]?\s*\d*', caseSensitive: false);
+    text = text.replaceAll(points, ' ');
+
+    // 去掉已知品级文本（优先去掉）。
+    if (_rank != null && _rank!.isNotEmpty) {
+      text = text.replaceAll(RegExp.escape(_rank!), ' ');
+    }
+
+    // 去掉 Lv.X。
+    text = text.replaceAll(RegExp(r'Lv\.?\s*\d+', caseSensitive: false), ' ');
+
+    // 去掉常见品级/等级类常见词兜底。
+    text = text.replaceAll(
+      RegExp(r'(?:管理员|版主|实习|超级版主|童生|秀才|举人|进士|探花|榜眼|状元|九品|八品|七品|六品|五品|四品|三品|二品|一品|新人|元老|新手上路|正式|核心|VIP|会员|用户组)\s*'),
+      ' ',
+    );
+
+    text = text.replaceAll(RegExp(r'\s+'), ' ').trim();
+    return text.isEmpty ? '用户' : text;
   }
 
   Widget _accountBadge({required IconData icon, required String text}) {
@@ -270,7 +290,7 @@ class _ProfilePageState extends State<ProfilePage> {
                   children: [
                     Text(
                       loggedIn
-                          ? (_username?.trim().isNotEmpty == true ? _username!.trim() : '用户')
+                          ? _stripAccountMetaFromNick(_username)
                           : '登录 / 注册',
                       maxLines: 1,
                       overflow: TextOverflow.ellipsis,
@@ -287,8 +307,9 @@ class _ProfilePageState extends State<ProfilePage> {
                             spacing: 5,
                             runSpacing: 5,
                             children: [
-                              // 只保留“童生”这个铭牌，去掉“积分X”后缀；等级、积分徽章已移除。
-                              _accountBadge(icon: Icons.school_outlined, text: _cleanBadgeText(_rank)),
+                              _accountBadge(icon: Icons.diamond_outlined, text: _level ?? '等级'),
+                              _accountBadge(icon: Icons.school_outlined, text: _rank ?? '品级'),
+                              _accountBadge(icon: Icons.stars_outlined, text: _points == null ? '积分' : '积分 $_points'),
                             ],
                           ),
                         ],
