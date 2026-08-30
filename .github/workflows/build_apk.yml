@@ -85,3 +85,7 @@ jobs:
             - 阅读侧复刻,数据来自 https://www.ycoo.net
           files: ${{ steps.build.outputs.apk-path }}
           fail_on_unmatched_files: true
+
+      - name: Release build marker
+        if: always()
+        run: echo "build workflow executed on $GITHUB_SHA"
