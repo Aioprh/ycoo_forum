@@ -71,7 +71,7 @@ class ProfileService {
     final username = _profileUsername(doc, uid) ??
         _labelValue(doc, ['昵称', '显示名称', '用户名']) ??
         _visibleName(doc) ??
-        (fallbackUsername?.trim().isNotEmpty == true ? fallbackUsername!.trim() : '用户');
+        (fallbackUsername?.trim().isNotEmpty == true && _validName(fallbackUsername) ? fallbackUsername!.trim() : '用户');
     final avatar = _avatar(doc, uid);
     final group = _clean(doc.querySelector('.comiis_space_level, .gm, .xg1, a[href*="gid="]')?.text ?? '');
     final signature = _clean(doc.querySelector('.comiis_space_signature, .personal_signature, .spv, .sign, [class*="signature"]')?.text ?? '');
@@ -106,15 +106,32 @@ class ProfileService {
 
   static String? _profileUsername(dom.Document doc, int uid) {
     final uidText = uid.toString();
-    // Only accept actual profile links. Action links such as “关注” can also
-    // live near the UID and must never become the user's display name.
+
+    // Prefer the username rendered by Discuz's profile header. These selectors
+    // are deliberately specific so labels such as “资料/关注/聊天” cannot win.
+    const selectors = [
+      '#uhd .vwmy a', '#uhd .vwmy',
+      '.comiis_space_user .username', '.comiis_space_user .nickname',
+      '.comiis_space_user .name', '.comiis_space_user h2',
+      '.pf_username', '.userinfo .username', '.user-info .username',
+      '.member-name',
+    ];
+    for (final selector in selectors) {
+      final value = _clean(doc.querySelector(selector)?.text ?? '');
+      if (_validName(value) && !_uiLabel(value)) return value;
+    }
+
+    // Exact profile links are the next safest source. Action links around the
+    // profile often contain the same UID but their text is only a UI label.
     for (final a in doc.querySelectorAll('a[href]')) {
       final href = a.attributes['href'] ?? '';
       final lower = href.toLowerCase();
-      if (!lower.contains('uid=$uidText') && !lower.contains('uid%3d$uidText')) continue;
-      if (!lower.contains('mod=space') || !lower.contains('do=profile')) continue;
+      final hasUid = lower.contains('uid=$uidText') || lower.contains('uid%3d$uidText') || lower.contains('uid%253d$uidText');
+      if (!hasUid || !lower.contains('mod=space') || !lower.contains('do=profile')) continue;
       final value = _clean(a.text);
       if (_validName(value) && !_uiLabel(value)) return value;
+      final parentValue = _clean(a.parent?.text ?? '');
+      if (_validName(parentValue) && !_uiLabel(parentValue)) return parentValue;
     }
 
     // Discuz profile pages normally expose the real name in <title> or og:title.
@@ -126,6 +143,7 @@ class ProfileService {
       value = _clean(value)
           .replaceFirst(RegExp(r'\s*[-|｜]\s*源论坛\s*$', caseSensitive: false), '')
           .replaceFirst(RegExp(r'\s*的个人资料\s*$', caseSensitive: false), '')
+          .replaceFirst(RegExp(r'^个人资料\s*[-|｜:]\s*', caseSensitive: false), '')
           .trim();
       if (_validName(value) && !_uiLabel(value)) return value;
     }
@@ -134,7 +152,6 @@ class ProfileService {
 
   static String _avatar(dom.Document doc, int uid) {
     final uidText = uid.toString();
-    // Highest priority: the image attached to the exact profile URL.
     for (final a in doc.querySelectorAll('a[href]')) {
       final href = (a.attributes['href'] ?? '').toLowerCase();
       if (!href.contains('uid=$uidText') || !href.contains('do=profile')) continue;
@@ -157,11 +174,8 @@ class ProfileService {
       if (_isRealAvatar(value, uid)) return value;
     }
 
-    // Discuz's avatar path is deterministic from UID. This avoids accidentally
-    // selecting the site's login/sidebar avatar when the template is unusual.
     final s = uid.toString().padLeft(8, '0');
-    final deterministic = '${_base}data/avatar/${s.substring(0, 3)}/${s.substring(3, 5)}/${s.substring(5, 7)}/${s.substring(7)}_avatar_middle.jpg';
-    return deterministic;
+    return '${_base}data/avatar/${s.substring(0, 3)}/${s.substring(3, 5)}/${s.substring(5, 7)}/${s.substring(7)}_avatar_middle.jpg';
   }
 
   static bool _isRealAvatar(String value, int uid) {
@@ -172,7 +186,7 @@ class ProfileService {
     return true;
   }
 
-  static bool _uiLabel(String value) => RegExp(r'^(?:关注|已关注|聊天|私信|回复|主题|回帖|粉丝|积分|星币|登录|注册|退出|刷新|用户|用户名|昵称)$').hasMatch(_clean(value));
+  static bool _uiLabel(String value) => RegExp(r'^(?:关注|已关注|聊天|私信|回复|主题|回帖|粉丝|积分|星币|登录|注册|退出|刷新|用户|用户名|昵称|资料|个人资料|用户资料)$').hasMatch(_clean(value));
 
   static int? _numberFromHref(dom.Document doc, bool Function(String href) matches) {
     for (final a in doc.querySelectorAll('a[href]')) {
@@ -233,6 +247,7 @@ class ProfileService {
     if (v.isEmpty || v.length > 32) return false;
     if (v.contains('\uFFFD') || v.contains('�')) return false;
     if (RegExp(r'[\x00-\x1F]').hasMatch(v)) return false;
+    if (RegExp(r'^(?:资料|个人资料|用户资料|用户|用户名|昵称|登录|注册|退出|主题|回帖|关注|已关注|聊天|私信|刷新)$', caseSensitive: false).hasMatch(v)) return false;
     return !RegExp(r'^(UID|用户|用户名|昵称|登录|注册|退出|主题|回帖)\s*[:：]?$', caseSensitive: false).hasMatch(v);
   }
 
