@@ -73,7 +73,7 @@ class ProfileService {
     final threads = _numberFromHref(doc, (href) => href.contains('do=thread') && href.contains('type=thread')) ?? _numberNearLabel(doc, ['主题', '主题数']);
     final replies = _numberFromHref(doc, (href) => href.contains('do=thread') && href.contains('type=reply')) ?? _numberNearLabel(doc, ['回帖', '回帖数', '帖子']);
     final followers = _numberFromHref(doc, (href) => href.contains('mod=follow') && href.contains('do=follower')) ?? _numberNearLabel(doc, ['粉丝']);
-    final following = _numberFromHref(doc, (href) => href.contains('mod=follow') && (href.contains('do=following') || href.contains('do=friend'))) ?? _numberNearLabel(doc, ['关注', '好友']);
+    final following = _numberFromHref(doc, (href) => (href.contains('mod=follow') && (href.contains('do=following') || href.contains('do=friend'))) || href.contains('do=friend')) ?? _numberNearLabel(doc, ['关注', '好友']);
     final credits = _numberNearLabel(doc, ['星币', '源币', '金币', '余额']);
     final points = _numberNearLabel(doc, ['积分', '贡献']);
 
@@ -141,9 +141,12 @@ class ProfileService {
         final text = _clean(candidate.text);
         if (text.isEmpty || text.length > 160) continue;
         for (final label in labelSet) {
-          final after = RegExp('${RegExp.escape(label)}[^0-9]{0,12}([0-9]{1,12})').firstMatch(text);
+          // Stats are commonly rendered as "0 主题 0 回帖 ..." in one
+          // container. Prefer the number immediately before the label, then
+          // fall back to the "label: number" form.
           final before = RegExp('([0-9]{1,12})[^0-9]{0,12}${RegExp.escape(label)}').firstMatch(text);
-          final match = after ?? before;
+          final after = RegExp('${RegExp.escape(label)}[^0-9]{0,12}([0-9]{1,12})').firstMatch(text);
+          final match = before ?? after;
           if (match == null) continue;
           final n = int.tryParse(match.group(1)!);
           if (n != null) return n;
