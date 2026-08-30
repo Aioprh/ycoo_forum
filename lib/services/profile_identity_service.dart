@@ -35,7 +35,6 @@ class ProfileIdentityService {
     if (uid == null || uid <= 0) return null;
     final client = await NetClient.instance.client;
     final cookie = AuthService.instance.authCookie;
-
     final headers = {
       'User-Agent': NetClient.ua,
       'Accept': 'text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8',
@@ -61,8 +60,7 @@ class ProfileIdentityService {
       try {
         final response = await client.get(Uri.parse(url), headers: headers).timeout(const Duration(seconds: 15));
         if (response.statusCode != 200) continue;
-        final html = NetClient.decode(response.bodyBytes);
-        final doc = parser.parse(html);
+        final doc = parser.parse(NetClient.decode(response.bodyBytes));
         for (final n in doc.querySelectorAll('script,style,noscript,template')) n.remove();
 
         nickname ??= _firstValid([
@@ -78,7 +76,6 @@ class ProfileIdentityService {
           _findVisibleName(doc),
         ]);
         avatar ??= _firstAvatar(doc) ?? '${_base}uc_server/avatar.php?uid=$uid&size=middle';
-
         level ??= _findLevel(doc);
         rank ??= _findRank(doc);
         points ??= _findNumberByLabels(doc, ['积分', '总积分']);
@@ -118,15 +115,29 @@ class ProfileIdentityService {
   String? _stripAccountMeta(String? value, {String? level, String? rank, int? points}) {
     if (value == null) return null;
     var text = _clean(value);
+
+    // 网页某些主题会把昵称、等级、品级、积分全部放在同一个节点：
+    // “烟雨客Lv.1 童生 积分:138”。昵称只取前面的真实昵称。
+    final metaStart = RegExp(r'Lv\.?\s*\d+', caseSensitive: false).firstMatch(text);
+    if (metaStart != null) {
+      text = text.substring(0, metaStart.start).trim();
+    } else {
+      // 没有 Lv 标记时，也处理“昵称 童生 积分:138”的主题结构。
+      final pointsStart = RegExp(r'积分\s*[:：]?\s*\d+', caseSensitive: false).firstMatch(text);
+      if (pointsStart != null) text = text.substring(0, pointsStart.start).trim();
+      if (rank != null && rank.isNotEmpty) {
+        final rankIndex = text.indexOf(rank);
+        if (rankIndex > 0) text = text.substring(0, rankIndex).trim();
+      }
+    }
+
     if (level != null && level.isNotEmpty) {
       text = text.replaceAll(RegExp(RegExp.escape(level), caseSensitive: false), ' ');
     }
-    // 兼容网页把等级直接拼成 Lv.1 / LV1 的情况。
     text = text.replaceAll(RegExp(r'Lv\.?\s*\d+', caseSensitive: false), ' ');
     if (rank != null && rank.isNotEmpty) {
       text = text.replaceAll(RegExp(RegExp.escape(rank)), ' ');
     }
-    // 兼容“积分:123”“积分：123”“积分 123”等拼接形式。
     text = text.replaceAll(RegExp(r'积分\s*[:：]?\s*\d+'), ' ');
     if (points != null) {
       text = text.replaceAll(RegExp(r'积分\s*[:：]?\s*' + points.toString()), ' ');
