@@ -46,8 +46,6 @@ class _DetailPageState extends State<DetailPage> {
     try {
       final d = await ApiService.instance.fetchThreadDetail(widget.tid);
       if (!mounted) return;
-      final oldBody = _detail?.bodyHtml.trim() ?? '';
-      final newBody = d.bodyHtml.trim();
       setState(() {
         _detail = d; _likeCount = d.likeCount; _liked = d.likedByMe;
       });
@@ -216,11 +214,6 @@ class _DetailPageState extends State<DetailPage> {
 
   Widget _sectionHeader(BuildContext context, String title, String subtitle, IconData icon) { final c = Theme.of(context).colorScheme; return Padding(padding: const EdgeInsets.fromLTRB(4, 7, 4, 10), child: Row(children: [Container(width: 38, height: 38, decoration: BoxDecoration(color: c.primaryContainer, borderRadius: BorderRadius.circular(12)), child: Icon(icon, size: 20, color: c.primary)), const SizedBox(width: 10), Expanded(child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [Text(title, style: const TextStyle(fontSize: 17, fontWeight: FontWeight.w800)), const SizedBox(height: 2), Text(subtitle, style: TextStyle(fontSize: 11.5, color: c.onSurfaceVariant))]))])); }
 
-  Widget _webCard(BuildContext context, WebViewController controller, double height) {
-    final c = Theme.of(context).colorScheme;
-    final contentHeight = height > 0 ? height : 88.0;
-    return Container(margin: const EdgeInsets.only(bottom: 10), padding: const EdgeInsets.fromLTRB(11, 11, 11, 8), decoration: BoxDecoration(color: c.surface, borderRadius: BorderRadius.circular(22), border: Border.all(color: c.outlineVariant.withValues(alpha: .45))), child: AnimatedSize(duration: const Duration(milliseconds: 180), curve: Curves.easeOut, child: SizedBox(height: contentHeight, child: WebViewWidget(controller: controller))));
-  }
 
   Widget _paidNotice(BuildContext context, ThreadDetail d) { final c = Theme.of(context).colorScheme; return Container(margin: const EdgeInsets.only(bottom: 10), padding: const EdgeInsets.all(26), decoration: BoxDecoration(gradient: LinearGradient(colors: [c.primaryContainer, c.surface]), borderRadius: BorderRadius.circular(24), border: Border.all(color: c.outlineVariant.withValues(alpha: .45))), child: Column(children: [Icon(Icons.lock_rounded, size: 34, color: c.primary), const SizedBox(height: 14), const Text('这是一个付费主题', style: TextStyle(fontSize: 18, fontWeight: FontWeight.w800)), const SizedBox(height: 6), Text(d.price == null ? '购买后即可查看完整内容' : '支付 ${d.price} ${d.currency} 后查看完整内容', textAlign: TextAlign.center, style: TextStyle(color: c.onSurfaceVariant)), const SizedBox(height: 18), FilledButton.icon(onPressed: _buying ? null : _purchase, icon: _buying ? const SizedBox(width: 18, height: 18, child: CircularProgressIndicator(strokeWidth: 2)) : const Icon(Icons.shopping_bag_outlined), label: Text(_buying ? '购买中…' : '购买主题'))])); }
 
