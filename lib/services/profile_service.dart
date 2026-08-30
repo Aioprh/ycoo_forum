@@ -57,7 +57,6 @@ class ProfileService {
     for (final n in doc.querySelectorAll('script,style,noscript,template')) { n.remove(); }
     final text = _clean(doc.body?.text ?? '');
 
-    // “头像旁边”显示昵称：优先取资料页明确标注的昵称，而不是用户名链接。
     final nickname = _labelValue(doc, ['昵称', '昵称：', '显示名称']);
     final username = _labelValue(doc, ['用户名', '用户名：']) ?? _visibleName(doc);
     final name = _validName(nickname) ? nickname! : (_validName(username) ? username! : '用户');
@@ -78,7 +77,6 @@ class ProfileService {
   }
 
   Future<int> _fetchCreditBalance(dynamic profileDoc, String text, int uid) async {
-    // 个人资料页有时只显示积分而不输出可提现星币。优先从专门的 credit 页面读取，避免 UID 被当余额。
     final direct = _numberFor(profileDoc, text, ['星币', '源币'], uid: uid, rejectUid: true);
     if (direct > 0) return direct;
     try {
@@ -107,7 +105,8 @@ class ProfileService {
       final value = _clean(element.text ?? '');
       if (value.isEmpty || value.length > 80 || !labels.any(value.contains)) continue;
       if (RegExp(r'UID\s*[:：]?', caseSensitive: false).hasMatch(value)) continue;
-      final m = RegExp(r'(?:${labels.map(RegExp.escape).join('|')})\s*[:：]?\s*([0-9]{1,12})').firstMatch(value);
+      final pattern = '(?:${labels.map(RegExp.escape).join('|')})\\s*[:：]?\\s*([0-9]{1,12})';
+      final m = RegExp(pattern).firstMatch(value);
       if (m != null) {
         final n = int.tryParse(m.group(1)!);
         if (n != null && (!rejectUid || n != uid)) return n;
