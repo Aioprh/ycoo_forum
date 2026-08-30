@@ -24,6 +24,7 @@ class _ProfilePageState extends State<ProfilePage> {
   String? _level;
   String? _rank;
   int? _points;
+  int? _coins;
   bool _ready = false;
   bool _signing = false;
   String? _checkinResult;
@@ -46,6 +47,7 @@ class _ProfilePageState extends State<ProfilePage> {
         _level = identity.level;
         _rank = identity.rank;
         _points = identity.points;
+        _coins = identity.coins;
       }
     }
     _username ??= AuthService.instance.username;
@@ -73,6 +75,7 @@ class _ProfilePageState extends State<ProfilePage> {
       _level = null;
       _rank = null;
       _points = null;
+      _coins = null;
       _ready = true;
       _checkinResult = null;
     });
@@ -317,6 +320,7 @@ class _ProfilePageState extends State<ProfilePage> {
                               _accountBadge(icon: Icons.diamond_outlined, text: _level ?? '等级'),
                               _accountBadge(icon: Icons.school_outlined, text: _cleanRankText(_rank)),
                               _accountBadge(icon: Icons.stars_outlined, text: _points == null ? '积分' : '积分 $_points'),
+                              _accountBadge(icon: Icons.payments_outlined, text: _coins == null ? '星币' : '星币 $_coins'),
                             ],
                           ),
                         ],
