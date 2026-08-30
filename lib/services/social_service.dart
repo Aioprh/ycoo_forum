@@ -80,14 +80,7 @@ class SocialService {
 
   Future<List<SocialUser>> _parseUsers(String html) async {
     final doc = parser.parse(html);
-    for (final node in doc.querySelectorAll('script,style,noscript,template')) {
-      node.remove();
-    }
-
-    // Discuz pages contain several links carrying the same UID. The first
-    // matching link is not necessarily the profile link; it can be the
-    // remove/follow action whose visible text is just "×". Group by UID and
-    // resolve the profile link before extracting display data.
+    for (final node in doc.querySelectorAll('script,style,noscript,template')) node.remove();
     final links = doc.querySelectorAll('a[href*="uid="],a[href*="space-uid-"]');
     final byUid = <int, List<dynamic>>{};
     for (final link in links) {
@@ -96,7 +89,6 @@ class SocialService {
       if (uid <= 0) continue;
       (byUid[uid] ??= <dynamic>[]).add(link);
     }
-
     final result = <SocialUser>[];
     for (final entry in byUid.entries) {
       final uid = entry.key;
@@ -107,41 +99,29 @@ class SocialService {
         if (ap != bp) return ap - bp;
         return _nameScore(_clean(a.text)).compareTo(_nameScore(_clean(b.text)));
       });
-
-      String name = '';
-      String avatar = '';
+      String name = '', avatar = '';
       dynamic bestAnchor;
       for (final anchor in candidates) {
         final container = _userContainer(anchor);
         final candidateName = _extractName(anchor, container, uid);
         final candidateAvatar = _extractAvatar(anchor, container);
         if (_badName(candidateName)) continue;
-        name = candidateName;
-        avatar = candidateAvatar;
-        bestAnchor = anchor;
+        name = candidateName; avatar = candidateAvatar; bestAnchor = anchor;
         if (_isProfileHref(anchor.attributes['href'] ?? '')) break;
       }
-
       final container = _userContainer(bestAnchor ?? candidates.first);
       final containerText = _clean(container?.text ?? '');
       var subtitle = _clean(containerText.replaceFirst(name, ''));
       if (subtitle.length > 120 || _isNavigation(subtitle)) subtitle = '';
       if (subtitle.isEmpty) subtitle = 'UID $uid';
-
-      // The social page's markup is a little inconsistent. When it only
-      // exposes the placeholder/action link, use the canonical profile page
-      // for the authoritative nickname and avatar.
       if (_badName(name) || avatar.isEmpty) {
         try {
           final profile = await ProfileService.instance.fetchProfile(uid);
           if (_validProfileName(profile.username)) name = profile.username.trim();
           if (avatar.isEmpty && profile.avatar.isNotEmpty) avatar = profile.avatar;
           if (subtitle == 'UID $uid' && profile.group.isNotEmpty) subtitle = 'UID $uid · ${profile.group}';
-        } catch (_) {
-          // Keep the UID fallback when the profile endpoint is unavailable.
-        }
+        } catch (_) {}
       }
-
       if (_badName(name)) continue;
       result.add(SocialUser(uid: uid, name: name, avatar: avatar, subtitle: subtitle));
       if (result.length >= 200) break;
@@ -158,17 +138,8 @@ class SocialService {
       _clean(container?.querySelector('.xw1,.xi2,.name,.username,.nickname,.title,[class*="username"],[class*="nickname"],[class*="name"]')?.text ?? ''),
       _clean(container?.attributes['title'] ?? ''),
     ];
-
-    if (container != null) {
-      for (final a in container.querySelectorAll('a[href]')) {
-        final href = a.attributes['href'] ?? '';
-        if (_uidFrom(href) == uid) values.add(_clean(a.text));
-      }
-    }
-
-    for (final value in values) {
-      if (!_badName(value)) return value;
-    }
+    if (container != null) for (final a in container.querySelectorAll('a[href]')) if (_uidFrom(a.attributes['href'] ?? '') == uid) values.add(_clean(a.text));
+    for (final value in values) if (!_badName(value)) return value;
     return '';
   }
 
@@ -179,8 +150,7 @@ class SocialService {
     if (container != null) images.addAll(container.querySelectorAll('img'));
     for (final image in images) {
       final raw = (image.attributes['data-src'] ?? image.attributes['data-original'] ?? image.attributes['src'] ?? '').trim();
-      if (!_validImageSource(raw)) continue;
-      return _absolute(raw);
+      if (_validImageSource(raw)) return _absolute(raw);
     }
     return '';
   }
@@ -223,27 +193,44 @@ class SocialService {
     if (cookie == null || cookie.isEmpty) return '请先登录论坛';
     try {
       final client = await NetClient.instance.client;
-      final pagePath = 'home.php?mod=spacecp&ac=follow&uid=$uid&mobile=2';
+      // Discuz 关注接口的标准参数是 hash + fuid。每次操作重新取当前页面
+      // FORMHASH，再映射到 hash，避免直接提交 formhash/uid 导致“操作令牌失效”。
+      final pagePath = 'home.php?mod=space&uid=$uid&mobile=2';
       final page = await _get(pagePath);
       final formhash = _hiddenValue(page, 'formhash');
       if (formhash.isEmpty) return '未取得操作令牌，请刷新登录状态后重试';
-      final path = 'home.php?mod=spacecp&ac=follow&op=${follow ? 'add' : 'del'}&uid=$uid&mobile=2';
-      final response = await NetClient.retry(() => client.post(Uri.parse('$_base$path'), headers: {
+      final action = follow ? 'add' : 'del';
+      final uri = Uri.parse('${_base}home.php').replace(queryParameters: {
+        'mod': 'spacecp', 'ac': 'follow', 'op': action,
+        'hash': formhash, 'fuid': '$uid', 'mobile': '2', 'inajax': '1',
+      });
+      final headers = <String, String>{
         'User-Agent': NetClient.ua,
         'Accept': 'application/json,text/html,*/*',
         'Referer': '$_base$pagePath',
-        'Content-Type': 'application/x-www-form-urlencoded; charset=UTF-8',
+        'Cache-Control': 'no-cache, no-store',
+        'Pragma': 'no-cache',
+        'X-Requested-With': 'XMLHttpRequest',
         if (cookie.isNotEmpty) 'Cookie': cookie,
-      }, body: {'formhash': formhash, 'uid': '$uid', 'op': follow ? 'add' : 'del', 'inajax': '1'}).timeout(const Duration(seconds: 20)));
-      final body = NetClient.decode(response.bodyBytes);
-      if (RegExp(r'(succeed|成功|已关注|关注成功|取消关注成功)', caseSensitive: false).hasMatch(body)) return null;
-      if (body.contains('登录') && body.contains('失效')) return '登录态已失效，请重新登录论坛';
+      };
+      var response = await NetClient.retry(() => client.get(uri, headers: headers).timeout(const Duration(seconds: 20)));
+      var body = NetClient.decode(response.bodyBytes);
+      if (_isSuccess(body)) return null;
+      // 少数模板会把动作改成 POST，保留标准 hash/fuid，同时兼容旧字段。
+      response = await NetClient.retry(() => client.post(uri, headers: {...headers, 'Content-Type': 'application/x-www-form-urlencoded; charset=UTF-8'}, body: {
+        'hash': formhash, 'formhash': formhash, 'fuid': '$uid', 'uid': '$uid', 'op': action, 'inajax': '1',
+      }).timeout(const Duration(seconds: 20)));
+      body = NetClient.decode(response.bodyBytes);
+      if (_isSuccess(body)) return null;
+      if (body.contains('登录') && (body.contains('失效') || body.contains('用户名'))) return '登录态已失效，请重新登录论坛';
       if (_tokenFailed(body)) return '操作令牌已失效，请刷新后重试';
       return follow ? '关注失败，请稍后重试' : '取消关注失败，请稍后重试';
-    } catch (_) {
-      return '操作失败，请检查网络后重试';
+    } catch (e) {
+      return e.toString().contains('令牌') ? e.toString().replaceFirst('Exception: ', '') : '操作失败，请检查网络后重试';
     }
   }
+
+  static bool _isSuccess(String body) => RegExp(r'(succeed|成功|已关注|关注成功|取消关注成功)', caseSensitive: false).hasMatch(body);
 
   static int _uidFrom(String href) {
     final uri = Uri.tryParse(href);
@@ -311,7 +298,7 @@ class SocialService {
 
   static bool _looksLikeLogin(String html) {
     final doc = parser.parse(html);
-    for (final node in doc.querySelectorAll('script,style,noscript,template')) { node.remove(); }
+    for (final node in doc.querySelectorAll('script,style,noscript,template')) node.remove();
     final text = _clean(doc.body?.text ?? '');
     return text.isNotEmpty && RegExp(r'(用户名|登录密码)').hasMatch(text) && text.contains('登录') && !html.contains('action=logout');
   }
