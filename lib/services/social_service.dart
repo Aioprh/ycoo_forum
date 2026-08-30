@@ -84,9 +84,9 @@ class SocialService {
       node.remove();
     }
 
-    // Discuz pages contain several links carrying the same UID.  The first
+    // Discuz pages contain several links carrying the same UID. The first
     // matching link is not necessarily the profile link; it can be the
-    // remove/follow action whose visible text is just "×".  Group by UID and
+    // remove/follow action whose visible text is just "×". Group by UID and
     // resolve the profile link before extracting display data.
     final links = doc.querySelectorAll('a[href*="uid="],a[href*="space-uid-"]');
     final byUid = <int, List<dynamic>>{};
@@ -128,10 +128,9 @@ class SocialService {
       if (subtitle.length > 120 || _isNavigation(subtitle)) subtitle = '';
       if (subtitle.isEmpty) subtitle = 'UID $uid';
 
-      // The social page's markup is a little inconsistent.  When it only
+      // The social page's markup is a little inconsistent. When it only
       // exposes the placeholder/action link, use the canonical profile page
-      // for the authoritative nickname and avatar.  This also fixes stale or
-      // unrelated avatars without changing the social-page UI.
+      // for the authoritative nickname and avatar.
       if (_badName(name) || avatar.isEmpty) {
         try {
           final profile = await ProfileService.instance.fetchProfile(uid);
@@ -160,8 +159,6 @@ class SocialService {
       _clean(container?.attributes['title'] ?? ''),
     ];
 
-    // Some templates put the real nickname in a second profile anchor while
-    // the first anchor is the avatar or action control.
     if (container != null) {
       for (final a in container.querySelectorAll('a[href]')) {
         final href = a.attributes['href'] ?? '';
@@ -241,6 +238,7 @@ class SocialService {
       final body = NetClient.decode(response.bodyBytes);
       if (RegExp(r'(succeed|成功|已关注|关注成功|取消关注成功)', caseSensitive: false).hasMatch(body)) return null;
       if (body.contains('登录') && body.contains('失效')) return '登录态已失效，请重新登录论坛';
+      if (_tokenFailed(body)) return '操作令牌已失效，请刷新后重试';
       return follow ? '关注失败，请稍后重试' : '取消关注失败，请稍后重试';
     } catch (_) {
       return '操作失败，请检查网络后重试';
@@ -280,23 +278,36 @@ class SocialService {
   static bool _badName(String value) {
     final v = _clean(value);
     if (v.isEmpty || v.length > 40) return true;
-    if (const {'首页', '下一页', '上一页', '更多', '关注', '粉丝', '好友', '删除', '取消关注', '×', 'x', 'X', '××'}.contains(v)) return true;
+    if (const {'首页','下一页','上一页','更多','关注','粉丝','好友','删除','取消关注','×','x','X','××'}.contains(v)) return true;
     if (v.contains('�') || v.contains('\uFFFD')) return true;
-    // Reject symbol-only placeholders such as the boxed multiplication mark
-    // rendered by the site when an icon/close control has no text fallback.
     if (!RegExp(r'[\u4e00-\u9fffA-Za-z0-9]').hasMatch(v)) return true;
     return false;
   }
 
   static String _clean(String value) => value.replaceAll('\uFFFD', '�').replaceAll(RegExp(r'\s+'), ' ').trim();
 
-  static bool _isNavigation(String value) => const {'首页', '下一页', '上一页', '更多', '关注', '粉丝', '好友', '删除', '取消关注'}.contains(value);
+  static bool _isNavigation(String value) => const {'首页','下一页','上一页','更多','关注','粉丝','好友','删除','取消关注'}.contains(value);
 
   static String _hiddenValue(String html, String name) {
     final doc = parser.parse(html);
     final input = doc.querySelector('input[name="$name"]');
-    return (input?.attributes['value'] ?? '').trim();
+    final value = (input?.attributes['value'] ?? '').trim();
+    if (value.isNotEmpty) return value;
+    final escaped = RegExp.escape(name);
+    final patterns = <RegExp>[
+      RegExp('name\\s*=\\s*["\\\']$escaped["\\\'][^>]*value\\s*=\\s*["\\\']([^"\\\']+)["\\\']', caseSensitive: false),
+      RegExp('value\\s*=\\s*["\\\']([^"\\\']+)["\\\'][^>]*name\\s*=\\s*["\\\']$escaped["\\\']', caseSensitive: false),
+      RegExp('(?:[?&]|\\b)$escaped(?:=|%3D)([A-Za-z0-9_-]{6,64})', caseSensitive: false),
+      RegExp('["\\\']$escaped["\\\']\\s*:\\s*["\\\']([A-Za-z0-9_-]{6,64})["\\\']', caseSensitive: false),
+    ];
+    for (final pattern in patterns) {
+      final match = pattern.firstMatch(html);
+      if (match != null && match.group(1)!.trim().isNotEmpty) return match.group(1)!.trim();
+    }
+    return '';
   }
+
+  static bool _tokenFailed(String body) => body.contains('formhash') && (body.contains('错误') || body.contains('失效') || body.contains('非法') || body.contains('验证失败'));
 
   static bool _looksLikeLogin(String html) {
     final doc = parser.parse(html);
