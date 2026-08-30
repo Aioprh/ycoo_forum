@@ -13,7 +13,9 @@ class NativeNotice {
 class NativeMessage {
   final String title;
   final String subtitle;
-  const NativeMessage({required this.title, required this.subtitle});
+  final String sender;
+  final String time;
+  const NativeMessage({required this.title, required this.subtitle, this.sender = '', this.time = ''});
 }
 
 class NativeFriend {
@@ -68,7 +70,6 @@ class MemberServiceV2 {
     throw Exception(last?.toString().replaceFirst('Exception: ', '') ?? '请求失败');
   }
 
-  /// 解析前移除脚本、样式和模板节点，彻底避免把 JS 源码当成页面正文。
   static dynamic _doc(String html) {
     final doc = parser.parse(html);
     for (final node in doc.querySelectorAll('script,style,noscript,template')) {
@@ -116,16 +117,65 @@ class MemberServiceV2 {
     final doc = _doc(html);
     final result = <NativeMessage>[];
     final seen = <String>{};
-    for (final node in doc.querySelectorAll('li,tr,article,.pm_list,.pml,.comiis_pm,.list')) {
-      final text = _clean(node.text);
-      if (text.length < 2 || text.length > 500 || !seen.add(text)) continue;
-      final links = node.querySelectorAll('a[href]');
-      final title = links.isNotEmpty ? _clean(links.first.text) : (text.length > 50 ? text.substring(0, 50) : text);
-      if (title.isEmpty || _looksLikeNavigation(title)) continue;
-      result.add(NativeMessage(title: title, subtitle: text == title ? '站内消息' : text));
+
+    // Discuz X 的私信详情节点通常是 dl.pml / #pmlist_xxx。
+    // 旧实现同时扫描 li、tr、article、list 等父子节点，会把同一条私信解析多次。
+    final structured = doc.querySelectorAll('dl.pml, dl[id^="pmlist_"]');
+    if (structured.isNotEmpty) {
+      for (final node in structured) {
+        final parsed = _parsePmNode(node);
+        if (parsed == null) continue;
+        final key = '${parsed.sender}|${parsed.subtitle}|${parsed.time}'.toLowerCase();
+        if (!seen.add(key)) continue;
+        result.add(parsed);
+        if (result.length >= 100) break;
+      }
+      return result;
+    }
+
+    // 移动模板没有 pml 时，只选择真正的私信条目，避免扫描通用 .list 父节点。
+    final candidates = doc.querySelectorAll('li.pm_list, li.pml, li[class*="pm"], .pm_list > li, .pml > li');
+    for (final node in candidates) {
+      final parsed = _parsePmNode(node);
+      if (parsed == null) continue;
+      final key = '${parsed.sender}|${parsed.subtitle}|${parsed.time}'.toLowerCase();
+      if (!seen.add(key)) continue;
+      result.add(parsed);
       if (result.length >= 100) break;
     }
+
     return result;
+  }
+
+  NativeMessage? _parsePmNode(dynamic node) {
+    final authorLink = node.querySelector('a[href*="mod=space"][href*="uid="], a[href*="uid="]');
+    var sender = _clean(authorLink?.text ?? '');
+    if (_looksLikeNavigation(sender) || sender.length > 40) sender = '';
+
+    final timeNode = node.querySelector('.xg1, .xg2, time, [class*="time"], [class*="date"]');
+    final time = _clean(timeNode?.text ?? '');
+
+    final messageNode = node.querySelector('.ptm');
+    var body = _clean(messageNode?.text ?? node.text);
+    if (sender.isNotEmpty) body = body.replaceFirst(sender, '').trim();
+    if (time.isNotEmpty) body = body.replaceFirst(time, '').trim();
+    body = body.replaceAll(RegExp(r'^[:：\-·\s]+|[:：\-·\s]+$'), '').trim();
+
+    // 某些移动模板只有“站内私信”导航链接，没有真正的会话内容，直接忽略。
+    if (body.isEmpty || body == '站内私信' || body == '私信') return null;
+    if (sender.isEmpty) {
+      final title = node.querySelector('strong,b,h3,h4,.xw1,.title,.name');
+      sender = _clean(title?.text ?? '');
+      if (_looksLikeNavigation(sender)) sender = '';
+    }
+    if (sender.isEmpty) sender = '站内私信';
+
+    return NativeMessage(
+      title: sender,
+      sender: sender,
+      subtitle: body,
+      time: time,
+    );
   }
 
   Future<List<NativeFriend>> fetchFriends() async {
@@ -163,7 +213,6 @@ class MemberServiceV2 {
     return NativeCreditSummary(balance: balance, records: records.take(30).toList());
   }
 
-  /// 原生发送站内私信（Discuz spacecp.pm）。返回 null 表示成功，否则返回失败原因。
   Future<String?> sendMessage({required String to, required String message}) async {
     final target = to.trim();
     final text = message.trim();
@@ -182,7 +231,6 @@ class MemberServiceV2 {
         if (cookie != null && cookie.isNotEmpty) 'Cookie': cookie,
       };
       final sendPath = 'home.php?mod=spacecp&ac=pm&op=send&mobile=2';
-      // 先取发送页取得最新 formhash（同时维持会话）。
       final pageResp = await NetClient.retry(() => client.get(Uri.parse('$_base$sendPath'), headers: headers).timeout(const Duration(seconds: 20)));
       final page = NetClient.decode(pageResp.bodyBytes);
       final formhash = _hiddenValue(page, 'formhash');
@@ -193,18 +241,10 @@ class MemberServiceV2 {
       final resp = await NetClient.retry(() => client.post(
         Uri.parse('$_base$sendPath'),
         headers: {...headers, 'Referer': '$_base$sendPath', 'Content-Type': 'application/x-www-form-urlencoded; charset=UTF-8', 'X-Requested-With': 'XMLHttpRequest'},
-        body: <String, String>{
-          'formhash': formhash,
-          'username': target,
-          'message': text,
-          'pmsubmit': 'yes',
-          'sendpm': 'true',
-        },
+        body: <String, String>{'formhash': formhash, 'username': target, 'message': text, 'pmsubmit': 'yes', 'sendpm': 'true'},
       ).timeout(const Duration(seconds: 20)));
       final body = NetClient.decode(resp.bodyBytes);
-      if (body.contains('succeed') || body.contains('发送成功') || body.contains('操作成功') || body.contains('do_success')) {
-        return null;
-      }
+      if (body.contains('succeed') || body.contains('发送成功') || body.contains('操作成功') || body.contains('do_success')) return null;
       if (body.contains('请先登录') || body.contains('登录后才能')) return '登录态已失效，请重新登录论坛';
       final msg = RegExp(r'''showError\(\s*['"]([^'"]+)['"]''').firstMatch(body)?.group(1);
       if (msg != null) return msg.trim();
@@ -215,17 +255,10 @@ class MemberServiceV2 {
     }
   }
 
-  /// 从页面 HTML 中提取指定 name 的隐藏字段值（兼容 name/value 顺序互换）。
   static String? _hiddenValue(String html, String name) {
     final escaped = RegExp.escape(name);
-    final nameFirst = RegExp(
-      'name\\s*=\\s*[\"\\\']$escaped[\"\\\'][^>]*value\\s*=\\s*[\"\\\']([^\"\\\']+)[\"\\\']',
-      caseSensitive: false,
-    );
-    final valueFirst = RegExp(
-      'value\\s*=\\s*[\"\\\']([^\"\\\']+)[\"\\\'][^>]*name\\s*=\\s*[\"\\\']$escaped[\"\\\']',
-      caseSensitive: false,
-    );
+    final nameFirst = RegExp('name\\s*=\\s*[\"\\\']$escaped[\"\\\'][^>]*value\\s*=\\s*[\"\\\']([^\"\\\']+)[\"\\\']', caseSensitive: false);
+    final valueFirst = RegExp('value\\s*=\\s*[\"\\\']([^\"\\\']+)[\"\\\'][^>]*name\\s*=\\s*[\"\\\']$escaped[\"\\\']', caseSensitive: false);
     return nameFirst.firstMatch(html)?.group(1) ?? valueFirst.firstMatch(html)?.group(1);
   }
 
@@ -246,5 +279,5 @@ class MemberServiceV2 {
     return RegExp(r'(用户名|登录密码)').hasMatch(t) && RegExp(r'登录').hasMatch(t) && !html.contains('action=logout');
   }
 
-  static bool _looksLikeNavigation(String text) => const {'下一页','上一页','首页','更多','回复','查看','详情','登录','注册'}.contains(text);
+  static bool _looksLikeNavigation(String text) => const {'下一页','上一页','首页','更多','回复','查看','详情','登录','注册','站内私信','私信'}.contains(text);
 }
