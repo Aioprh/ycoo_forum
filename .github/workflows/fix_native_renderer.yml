@@ -1,0 +1,61 @@
+name: Fix native renderer build
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - '.github/workflows/fix_native_renderer.yml'
+
+permissions:
+  contents: write
+
+jobs:
+  fix:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: main
+          fetch-depth: 0
+      - name: Repair renderer and restore WebView dependency
+        run: |
+          python3 - <<'PY'
+          from pathlib import Path
+          import re
+
+          # WebView is still required by the login verification fallback and
+          # standalone web page, even though post bodies are native.
+          p = Path('pubspec.yaml')
+          s = p.read_text()
+          if '  webview_flutter:' not in s:
+              s = s.replace('  cronet_http: ^1.9.0\n', '  cronet_http: ^1.9.0\n  webview_flutter: ^4.10.0\n')
+          p.write_text(s)
+
+          # Native renderer: html 0.15.x exposes text content through text,
+          # not Node.data. Avoid the invalid getter that stopped analyze.
+          p = Path('lib/widgets/native_post_content.dart')
+          s = p.read_text()
+          s = s.replace('node.data.trim()', 'node.text.trim()')
+          s = s.replace('node.data.isNotEmpty', 'node.text.isNotEmpty')
+          s = s.replace('TextSpan(text: node.data,', 'TextSpan(text: node.text,')
+          p.write_text(s)
+
+          # Detail page no longer needs the old WebView card or stale body
+          # comparison variables. Remove both safely while retaining native
+          # body rendering.
+          p = Path('lib/pages/detail_page.dart')
+          s = p.read_text()
+          s = s.replace("      final oldBody = _detail?.bodyHtml.trim() ?? '';\n      final newBody = d.bodyHtml.trim();\n", '')
+          s = re.sub(r'\n  Widget _webCard\(BuildContext context, WebViewController controller, double height\) \{.*?\n  \}\n', '\n', s, flags=re.S)
+          p.write_text(s)
+
+          # The temporary migration workflow must not remain in the project.
+          Path('.github/workflows/fix_native_renderer.yml').unlink(missing_ok=True)
+          PY
+      - name: Commit repair
+        run: |
+          git config user.name 'github-actions[bot]'
+          git config user.email '41898282+github-actions[bot]@users.noreply.github.com'
+          git add pubspec.yaml lib/pages/detail_page.dart lib/widgets/native_post_content.dart .github/workflows/fix_native_renderer.yml
+          git commit -m 'fix: repair native post renderer and Android dependencies [skip ci]'
+          git push origin main
