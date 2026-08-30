@@ -7,6 +7,7 @@ import 'login_page.dart';
 import 'member_feature_page.dart';
 import 'native_profile_page.dart';
 import 'native_site_page.dart';
+import 'profile_edit_page.dart';
 import 'search_page.dart';
 
 class ProfilePage extends StatefulWidget {
@@ -59,6 +60,11 @@ class _ProfilePageState extends State<ProfilePage> {
     if (!mounted) return;
     setState(() => _signing = false);
     ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text(result), behavior: SnackBarBehavior.floating));
+  }
+
+  Future<void> _openEdit() async {
+    final changed = await Navigator.of(context).push<bool>(MaterialPageRoute(builder: (_) => const ProfileEditPage()));
+    if (changed == true) await _load();
   }
 
   void _openNativeSite(String path, String title) {
@@ -148,7 +154,7 @@ class _ProfilePageState extends State<ProfilePage> {
               childAspectRatio: 2.55,
               children: [
                 _featureTile(icon: Icons.person_outline, title: '个人主页', subtitle: '原生资料、主题、回帖、关注', onTap: _openMySpace),
-                _featureTile(icon: Icons.badge_outlined, title: '资料设置', subtitle: '基本资料与隐私', onTap: () => _openNativeSite('home.php?mod=spacecp&ac=profile&mobile=2', '资料设置')),
+                _featureTile(icon: Icons.badge_outlined, title: '资料设置', subtitle: '原生编辑基本资料', onTap: _openEdit),
                 _featureTile(icon: Icons.article_outlined, title: '我的主题', subtitle: '我发布的帖子', onTap: () => _openNative(title: '我的主题', path: 'home.php?mod=space&do=thread&view=me&mobile=2', type: MemberFeatureType.threads)),
                 _featureTile(icon: Icons.forum_outlined, title: '我的回帖', subtitle: '我参与的帖子', onTap: () => _openNative(title: '我的回帖', path: 'home.php?mod=space&do=thread&view=me&type=reply&mobile=2', type: MemberFeatureType.replies)),
                 _featureTile(icon: Icons.bookmark_border, title: '我的收藏', subtitle: '收藏的主题', onTap: () => _openNative(title: '我的收藏', path: 'home.php?mod=space&do=favorite&view=me&mobile=2', type: MemberFeatureType.favorites)),
@@ -186,7 +192,7 @@ class _ProfilePageState extends State<ProfilePage> {
             _sectionHeader(context, '会员服务'),
             _featureTile(icon: Icons.add_card, title: '源币充值', subtitle: '充值、兑换比例与订单信息', onTap: () => _openNativeSite('home.php?ac=plugin&id=boan_buycredit:buycredit&mod=spacecp&op=credit', '源币充值')),
             const SizedBox(height: 10),
-            _featureTile(icon: Icons.manage_accounts_outlined, title: '帐号设置', subtitle: '帐号资料、隐私与安全', onTap: () => _openNativeSite('home.php?mod=spacecp&ac=profile&mobile=2', '帐号设置')),
+            _featureTile(icon: Icons.manage_accounts_outlined, title: '帐号设置', subtitle: '帐号资料、隐私与安全', onTap: _openEdit),
             const SizedBox(height: 10),
             ListTile(contentPadding: const EdgeInsets.symmetric(horizontal: 14), leading: const Icon(Icons.logout), title: const Text('退出登录'), trailing: const Icon(Icons.chevron_right), onTap: _logout),
           ] else ...[
