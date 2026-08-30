@@ -19,7 +19,45 @@ class ProfileData {
   final int points;
   final bool followingMe;
   final bool followedByMe;
-  const ProfileData({required this.uid, required this.username, required this.avatar, required this.group, required this.signature, required this.threads, required this.replies, required this.following, required this.followers, required this.credits, required this.points, required this.followingMe, required this.followedByMe});
+
+  const ProfileData({
+    required this.uid,
+    required this.username,
+    required this.avatar,
+    required this.group,
+    required this.signature,
+    required this.threads,
+    required this.replies,
+    required this.following,
+    required this.followers,
+    required this.credits,
+    required this.points,
+    required this.followingMe,
+    required this.followedByMe,
+  });
+
+  ProfileData copyWith({
+    int? following,
+    int? followers,
+    bool? followingMe,
+    bool? followedByMe,
+  }) {
+    return ProfileData(
+      uid: uid,
+      username: username,
+      avatar: avatar,
+      group: group,
+      signature: signature,
+      threads: threads,
+      replies: replies,
+      following: following ?? this.following,
+      followers: followers ?? this.followers,
+      credits: credits,
+      points: points,
+      followingMe: followingMe ?? this.followingMe,
+      followedByMe: followedByMe ?? this.followedByMe,
+    );
+  }
 }
 
 class ProfileService {
@@ -29,7 +67,12 @@ class ProfileService {
 
   Future<String> _get(String path) async {
     final client = await NetClient.instance.client;
-    final uri = Uri.parse('$_base$path').replace(queryParameters: {...Uri.parse('$_base$path').queryParameters, '_ycoo_ts': DateTime.now().millisecondsSinceEpoch.toString()});
+    final uri = Uri.parse('$_base$path').replace(
+      queryParameters: {
+        ...Uri.parse('$_base$path').queryParameters,
+        '_ycoo_ts': DateTime.now().millisecondsSinceEpoch.toString(),
+      },
+    );
     final cookie = AuthService.instance.authCookie;
     final r = await NetClient.retry(() => client.get(uri, headers: {
       'User-Agent': NetClient.ua,
@@ -50,7 +93,15 @@ class ProfileService {
     final avatar = _abs(doc.querySelector('.avatar img, .avtm img, img[src*="avatar"], .comiis_space_avatar img')?.attributes['src'] ?? '');
     final group = _clean(doc.querySelector('.comiis_space_level, .gm, .xg1')?.text ?? '');
     final signature = _clean(doc.querySelector('.comiis_space_signature, .personal_signature, .spv')?.text ?? '');
-    int number(List<String> labels) { for (final l in labels) { final m = RegExp('${RegExp.escape(l)}\\s*(?:[:：])?\\s*(\\d+)').firstMatch(text); if (m != null) return int.tryParse(m.group(1)!) ?? 0; } return 0; }
+
+    int number(List<String> labels) {
+      for (final l in labels) {
+        final m = RegExp('${RegExp.escape(l)}\\s*(?:[:：])?\\s*(\\d+)').firstMatch(text);
+        if (m != null) return int.tryParse(m.group(1)!) ?? 0;
+      }
+      return 0;
+    }
+
     final following = number(['关注']);
     final followers = number(['粉丝']);
     final threads = number(['主题数']);
@@ -59,8 +110,22 @@ class ProfileService {
     final points = number(['积分']);
     final me = AuthService.instance.uid ?? 0;
     final followedByMe = me > 0 && RegExp(r'(?:取消关注|已关注)').hasMatch(text);
-    final followingMe = false;
-    return ProfileData(uid: uid, username: name, avatar: avatar, group: group, signature: signature, threads: threads, replies: replies, following: following, followers: followers, credits: credits, points: points, followingMe: followingMe, followedByMe: followedByMe);
+
+    return ProfileData(
+      uid: uid,
+      username: name,
+      avatar: avatar,
+      group: group,
+      signature: signature,
+      threads: threads,
+      replies: replies,
+      following: following,
+      followers: followers,
+      credits: credits,
+      points: points,
+      followingMe: false,
+      followedByMe: followedByMe,
+    );
   }
 
   Future<List<ThreadItem>> fetchThreads(int uid, {bool replies = false}) {
@@ -79,23 +144,45 @@ class ProfileService {
       final formhash = _hidden(page, 'formhash');
       if (formhash == null || formhash.isEmpty) return '未取得操作令牌，请刷新后重试';
       final path = 'home.php?mod=spacecp&ac=friend&op=${follow ? 'add' : 'ignore'}&uid=$uid&inajax=1';
-      final r = await client.post(Uri.parse('$_base$path'), headers: {
-        'User-Agent': NetClient.ua,
-        'Accept': '*/*',
-        'Content-Type': 'application/x-www-form-urlencoded; charset=UTF-8',
-        'Referer': '$_base' 'home.php?mod=space&do=profile&uid=$uid&mobile=2',
-        'X-Requested-With': 'XMLHttpRequest',
-        'Cookie': cookie!,
-      }, body: {'formhash': formhash, 'uid': '$uid', 'handlekey': 'follow_$uid'}).timeout(const Duration(seconds: 20));
+      final r = await client.post(
+        Uri.parse('$_base$path'),
+        headers: {
+          'User-Agent': NetClient.ua,
+          'Accept': '*/*',
+          'Content-Type': 'application/x-www-form-urlencoded; charset=UTF-8',
+          'Referer': '$_base' 'home.php?mod=space&do=profile&uid=$uid&mobile=2',
+          'X-Requested-With': 'XMLHttpRequest',
+          'Cookie': cookie,
+        },
+        body: {'formhash': formhash, 'uid': '$uid', 'handlekey': 'follow_$uid'},
+      ).timeout(const Duration(seconds: 20));
       final body = NetClient.decode(r.bodyBytes);
       if (body.contains('succeed') || body.contains('成功') || body.contains('已关注') || (follow && body.contains('follow'))) return null;
       if (body.contains('登录') && body.contains('用户名')) return '登录态已失效，请重新登录';
       return _message(body) ?? '操作失败，请稍后重试';
-    } catch (_) { return '网络请求失败，请稍后重试'; }
+    } catch (_) {
+      return '网络请求失败，请稍后重试';
+    }
   }
 
-  static String? _message(String html) { final m = RegExp(r'''(?:showError|showDialog)\(\s*['"]([^'"]+)''').firstMatch(html); return m?.group(1); }
-  static String? _hidden(String html, String name) { final e = RegExp.escape(name); final a = RegExp('name\\s*=\\s*["\\\']$e["\\\'][^>]*value\\s*=\\s*["\\\']([^"\\\']+)', caseSensitive: false).firstMatch(html); return a?.group(1); }
+  static String? _message(String html) {
+    final m = RegExp(r'''(?:showError|showDialog)\(\s*['"]([^'"]+)''').firstMatch(html);
+    return m?.group(1);
+  }
+
+  static String? _hidden(String html, String name) {
+    final e = RegExp.escape(name);
+    final a = RegExp('name\\s*=\\s*["\\\']$e["\\\'][^>]*value\\s*=\\s*["\\\']([^"\\\']+)', caseSensitive: false).firstMatch(html);
+    return a?.group(1);
+  }
+
   static String _clean(String s) => s.replaceAll(RegExp(r'\s+'), ' ').trim();
-  static String _abs(String u) { if (u.isEmpty) return ''; if (u.startsWith('http')) return u; if (u.startsWith('//')) return 'https:$u'; if (u.startsWith('/')) return _base + u.substring(1); return _base + u; }
+
+  static String _abs(String u) {
+    if (u.isEmpty) return '';
+    if (u.startsWith('http')) return u;
+    if (u.startsWith('//')) return 'https:$u';
+    if (u.startsWith('/')) return _base + u.substring(1);
+    return _base + u;
+  }
 }
