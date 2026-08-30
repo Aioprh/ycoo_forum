@@ -10,7 +10,6 @@ permissions:
 
 jobs:
   repair:
-    if: ${{ !startsWith(github.event.head_commit.message, 'ci: auto repair Android build') }}
     runs-on: ubuntu-latest
     steps:
       - name: Checkout
