@@ -56,57 +56,18 @@ class _NativeChatPageState extends State<NativeChatPage> {
         if (cookie.isNotEmpty) 'Cookie': cookie,
       };
 
-      String? conversationHref;
-      final listUri = Uri.parse('${SiteConfig.base}home.php').replace(queryParameters: {
+      final conversationUri = Uri.parse('${SiteConfig.base}home.php').replace(queryParameters: {
         'mod': 'space',
         'do': 'pm',
+        'subop': 'view',
+        'touid': '${widget.uid}',
         'mobile': '2',
         '_ycoo_ts': DateTime.now().millisecondsSinceEpoch.toString(),
       });
-      try {
-        final listResponse = await client.get(listUri, headers: headers).timeout(const Duration(seconds: 20));
-        if (listResponse.statusCode == 200) {
-          final listHtml = NetClient.decode(listResponse.bodyBytes);
-          if (_looksLikeLogin(listHtml)) throw Exception('登录态已失效，请重新登录论坛');
-          final listDoc = parser.parse(listHtml);
-          for (final node in listDoc.querySelectorAll('script,style,noscript,template')) { node.remove(); }
-          for (final a in listDoc.querySelectorAll('a[href]')) {
-            final href = (a.attributes['href'] ?? '').trim();
-            if (!_isConversationHref(href)) continue;
-            if (_hrefUid(href) == widget.uid) {
-              conversationHref = href;
-              break;
-            }
-            final parent = a.parent;
-            final parentText = _clean(parent?.text ?? '');
-            final parentHasUid = parent?.querySelector('a[href*="touid=${widget.uid}"],a[href*="uid=${widget.uid}"]') != null;
-            if (parentHasUid && parentText.isNotEmpty) {
-              conversationHref = href;
-              break;
-            }
-          }
-        }
-      } catch (e) {
-        if (e is Exception && e.toString().contains('登录态已失效')) rethrow;
-      }
-
-      final conversationUri = conversationHref != null && conversationHref!.isNotEmpty
-          ? Uri.parse(SiteConfig.resolve(conversationHref!)).replace(queryParameters: {
-              ...Uri.parse(SiteConfig.resolve(conversationHref!)).queryParameters,
-              '_ycoo_ts': DateTime.now().millisecondsSinceEpoch.toString(),
-            })
-          : Uri.parse('${SiteConfig.base}home.php').replace(queryParameters: {
-              'mod': 'space',
-              'do': 'pm',
-              'subop': 'view',
-              'touid': '${widget.uid}',
-              'mobile': '2',
-              '_ycoo_ts': DateTime.now().millisecondsSinceEpoch.toString(),
-            });
 
       final response = await client.get(conversationUri, headers: {
         ...headers,
-        'Referer': listUri.toString(),
+        'Referer': '${SiteConfig.base}home.php?mod=space&do=pm&mobile=2',
       }).timeout(const Duration(seconds: 20));
       if (response.statusCode != 200) throw Exception('请求失败 HTTP ${response.statusCode}');
       final html = NetClient.decode(response.bodyBytes);
@@ -116,29 +77,45 @@ class _NativeChatPageState extends State<NativeChatPage> {
 
       final list = <NativeMessage>[];
       final seen = <String>{};
-      const selectors = <String>[
-        'dl.pml', 'dl[id^="pmlist_"]', 'li.pm_list', 'li.pml', '.pm_list > li', '.pml > li',
-        '.pmlist li', '[id*="pmlist"] li', '.comiis_pm_list li', '.comiis_pmitem', '.comiis_pm_content',
+
+      // Discuz 默认 space_pm_node.htm 使用 dl#pmlist_<pmid> + dd.ptm。
+      // Comiis/移动模板的 class 可能不同，因此同时按结构和常见容器兜底。
+      final selectors = <String>[
+        'dl[id^="pmlist_"]',
+        'dl.pml',
+        'dl.bbda.cl',
+        'dl[class*="pm"]',
+        'li.pm_list',
+        'li.pml',
+        'li[class*="pm"]',
+        '.pm_list > li',
+        '.pml > li',
+        '.pmlist li',
+        '[id*="pmlist"] li',
+        '.comiis_pm_list li',
+        '.comiis_pmitem',
+        '.comiis_pm_content',
       ];
+
       for (final selector in selectors) {
         for (final node in doc.querySelectorAll(selector)) {
           final message = _parseNode(node);
           if (message == null) continue;
-          final key = '${message.sender}|${message.subtitle}|${message.time}'.toLowerCase();
+          final key = '${message.uid}|${message.sender}|${message.subtitle}|${message.time}'.toLowerCase();
           if (seen.add(key)) list.add(message);
         }
       }
 
+      // 最后按“包含用户空间链接 + 非 UI 文本”的结构兜底，兼容定制移动模板。
       if (list.isEmpty) {
-        for (final node in doc.querySelectorAll('li,article,div')) {
+        for (final node in doc.querySelectorAll('dl,li,article,section,div')) {
+          final authorLinks = node.querySelectorAll('a[href*="mod=space&uid="],a[href*="mod=space%26uid="],a[href*="?uid="],a[href*="&uid="]');
+          if (authorLinks.isEmpty) continue;
           final text = _cleanNodeText(node);
-          if (text.length < 2 || text.length > 500) continue;
-          if (RegExp(r'^(首页|消息|私信|返回|刷新|发送|回复|删除)$').hasMatch(text)) continue;
-          final hasConversationLink = node.querySelector('a[href*="touid=${widget.uid}"],a[href*="subop=view"],a[href*="do=pm"]') != null;
-          if (!hasConversationLink) continue;
+          if (text.length < 2 || text.length > 1000 || _isUiOnly(text)) continue;
           final message = _parseNode(node);
           if (message == null) continue;
-          final key = '${message.sender}|${message.subtitle}|${message.time}'.toLowerCase();
+          final key = '${message.uid}|${message.sender}|${message.subtitle}|${message.time}'.toLowerCase();
           if (seen.add(key)) list.add(message);
         }
       }
@@ -156,16 +133,69 @@ class _NativeChatPageState extends State<NativeChatPage> {
   }
 
   NativeMessage? _parseNode(dynamic node) {
-    final author = node.querySelector('a[href*="uid="],a[href*="touid="],a[href*="mod=space"],a[href*="username="]');
+    if (node == null) return null;
+
+    final author = node.querySelector(
+      'a[href*="mod=space&uid="],'
+      'a[href*="mod=space%26uid="],'
+      'a[href*="touid="],'
+      'a[href*="uid="],'
+      'a[href*="username="]',
+    );
     var sender = _cleanNodeText(author);
-    final time = _cleanNodeText(node.querySelector('.xg1,.xg2,time,[class*="time"],[class*="date"]'));
-    var body = _cleanNodeText(node.querySelector('.ptm,.pml_body,.pm_body,.pm_message,.comiis_pmtext,.comiis_pm_content,.pmtext') ?? node);
-    if (sender.isNotEmpty) body = body.replaceFirst(sender, '').trim();
-    if (time.isNotEmpty) body = body.replaceFirst(time, '').trim();
+    final authorUid = _authorUid(node);
+
+    // 默认 Discuz 私信节点：dd.ptm 中依次为“你/用户名 + 正文 + 时间”。
+    // 优先取 ptm，再兼容 Comiis 自定义正文容器。
+    final bodyNode = node.querySelector(
+      'dd.ptm,.ptm,.pml_body,.pm_body,.pm_message,.comiis_pmtext,.comiis_pm_content,.pmtext,'
+      '[class*="pm_content"],[class*="pm_message"],[class*="pmtext"]',
+    );
+    var body = _cleanNodeText(bodyNode ?? node);
+
+    if (sender.isNotEmpty) body = _removeFirstText(body, sender);
+    final currentName = _clean(AuthService.instance.username ?? '');
+    if (currentName.isNotEmpty) body = _removeFirstText(body, currentName);
+
+    final timeNode = node.querySelector('.xg1,.xg2,time,[class*="time"],[class*="date"]');
+    final time = _cleanNodeText(timeNode);
+    if (time.isNotEmpty) body = _removeFirstText(body, time);
+
     body = _clean(body.replaceAll(RegExp(r'^[:：\-·\s]+|[:：\-·\s]+$'), ''));
-    if (body.isEmpty || RegExp(r'^(站内私信|站内消息|私信|消息|查看|详情|回复|删除)$').hasMatch(body)) return null;
-    if (sender.isEmpty) sender = _clean(widget.username);
-    return NativeMessage(title: sender, subtitle: body, sender: sender, time: time, uid: widget.uid);
+    if (body.isEmpty || _isUiOnly(body)) return null;
+
+    if (sender.isEmpty) {
+      sender = authorUid == AuthService.instance.uid ? currentName : _clean(widget.username);
+    }
+    if (sender.isEmpty) sender = '站内私信';
+
+    return NativeMessage(
+      title: sender,
+      subtitle: body,
+      sender: sender,
+      time: time,
+      // 必须使用实际消息作者 UID；不能把整个会话的 touid 都当成作者 UID。
+      uid: authorUid,
+    );
+  }
+
+  static String _removeFirstText(String source, String value) {
+    final v = value.trim();
+    if (v.isEmpty) return source;
+    final index = source.indexOf(v);
+    if (index < 0) return source;
+    return '${source.substring(0, index)}${source.substring(index + v.length)}'.trim();
+  }
+
+  static int _authorUid(dynamic node) {
+    final links = node.querySelectorAll('a[href*="mod=space&uid="],a[href*="mod=space%26uid="],a[href*="?uid="],a[href*="&uid="],a[href*="uid="]');
+    for (final a in links) {
+      final href = a.attributes['href'] ?? '';
+      final m = RegExp(r'(?:[?&]|%3F|%26)uid=(\d+)', caseSensitive: false).firstMatch(href);
+      final value = int.tryParse(m?.group(1) ?? '');
+      if (value != null && value > 0) return value;
+    }
+    return 0;
   }
 
   static String _cleanNodeText(dynamic node) {
@@ -182,19 +212,7 @@ class _NativeChatPageState extends State<NativeChatPage> {
     }
   }
 
-  static bool _isConversationHref(String href) {
-    final h = href.toLowerCase();
-    return h.contains('do=pm') || h.contains('ac=pm') || h.contains('pmid=') || h.contains('touid=') || h.contains('subop=view');
-  }
-
-  static int _hrefUid(String href) {
-    for (final key in const ['touid', 'uid', 'fuid']) {
-      final m = RegExp('[?&]$key=(\\d+)', caseSensitive: false).firstMatch(href);
-      final v = int.tryParse(m?.group(1) ?? '');
-      if (v != null && v > 0) return v;
-    }
-    return 0;
-  }
+  static bool _isUiOnly(String text) => RegExp(r'^(首页|消息|私信|返回|刷新|发送|回复|删除|查看|详情|上一页|下一页)$').hasMatch(text.trim());
 
   static bool _looksLikeLogin(String html) {
     final doc = parser.parse(html);
@@ -282,7 +300,7 @@ class _NativeChatPageState extends State<NativeChatPage> {
 
   bool _isMine(NativeMessage message) {
     final currentUid = AuthService.instance.uid;
-    if (currentUid != null && currentUid > 0 && message.uid == currentUid) return true;
+    if (currentUid != null && currentUid > 0 && message.uid > 0) return message.uid == currentUid;
     final currentName = _clean(AuthService.instance.username ?? '');
     final sender = _clean(message.sender);
     return currentName.isNotEmpty && sender.isNotEmpty && sender == currentName;
