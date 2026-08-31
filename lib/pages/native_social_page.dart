@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 
 import '../services/social_service.dart';
 import '../utils/forum_text.dart';
+import '../widgets/native_icon_style.dart';
 import 'native_profile_page.dart';
 
 class NativeSocialPage extends StatefulWidget {
@@ -80,9 +81,9 @@ class _NativeSocialPageState extends State<NativeSocialPage> {
               decoration: BoxDecoration(color: scheme.surfaceContainerHighest, borderRadius: BorderRadius.circular(14)),
               child: Row(
                 children: [
-                  _tabButton(_SocialTab.friends, '好友', Icons.people_alt_outlined),
-                  _tabButton(_SocialTab.following, '关注', Icons.person_add_alt_1_outlined),
-                  _tabButton(_SocialTab.followers, '粉丝', Icons.favorite_border_rounded),
+                  _tabButton(_SocialTab.friends, '好友', Icons.people_alt_rounded),
+                  _tabButton(_SocialTab.following, '关注', Icons.person_add_alt_1_rounded),
+                  _tabButton(_SocialTab.followers, '粉丝', Icons.favorite_rounded),
                 ],
               ),
             ),
@@ -118,7 +119,6 @@ class _NativeSocialPageState extends State<NativeSocialPage> {
 
   Widget _tabButton(_SocialTab tab, String label, IconData icon) {
     final selected = _tab == tab;
-    final scheme = Theme.of(context).colorScheme;
     return Expanded(
       child: InkWell(
         borderRadius: BorderRadius.circular(11),
@@ -126,13 +126,13 @@ class _NativeSocialPageState extends State<NativeSocialPage> {
         child: AnimatedContainer(
           duration: const Duration(milliseconds: 180),
           padding: const EdgeInsets.symmetric(vertical: 10),
-          decoration: BoxDecoration(color: selected ? scheme.primaryContainer : Colors.transparent, borderRadius: BorderRadius.circular(11)),
+          decoration: BoxDecoration(color: selected ? Theme.of(context).colorScheme.primaryContainer : Colors.transparent, borderRadius: BorderRadius.circular(11)),
           child: Row(
             mainAxisAlignment: MainAxisAlignment.center,
             children: [
-              Icon(icon, size: 17, color: selected ? scheme.onPrimaryContainer : scheme.onSurfaceVariant),
+              NativeFeatureIcon(icon: icon, size: NativeIconStyle.smallSize, selected: selected),
               const SizedBox(width: 5),
-              Text(label, style: TextStyle(fontSize: 13, fontWeight: selected ? FontWeight.w800 : FontWeight.w600, color: selected ? scheme.onPrimaryContainer : scheme.onSurfaceVariant)),
+              Text(label, style: TextStyle(fontSize: 13, fontWeight: selected ? FontWeight.w800 : FontWeight.w600, color: selected ? Theme.of(context).colorScheme.onPrimaryContainer : Theme.of(context).colorScheme.onSurfaceVariant)),
             ],
           ),
         ),
@@ -199,7 +199,7 @@ class _UserCard extends StatelessWidget {
                   ),
                 )
               else
-                const Icon(Icons.chevron_right_rounded),
+                NativeFeatureIcon(icon: Icons.chevron_right_rounded, size: NativeIconStyle.mediumSize),
             ],
           ),
         ),
@@ -208,8 +208,6 @@ class _UserCard extends StatelessWidget {
   }
 }
 
-/// Discuz 的“备注 / 星标”等项目原本依赖 Comiis 私有字体。
-/// Native 页面不再把私有区字符交给 Text，而是使用真正的 Flutter Icon。
 class _SocialMetaText extends StatelessWidget {
   final String text;
   const _SocialMetaText({required this.text});
@@ -245,7 +243,7 @@ class _MetaChip extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    return Row(mainAxisSize: MainAxisSize.min, children: [Icon(icon, size: 15, color: color), const SizedBox(width: 3), Text(label, style: TextStyle(fontSize: 11, color: color))]);
+    return Row(mainAxisSize: MainAxisSize.min, children: [NativeFeatureIcon(icon: icon, size: 15), const SizedBox(width: 3), Text(label, style: TextStyle(fontSize: 11, color: color))]);
   }
 }
 
@@ -257,7 +255,7 @@ class _EmptyState extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final scheme = Theme.of(context).colorScheme;
-    return Center(child: Padding(padding: const EdgeInsets.all(32), child: Column(mainAxisSize: MainAxisSize.min, children: [Container(width: 68, height: 68, decoration: BoxDecoration(color: scheme.primaryContainer, shape: BoxShape.circle), child: Icon(Icons.people_outline_rounded, size: 32, color: scheme.onPrimaryContainer)), const SizedBox(height: 14), Text(title, style: const TextStyle(fontSize: 17, fontWeight: FontWeight.w800)), const SizedBox(height: 6), Text(subtitle, textAlign: TextAlign.center, style: TextStyle(fontSize: 12, color: scheme.onSurfaceVariant))])));
+    return Center(child: Padding(padding: const EdgeInsets.all(32), child: Column(mainAxisSize: MainAxisSize.min, children: [Container(width: 68, height: 68, decoration: BoxDecoration(color: scheme.primaryContainer, shape: BoxShape.circle), child: NativeFeatureIcon(icon: Icons.people_alt_rounded, size: 32, selected: true)), const SizedBox(height: 14), Text(title, style: const TextStyle(fontSize: 17, fontWeight: FontWeight.w800)), const SizedBox(height: 6), Text(subtitle, textAlign: TextAlign.center, style: TextStyle(fontSize: 12, color: scheme.onSurfaceVariant))])));
   }
 }
 
@@ -268,6 +266,6 @@ class _ErrorState extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    return Center(child: Padding(padding: const EdgeInsets.all(24), child: Column(mainAxisSize: MainAxisSize.min, children: [const Icon(Icons.cloud_off_rounded, size: 48), const SizedBox(height: 12), Text(message, textAlign: TextAlign.center), const SizedBox(height: 12), FilledButton.icon(onPressed: onRetry, icon: const Icon(Icons.refresh_rounded), label: const Text('重试'))])));
+    return Center(child: Padding(padding: const EdgeInsets.all(24), child: Column(mainAxisSize: MainAxisSize.min, children: [NativeFeatureIcon(icon: Icons.cloud_off_rounded, size: 48), const SizedBox(height: 12), Text(message, textAlign: TextAlign.center), const SizedBox(height: 12), FilledButton.icon(onPressed: onRetry, icon: const Icon(Icons.refresh_rounded), label: const Text('重试'))])));
   }
 }
