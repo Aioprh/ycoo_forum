@@ -10,7 +10,8 @@ import 'resolved_user_avatar.dart';
 class NativeCommentList extends StatelessWidget {
   final String html;
   final void Function(int pid, String author)? onReply;
-  const NativeCommentList({super.key, required this.html, this.onReply});
+  final Future<void> Function(int pid, String author)? onReplySent;
+  const NativeCommentList({super.key, required this.html, this.onReply, this.onReplySent});
 
   List<_CommentFloor> _parse() {
     if (html.trim().isEmpty) return const [];
@@ -34,10 +35,7 @@ class NativeCommentList extends StatelessWidget {
   }
 
   static int _extractUid(dom.Element card, dom.Element? author) {
-    const keys = [
-      'data-uid', 'data-user-id', 'data-author-id', 'uid', 'userid',
-      'user-id', 'author-id',
-    ];
+    const keys = ['data-uid', 'data-user-id', 'data-author-id', 'uid', 'userid', 'user-id', 'author-id'];
     for (final key in keys) {
       final uid = _firstInt(card.attributes[key] ?? author?.attributes[key]);
       if (uid != null && uid > 0) return uid;
@@ -118,15 +116,11 @@ class NativeCommentList extends StatelessWidget {
     }
     if (!context.mounted) return;
     if (uid <= 0) {
-      ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(content: Text('未找到该用户资料，请稍后重试')),
-      );
+      ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('未找到该用户资料，请稍后重试')));
       return;
     }
     Navigator.of(context).push(
-      MaterialPageRoute(
-        builder: (_) => NativeProfilePage(uid: uid, username: comment.author),
-      ),
+      MaterialPageRoute(builder: (_) => NativeProfilePage(uid: uid, username: comment.author)),
     );
   }
 
@@ -172,6 +166,9 @@ class NativeCommentList extends StatelessWidget {
     if (!context.mounted) return;
     messenger.hideCurrentSnackBar();
     messenger.showSnackBar(SnackBar(content: Text(error ?? '已回复本楼')));
+    if (error == null && onReplySent != null) {
+      await onReplySent!(pid, author);
+    }
   }
 }
 
@@ -179,15 +176,7 @@ class _CommentFloor {
   final int pid, uid;
   final String floor, author, level, time;
   final dom.Element body;
-  const _CommentFloor({
-    required this.pid,
-    required this.uid,
-    required this.floor,
-    required this.author,
-    required this.level,
-    required this.time,
-    required this.body,
-  });
+  const _CommentFloor({required this.pid, required this.uid, required this.floor, required this.author, required this.level, required this.time, required this.body});
 }
 
 class _CommentCard extends StatelessWidget {
@@ -210,12 +199,7 @@ class _CommentCard extends StatelessWidget {
       ),
       child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
         Row(crossAxisAlignment: CrossAxisAlignment.center, children: [
-          ResolvedUserAvatar(
-            uid: comment.uid,
-            username: comment.author,
-            radius: 18,
-            onTap: onProfile,
-          ),
+          ResolvedUserAvatar(uid: comment.uid, username: comment.author, radius: 18, onTap: onProfile),
           const SizedBox(width: 9),
           Expanded(
             child: InkWell(
