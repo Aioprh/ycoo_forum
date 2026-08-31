@@ -3,6 +3,9 @@ name: 构建并发布正式版
 on:
   push:
     tags: ['v*']
+    branches: ['main']
+    paths:
+      - 'android/app/src/main/res/drawable/ic_launcher_foreground_small.xml'
   workflow_dispatch:
 
 permissions:
