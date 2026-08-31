@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 import 'package:html/dom.dart' as dom;
 import 'package:html/parser.dart' as parser;
 
+import '../services/site_config.dart';
 import '../pages/native_profile_page.dart';
 import '../services/auth_service.dart';
 import '../services/comment_profile_resolver.dart';
@@ -297,8 +298,8 @@ class _HtmlNodes extends StatelessWidget {
     if (tag == 'img') {
       var src = node.attributes['src'] ?? node.attributes['data-src'] ?? '';
       if (src.startsWith('//')) src = 'https:$src';
-      else if (src.startsWith('/')) src = 'https://www.ycoo.net$src';
-      else if (!src.startsWith('http://') && !src.startsWith('https://')) src = 'https://www.ycoo.net/$src';
+      else if (src.startsWith('/')) src = SiteConfig.base + src.substring(1);
+      else if (!src.startsWith('http://') && !src.startsWith('https://')) src = SiteConfig.resolve(src);
       if (src.isEmpty) return const SizedBox.shrink();
       return Padding(padding: const EdgeInsets.symmetric(vertical: 6), child: ClipRRect(borderRadius: BorderRadius.circular(12), child: Image.network(src, width: double.infinity, fit: BoxFit.contain, errorBuilder: (_, __, ___) => const SizedBox.shrink())));
     }

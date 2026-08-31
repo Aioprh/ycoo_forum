@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 import 'package:html/parser.dart' as parser;
 
 import '../models/thread_item.dart';
+import '../services/site_config.dart';
 import '../services/auth_service.dart';
 import '../services/net_client.dart';
 import 'detail_page.dart';
@@ -47,7 +48,7 @@ class _SearchPageState extends State<SearchPage> {
       await AuthService.instance.init();
       final client = await NetClient.instance.client;
       final cookie = AuthService.instance.authCookie;
-      final searchUri = Uri.parse('https://www.ycoo.net/search.php').replace(
+      final searchUri = Uri.parse(SiteConfig.resolve('search.php')).replace(
         queryParameters: {'mod': 'forum', 'mobile': '2'},
       );
 
@@ -90,7 +91,7 @@ class _SearchPageState extends State<SearchPage> {
           headers: {
             ..._headers(cookie, referer: searchUri.toString()),
             'Content-Type': 'application/x-www-form-urlencoded; charset=UTF-8',
-            'Origin': 'https://www.ycoo.net',
+            'Origin': SiteConfig.base.replaceFirst(RegExp(r'/$'), ''),
           },
           body: fields,
         ).timeout(NetClient.timeout),
@@ -240,9 +241,9 @@ class _SearchPageState extends State<SearchPage> {
       final action = form.attributes['action'] ?? '';
       final text = _clean(form.text);
       if (action.contains('search.php') || text.contains('搜索')) {
-        if (action.isEmpty) return Uri.parse('https://www.ycoo.net/search.php?mod=forum&mobile=2');
+        if (action.isEmpty) return Uri.parse('${SiteConfig.base}search.php?mod=forum&mobile=2');
         if (action.startsWith('http')) return Uri.parse(action);
-        return Uri.parse('https://www.ycoo.net/$action'.replaceFirst('https://www.ycoo.net//', 'https://www.ycoo.net/'));
+        return Uri.parse(SiteConfig.resolve(action));
       }
     }
     return null;

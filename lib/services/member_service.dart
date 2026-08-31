@@ -1,6 +1,7 @@
 import 'package:html/parser.dart' as parser;
 
 import '../models/thread_item.dart';
+import 'site_config.dart';
 import 'auth_service.dart';
 import 'net_client.dart';
 
@@ -19,7 +20,7 @@ class CreditSummary {
 class MemberService {
   MemberService._();
   static final instance = MemberService._();
-  static const _base = 'https://www.ycoo.net/';
+  static String get _base => SiteConfig.base;
 
   Future<String> _get(String path) async {
     final client = await NetClient.instance.client;

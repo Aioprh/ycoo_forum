@@ -1,6 +1,7 @@
 import 'package:html/parser.dart' as parser;
 
 import '../models/thread_detail.dart';
+import 'site_config.dart';
 import 'auth_service.dart';
 import 'net_client.dart';
 
@@ -16,7 +17,7 @@ class ThreadInteractionState {
 class ThreadInteractionService {
   ThreadInteractionService._();
   static final instance = ThreadInteractionService._();
-  static const _base = 'https://www.ycoo.net/';
+  static String get _base => SiteConfig.base;
 
   bool get _loggedIn => AuthService.instance.isLoggedIn && (AuthService.instance.authCookie ?? '').isNotEmpty;
   String? get _cookie => AuthService.instance.authCookie;

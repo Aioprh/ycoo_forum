@@ -1,6 +1,7 @@
 import 'package:html/dom.dart';
 import 'package:html/parser.dart' as parser;
 
+import 'site_config.dart';
 import 'auth_service.dart';
 import 'net_client.dart';
 import 'profile_service.dart';
@@ -24,7 +25,7 @@ class SocialUser {
 class SocialService {
   SocialService._();
   static final instance = SocialService._();
-  static const _base = 'https://www.ycoo.net/';
+  static String get _base => SiteConfig.base;
 
   Future<String> _get(String path) async {
     final client = await NetClient.instance.client;

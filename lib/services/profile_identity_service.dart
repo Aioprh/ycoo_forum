@@ -1,5 +1,6 @@
 import 'package:html/parser.dart' as parser;
 
+import 'site_config.dart';
 import 'auth_service.dart';
 import 'net_client.dart';
 
@@ -28,7 +29,7 @@ class ProfileIdentity {
 class ProfileIdentityService {
   ProfileIdentityService._();
   static final instance = ProfileIdentityService._();
-  static const _base = 'https://www.ycoo.net/';
+  static String get _base => SiteConfig.base;
 
   Future<ProfileIdentity?> fetch() async {
     final uid = AuthService.instance.uid;

@@ -3,6 +3,7 @@ import 'package:html/parser.dart' as parser;
 
 import '../models/board.dart';
 import '../models/thread_item.dart';
+import 'site_config.dart';
 import 'auth_service.dart';
 import 'net_client.dart';
 
@@ -11,7 +12,7 @@ class SiteFallbackService {
   SiteFallbackService._();
   static final instance = SiteFallbackService._();
 
-  static const _base = 'https://www.ycoo.net/';
+  static String get _base => SiteConfig.base;
 
   Future<String> _get(String url) async {
     final client = await NetClient.instance.client;

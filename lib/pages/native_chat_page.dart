@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 import 'package:html/parser.dart' as parser;
 
+import '../services/site_config.dart';
 import '../services/auth_service.dart';
 import '../services/member_service_v2.dart';
 import '../services/net_client.dart';
@@ -42,7 +43,7 @@ class _NativeChatPageState extends State<NativeChatPage> {
       await AuthService.instance.init();
       if (!AuthService.instance.isLoggedIn) throw Exception('请先登录论坛');
       final client = await NetClient.instance.client;
-      final uri = Uri.parse('https://www.ycoo.net/home.php?mod=space&do=pm&subop=view&touid=${widget.uid}&mobile=2').replace(queryParameters: {
+      final uri = Uri.parse('${SiteConfig.base}home.php?mod=space&do=pm&subop=view&touid=${widget.uid}&mobile=2').replace(queryParameters: {
         'mod': 'space', 'do': 'pm', 'subop': 'view', 'touid': '${widget.uid}', 'mobile': '2',
         '_ycoo_ts': DateTime.now().millisecondsSinceEpoch.toString(),
       });

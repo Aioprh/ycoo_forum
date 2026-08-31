@@ -4,9 +4,12 @@ import 'package:flutter_localizations/flutter_localizations.dart';
 import 'pages/board_page.dart';
 import 'pages/home_page.dart';
 import 'pages/profile_page.dart';
+import 'services/site_config.dart';
 
 Future<void> main() async {
   WidgetsFlutterBinding.ensureInitialized();
+  // 加载站点域名配置(本地缓存 + 后台拉取远程配置)
+  await SiteConfig.init();
   runApp(const YcoForumApp());
 }
 

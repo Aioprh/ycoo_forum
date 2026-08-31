@@ -1,5 +1,6 @@
 import 'package:html/parser.dart' as parser;
 
+import 'site_config.dart';
 import 'attachment_upload_service.dart';
 import 'auth_service.dart';
 import 'net_client.dart';
@@ -18,7 +19,7 @@ class ThreadType {
 class ThreadPublishService {
   ThreadPublishService._();
   static final instance = ThreadPublishService._();
-  static const _base = 'https://www.ycoo.net/';
+  static String get _base => SiteConfig.base;
 
   Future<List<ThreadType>> fetchThreadTypes(int fid) async {
     if (!AuthService.instance.isLoggedIn || (AuthService.instance.authCookie ?? '').isEmpty) return const [];

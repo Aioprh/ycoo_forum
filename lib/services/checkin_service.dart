@@ -1,6 +1,7 @@
 import 'package:html/parser.dart' as parser;
 import 'package:http/http.dart' as http;
 
+import 'site_config.dart';
 import 'auth_service.dart';
 import 'net_client.dart';
 
@@ -8,7 +9,7 @@ import 'net_client.dart';
 class CheckinService {
   CheckinService._();
   static final instance = CheckinService._();
-  static const _base = 'https://www.ycoo.net/';
+  static String get _base => SiteConfig.base;
 
   Future<http.Client> get _client async => NetClient.instance.client;
 

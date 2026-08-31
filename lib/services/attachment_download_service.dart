@@ -1,6 +1,8 @@
 import 'dart:io';
 import 'package:flutter/services.dart';
 
+import 'site_config.dart';
+
 /// 原生附件下载桥接。
 /// WebView 只负责识别点击，实际下载交给 Android DownloadManager。
 class AttachmentDownloadService {
@@ -25,7 +27,7 @@ class AttachmentDownloadService {
     final result = await _channel.invokeMethod<bool>('download', {
       'url': url,
       'cookie': cookie ?? '',
-      'referer': referer ?? 'https://www.ycoo.net/',
+      'referer': referer ?? SiteConfig.base,
     });
     return result == true;
   }

@@ -4,6 +4,7 @@ import 'package:file_picker/file_picker.dart';
 import 'package:html/parser.dart' as parser;
 import 'package:http/http.dart' as http;
 
+import 'site_config.dart';
 import 'auth_service.dart';
 import 'net_client.dart';
 
@@ -31,7 +32,7 @@ class AttachmentUploadService {
   AttachmentUploadService._();
   static final instance = AttachmentUploadService._();
 
-  static const _base = 'https://www.ycoo.net/';
+  static String get _base => SiteConfig.base;
   static const int maxBytes = 10 * 1024 * 1024;
 
   Map<String, String> _headers({String? referer, bool ajax = false}) => {

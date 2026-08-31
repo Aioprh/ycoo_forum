@@ -2,6 +2,7 @@ import 'package:html/dom.dart' as dom;
 import 'package:html/parser.dart' as parser;
 
 import '../models/thread_item.dart';
+import 'site_config.dart';
 import 'auth_service.dart';
 import 'member_service_v2.dart';
 import 'net_client.dart';
@@ -34,7 +35,7 @@ class ProfileData {
 class ProfileService {
   ProfileService._();
   static final instance = ProfileService._();
-  static const _base = 'https://www.ycoo.net/';
+  static String get _base => SiteConfig.base;
   final Map<int, ProfileData> _cache = <int, ProfileData>{};
 
   Future<String> _get(String path) async {

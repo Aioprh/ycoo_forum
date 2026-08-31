@@ -1,5 +1,6 @@
 import 'package:html/parser.dart' as parser;
 
+import 'site_config.dart';
 import 'net_client.dart';
 
 /// Resolves a Discuz author UID when normalized comment HTML no longer
@@ -7,7 +8,7 @@ import 'net_client.dart';
 class CommentProfileResolver {
   CommentProfileResolver._();
   static final instance = CommentProfileResolver._();
-  static const _base = 'https://www.ycoo.net/';
+  static String get _base => SiteConfig.base;
   final Map<String, int?> _cache = <String, int?>{};
 
   Future<int?> resolveUid(String username) async {

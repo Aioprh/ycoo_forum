@@ -1,3 +1,5 @@
+import '../services/site_config.dart';
+
 /// 帖子(主题)条目,来自导读 / 版块列表页的 `li.forumlist_li` 卡片。
 class ThreadItem {
   final int tid;
@@ -30,5 +32,5 @@ class ThreadItem {
     required this.viewCount,
   });
 
-  String get url => 'https://www.ycoo.net/thread-$tid-1-1.html';
+  String get url => '${SiteConfig.base}thread-$tid-1-1.html';
 }

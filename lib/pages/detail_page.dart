@@ -3,6 +3,7 @@ import 'package:flutter/services.dart';
 import 'package:html/parser.dart' as html_parser;
 
 import '../models/thread_detail.dart';
+import '../services/site_config.dart';
 import '../services/api_service.dart';
 import '../services/auth_service.dart';
 import '../services/attachment_download_service.dart';
@@ -423,7 +424,7 @@ class _DetailPageState extends State<DetailPage> {
         final started = await AttachmentDownloadService.instance.download(
           url: uri.toString(),
           cookie: AuthService.instance.authCookie,
-          referer: 'https://www.ycoo.net/',
+          referer: SiteConfig.base,
         );
         if (mounted) _snack(started ? '已开始下载附件' : '当前平台暂不支持原生附件下载');
       } catch (e) {

@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 import 'package:webview_flutter/webview_flutter.dart';
 
+import '../services/site_config.dart';
 import '../services/auth_service.dart';
 
 /// 源币充值使用真实论坛页面，而不是把包含 JS/支付流程的页面静态解析成 Flutter 表单。
@@ -13,7 +14,7 @@ class CreditRechargePage extends StatefulWidget {
 }
 
 class _CreditRechargePageState extends State<CreditRechargePage> {
-  static const _base = 'https://www.ycoo.net/';
+  static String get _base => SiteConfig.base;
   static const _path = 'home.php?ac=plugin&id=boan_buycredit:buycredit&mod=spacecp&op=credit';
 
   final _cookieManager = WebViewCookieManager();
@@ -47,7 +48,11 @@ class _CreditRechargePageState extends State<CreditRechargePage> {
         final name = item.substring(0, index).trim();
         final value = item.substring(index + 1).trim();
         if (name.isEmpty || value.isEmpty) continue;
-        await _cookieManager.setCookie(WebViewCookie(name: name, value: value, domain: 'www.ycoo.net', path: '/'));
+        await _cookieManager.setCookie(WebViewCookie(
+            name: name,
+            value: value,
+            domain: Uri.parse(SiteConfig.base).host,
+            path: '/'));
       }
 
       final controller = WebViewController();

@@ -1,13 +1,14 @@
 import 'dart:async';
 import 'package:http/http.dart' as http;
 import 'package:shared_preferences/shared_preferences.dart';
+import 'site_config.dart';
 import 'login_log.dart';
 import 'net_client.dart';
 
 class AuthService {
   AuthService._();
   static final AuthService instance = AuthService._();
-  static const String base = 'https://www.ycoo.net/';
+  static String get base => SiteConfig.base;
   static const String loginPath = 'member.php?mod=logging&action=login&mobile=2';
   static const String logoutPath = 'member.php?mod=logging&action=logout&mobile=2';
   static const String _prefUser = 'ycoo.session.username';
@@ -281,7 +282,7 @@ class AuthService {
   String _absoluteUrl(String value) {
     if (value.startsWith('//')) return 'https:$value';
     if (value.startsWith('http://') || value.startsWith('https://')) return value;
-    if (value.startsWith('/')) return 'https://www.ycoo.net$value';
+    if (value.startsWith('/')) return SiteConfig.base + value.substring(1);
     return base + value;
   }
 

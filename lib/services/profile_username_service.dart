@@ -1,6 +1,7 @@
 import 'package:html/dom.dart' as dom;
 import 'package:html/parser.dart' as parser;
 
+import 'site_config.dart';
 import 'auth_service.dart';
 import 'net_client.dart';
 
@@ -11,7 +12,7 @@ import 'net_client.dart';
 class ProfileUsernameService {
   ProfileUsernameService._();
   static final instance = ProfileUsernameService._();
-  static const _base = 'https://www.ycoo.net/';
+  static String get _base => SiteConfig.base;
 
   Future<String?> resolve(int uid, {String? fallback}) async {
     if (uid <= 0) return _valid(fallback) ? fallback!.trim() : null;

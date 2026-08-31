@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 import 'package:html/dom.dart' as dom;
 import 'package:html/parser.dart' as parser;
+import '../services/site_config.dart';
 import '../services/auth_service.dart';
 import '../services/net_client.dart';
 import 'credit_recharge_page.dart';
@@ -13,7 +14,7 @@ class NativeSitePage extends StatefulWidget {
 }
 
 class _NativeSitePageState extends State<NativeSitePage> {
-  static const _base = 'https://www.ycoo.net/';
+  static String get _base => SiteConfig.base;
   bool _loading = true; String? _error; dom.Element? _root;
   final Map<String, TextEditingController> _fields = {};
   final Map<String, String> _selectValues = {};

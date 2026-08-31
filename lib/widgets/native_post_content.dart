@@ -3,6 +3,8 @@ import 'package:flutter/material.dart';
 import 'package:html/parser.dart' as html_parser;
 import 'package:html/dom.dart' as dom;
 
+import '../services/site_config.dart';
+
 /// Native Flutter renderer for forum post HTML.
 /// The widget participates in Flutter's normal layout, so its height follows
 /// the actual content instead of a WebView measurement.
@@ -343,12 +345,7 @@ class _InlineCode extends StatelessWidget {
 }
 
 String _resolveUrl(String value) {
-  if (value.isEmpty) return '';
-  if (value.startsWith('//')) return 'https:$value';
-  if (value.startsWith('/')) return 'https://www.ycoo.net$value';
-  if (!value.startsWith('http://') && !value.startsWith('https://'))
-    return 'https://www.ycoo.net/$value';
-  return value;
+  return SiteConfig.resolve(value);
 }
 
 class _ImageBlock extends StatelessWidget {

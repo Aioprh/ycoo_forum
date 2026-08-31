@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 import 'package:webview_flutter/webview_flutter.dart';
 
+import '../services/site_config.dart';
 import '../services/api_service.dart';
 import '../services/auth_service.dart';
 
@@ -49,7 +50,7 @@ class _WebViewPageState extends State<WebViewPage> {
         await manager.setCookie(WebViewCookie(
           name: name,
           value: value,
-          domain: 'www.ycoo.net',
+          domain: Uri.parse(SiteConfig.base).host,
           path: '/',
         ));
       } catch (_) {}

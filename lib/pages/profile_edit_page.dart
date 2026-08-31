@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 import 'package:html/parser.dart' as parser;
 import 'package:html/dom.dart' as dom;
 
+import '../services/site_config.dart';
 import '../services/auth_service.dart';
 import '../services/net_client.dart';
 
@@ -13,7 +14,7 @@ class ProfileEditPage extends StatefulWidget {
 }
 
 class _ProfileEditPageState extends State<ProfileEditPage> {
-  static const _base = 'https://www.ycoo.net/';
+  static String get _base => SiteConfig.base;
   final _nickname = TextEditingController();
   final _signature = TextEditingController();
   final _location = TextEditingController();
