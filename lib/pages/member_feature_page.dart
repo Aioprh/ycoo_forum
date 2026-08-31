@@ -137,13 +137,24 @@ class _NoticeList extends StatelessWidget {
     return Icons.notifications_none_rounded;
   }
 
-  /// 点击通知跳到来源: 是主题就打开原生详情页, 否则用内置 WebView 打开来源页。
+  /// 从各类通知链接里尽量提取主题 id, 兼容多种写法。
+  static int? _extractTid(String href) {
+    for (final m in RegExp(r'(?:thread-|tid=)(\d+)', caseSensitive: false).allMatches(href)) {
+      final v = int.tryParse(m.group(1)!);
+      if (v != null && v > 0) return v;
+    }
+    final vm = RegExp(r'mod=viewthread\D+(\d+)', caseSensitive: false).firstMatch(href);
+    final vv = int.tryParse(vm?.group(1) ?? '');
+    if (vv != null && vv > 0) return vv;
+    return null;
+  }
+
+  /// 点击通知跳到来源: 能识别到主题就打开原生详情页(渲染帖子正文), 否则用内置 WebView 打开来源页。
   void _open(BuildContext context, NativeNotice item) {
     final href = item.href;
     if (href.isEmpty) return;
-    final thread = RegExp(r'thread-(\d+)').firstMatch(href);
-    final tid = thread == null ? 0 : int.tryParse(thread.group(1)!) ?? 0;
-    if (tid > 0) {
+    final tid = _extractTid(href);
+    if (tid != null && tid > 0) {
       Navigator.of(context).push(MaterialPageRoute(builder: (_) => DetailPage(tid: tid, title: forumText(item.title))));
       return;
     }
