@@ -75,18 +75,20 @@ jobs:
         id: meta
         shell: bash
         run: |
-          version=$(grep -E '^version:' pubspec.yaml | awk '{print $2}' | cut -d'+' -f1)
+          version=$(grep -E '^version:' pubspec.yaml | awk '{print $2}')
           echo "version=$version" >> "$GITHUB_OUTPUT"
+          echo "name=${version%%+*}" >> "$GITHUB_OUTPUT"
+          echo "build=${version##*+}" >> "$GITHUB_OUTPUT"
 
       - name: 发布到 GitHub Releases
         uses: softprops/action-gh-release@v2
         with:
           tag_name: v${{ steps.meta.outputs.version }}
           target_commitish: main
-          name: 源论坛 YcooForum v${{ steps.meta.outputs.version }}
+          name: 源论坛 YcooForum v${{ steps.meta.outputs.version }} (build ${{ steps.meta.outputs.build }})
           generate_release_notes: true
           body: |
-            ## 源论坛 YcooForum v${{ steps.meta.outputs.version }}
+            ## 源论坛 YcooForum v${{ steps.meta.outputs.name }} (build ${{ steps.meta.outputs.build }})
 
             Android 正式版 APK（按 ABI 拆分）：
 
