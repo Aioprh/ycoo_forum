@@ -4,12 +4,14 @@ on:
   push:
     tags:
       - 'v*.*.*'
+    branches:
+      - 'release/v*.*.*'
   workflow_dispatch:
     inputs:
       tag:
-        description: '要发布的版本标签，例如 v1.0.0'
+        description: '要发布的版本标签，例如 v1.0.1'
         required: true
-        default: 'v1.0.0'
+        default: 'v1.0.1'
 
 permissions:
   contents: write
@@ -51,9 +53,11 @@ jobs:
         run: flutter build apk --release
 
       - name: 准备 APK
+        env:
+          RELEASE_TAG: ${{ github.ref_type == 'tag' && github.ref_name || inputs.tag }}
         run: |
           set -euo pipefail
-          TAG="${GITHUB_REF_NAME}"
+          TAG="$RELEASE_TAG"
           mkdir -p release
           cp build/app/outputs/flutter-apk/app-release.apk "release/ycoo_forum-${TAG}.apk"
           sha256sum "release/ycoo_forum-${TAG}.apk" > release/SHA256SUMS.txt
@@ -61,13 +65,14 @@ jobs:
       - name: 创建 GitHub Release
         env:
           GH_TOKEN: ${{ github.token }}
+          RELEASE_TAG: ${{ github.ref_type == 'tag' && github.ref_name || inputs.tag }}
         run: |
           set -euo pipefail
-          TAG="${GITHUB_REF_NAME}"
+          TAG="$RELEASE_TAG"
           if gh release view "$TAG" >/dev/null 2>&1; then
-            gh release upload "$TAG" release/ycoo_forum-${TAG}.apk release/SHA256SUMS.txt --clobber
+            gh release upload "$TAG" "release/ycoo_forum-${TAG}.apk" release/SHA256SUMS.txt --clobber
           else
-            gh release create "$TAG" release/ycoo_forum-${TAG}.apk release/SHA256SUMS.txt \
+            gh release create "$TAG" "release/ycoo_forum-${TAG}.apk" release/SHA256SUMS.txt \
               --title "源论坛 ${TAG} 正式版" \
               --generate-notes
           fi
