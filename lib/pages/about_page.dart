@@ -2,6 +2,7 @@ import 'dart:convert';
 
 import 'package:flutter/material.dart';
 import 'package:http/http.dart' as http;
+import 'package:package_info_plus/package_info_plus.dart';
 import 'package:url_launcher/url_launcher.dart';
 
 class AboutPage extends StatefulWidget {
@@ -12,19 +13,43 @@ class AboutPage extends StatefulWidget {
 }
 
 class _AboutPageState extends State<AboutPage> {
-  static const _version = '1.0.1';
   static const _repositoryUrl = 'https://github.com/Aioprh/ycoo_forum';
   static const _latestReleaseApi = 'https://api.github.com/repos/Aioprh/ycoo_forum/releases/latest';
-  static const _latestApkUrl = 'https://github.com/Aioprh/ycoo_forum/releases/latest/download/ycooforum.apk';
 
   bool _checking = false;
   bool _hasUpdate = false;
+  String? _selfVersion;
+  String? _selfBuild;
   String? _latestVersion;
+  String? _latestTag;
 
   @override
   void initState() {
     super.initState();
-    _checkSilently();
+    _bootstrap();
+  }
+
+  Future<void> _bootstrap() async {
+    await _loadSelfVersion();
+    await _checkSilently();
+  }
+
+  Future<void> _loadSelfVersion() async {
+    try {
+      final info = await PackageInfo.fromPlatform();
+      if (!mounted) return;
+      setState(() {
+        _selfVersion = info.version; // 语义版本名，如 1.0.1
+        _selfBuild = info.buildNumber; // 构建号，如 3
+      });
+    } catch (_) {
+      // 读取失败则跳过自版本号，不阻塞静默检查。
+    }
+  }
+
+  static String _selfFull(String? version, String? build) {
+    if (version == null || version.isEmpty) return '';
+    return '$version+$build';
   }
 
   Future<Map<String, dynamic>> _fetchLatestRelease() async {
@@ -36,17 +61,26 @@ class _AboutPageState extends State<AboutPage> {
     return jsonDecode(response.body) as Map<String, dynamic>;
   }
 
+  // 比较形如 "1.0.1+3" 的版本：先比语义版本名，相同则比构建号。
   int _compareVersions(String a, String b) {
-    List<int> parse(String value) => value.trim().replaceFirst(RegExp(r'^[vV]'), '').split('.').map((part) {
-          final match = RegExp(r'^\d+').firstMatch(part);
-          return int.tryParse(match?.group(0) ?? '0') ?? 0;
-        }).toList();
+    List<int> parse(String value) {
+      final cleaned = value.trim().replaceFirst(RegExp(r'^[vV]'), '');
+      final split = cleaned.split('+');
+      final nums = split.first.split('.').map((part) {
+        final match = RegExp(r'^\d+').firstMatch(part);
+        return int.tryParse(match?.group(0) ?? '0') ?? 0;
+      }).take(3).toList();
+      while (nums.length < 3) {
+        nums.add(0);
+      }
+      final build = split.length > 1 ? (int.tryParse(split.last) ?? 0) : 0;
+      return [...nums, build];
+    }
+
     final left = parse(a);
     final right = parse(b);
-    for (var i = 0; i < 3; i++) {
-      final l = i < left.length ? left[i] : 0;
-      final r = i < right.length ? right[i] : 0;
-      if (l != r) return l.compareTo(r);
+    for (var i = 0; i < 4; i++) {
+      if (left[i] != right[i]) return left[i].compareTo(right[i]);
     }
     return 0;
   }
@@ -58,8 +92,9 @@ class _AboutPageState extends State<AboutPage> {
       if (tag == null || tag.isEmpty || !mounted) return;
       final latest = tag.replaceFirst(RegExp(r'^[vV]'), '');
       setState(() {
+        _latestTag = tag;
         _latestVersion = latest;
-        _hasUpdate = _compareVersions(latest, _version) > 0;
+        _hasUpdate = _compareVersions(latest, _selfFull(_selfVersion, _selfBuild)) > 0;
       });
     } catch (_) {
       // 网络不可用时不显示红点，避免误报。
@@ -74,6 +109,15 @@ class _AboutPageState extends State<AboutPage> {
     }
   }
 
+  String get _selfFullVersion => _selfFull(_selfVersion, _selfBuild);
+
+  String get _releasePageUrl {
+    final tag = _latestTag;
+    return tag == null || tag.isEmpty
+        ? '$_repositoryUrl/releases/latest'
+        : '$_repositoryUrl/releases/tag/$tag';
+  }
+
   Future<void> _checkForUpdates() async {
     if (_checking) return;
     setState(() => _checking = true);
@@ -83,9 +127,10 @@ class _AboutPageState extends State<AboutPage> {
       final releaseName = (data['name'] as String?)?.trim();
       if (tag == null || tag.isEmpty) throw const FormatException('版本信息无效');
       final latest = tag.replaceFirst(RegExp(r'^[vV]'), '');
-      final hasUpdate = _compareVersions(latest, _version) > 0;
+      final hasUpdate = _compareVersions(latest, _selfFullVersion) > 0;
       if (!mounted) return;
       setState(() {
+        _latestTag = tag;
         _latestVersion = latest;
         _hasUpdate = hasUpdate;
       });
@@ -94,10 +139,20 @@ class _AboutPageState extends State<AboutPage> {
           context: context,
           builder: (context) => AlertDialog(
             title: const Text('发现新版本'),
-            content: Text('${releaseName?.isNotEmpty == true ? releaseName : '源论坛'}\n最新版本：$latest\n当前版本：$_version'),
+            content: Text(
+              '${releaseName?.isNotEmpty == true ? releaseName : '源论坛'}\n'
+              '最新版本：v$latest\n当前版本：$_selfFullVersion\n\n'
+              '本版本按 CPU 架构拆分，请在下载页面选择与设备匹配的安装包（通常为 arm64-v8a）。',
+            ),
             actions: [
               TextButton(onPressed: () => Navigator.pop(context), child: const Text('稍后再说')),
-              FilledButton(onPressed: () { Navigator.pop(context); _openUrl(_latestApkUrl); }, child: const Text('下载更新')),
+              FilledButton(
+                onPressed: () {
+                  Navigator.pop(context);
+                  _openUrl(_releasePageUrl);
+                },
+                child: const Text('前往下载'),
+              ),
             ],
           ),
         );
