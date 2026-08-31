@@ -1,5 +1,7 @@
 <manifest xmlns:android="http://schemas.android.com/apk/res/android">
     <uses-permission android:name="android.permission.INTERNET"/>
+    <!-- 允许调用系统安装器安装下载的 APK 升级包 -->
+    <uses-permission android:name="android.permission.REQUEST_INSTALL_PACKAGES"/>
     <application
         android:label="源论坛"
         android:name="${applicationName}"
@@ -29,6 +31,10 @@
             android:value="2" />
     </application>
     <queries>
+        <intent>
+            <action android:name="android.intent.action.VIEW"/>
+            <data android:mimeType="application/vnd.android.package-archive"/>
+        </intent>
         <intent>
             <action android:name="android.intent.action.PROCESS_TEXT"/>
             <data android:mimeType="text/plain"/>
