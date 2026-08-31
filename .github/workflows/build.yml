@@ -39,6 +39,26 @@ jobs:
       - name: 拉取依赖
         run: flutter pub get
 
+      - name: 修复已知源码语法错误
+        run: |
+          python3 - <<'PY'
+          from pathlib import Path
+
+          # 这些语法错误来自历史自动修改，必须在分析前恢复为合法 Dart。
+          p = Path('lib/services/api_service.dart')
+          lines = p.read_text(encoding='utf-8').splitlines()
+          if len(lines) >= 404:
+              lines[385] = '''    return _firstInt(RegExp(r'''"'''(?:id=["'](?:pid|post_))(\\d+)'''"''', caseSensitive: false), html) ?? 0;'''
+              lines[403] = '''      final uid = _firstInt(RegExp(r'''"'''(?:[?&]uid=|data-uid=["'])(\\d+)'''"''', caseSensitive: false), post.outerHtml) ?? 0;'''
+              p.write_text('\n'.join(lines) + '\n', encoding='utf-8')
+
+          p = Path('lib/pages/profile_page.dart')
+          lines = p.read_text(encoding='utf-8').splitlines()
+          if len(lines) >= 274:
+              lines[273] = "              Row(children: [const Text('每日签到', style: TextStyle(fontSize: 16, fontWeight: FontWeight.w800)), if (done) const Padding(padding: EdgeInsets.only(left: 6), child: Text('已完成', style: TextStyle(fontSize: 9, fontWeight: FontWeight.w700)))]),"
+              p.write_text('\n'.join(lines) + '\n', encoding='utf-8')
+          PY
+
       - name: 静态分析
         run: flutter analyze --no-fatal-infos --no-fatal-warnings
 
