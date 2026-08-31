@@ -1,150 +1,22 @@
 import 'package:flutter/material.dart';
-
-import '../services/member_service_v2.dart';
+import 'package:html/parser.dart' as parser;
+import '../services/auth_service.dart';
+import '../services/net_client.dart';
+import '../services/site_config.dart';
+import '../utils/forum_text.dart';
 import 'native_chat_page.dart';
 
-/// 原生私信会话列表：按“联系人 + 最后一条消息”展示，点击进入完整聊天。
-class NativeMessageListPage extends StatefulWidget {
-  const NativeMessageListPage({super.key});
-
-  @override
-  State<NativeMessageListPage> createState() => _NativeMessageListPageState();
+class NativeMessageListPage extends StatefulWidget{const NativeMessageListPage({super.key});@override State<NativeMessageListPage> createState()=>_NativeMessageListPageState();}
+class _NativeMessageListPageState extends State<NativeMessageListPage>{
+ List<_Pm> items=[];bool loading=true;String? error;
+ @override void initState(){super.initState();load();}
+ String clean(String s)=>forumText(s.replaceAll(RegExp(r'\s+'),' ').trim());
+ Future<void> load()async{if(mounted)setState(()=>loading=true);try{await AuthService.instance.init();final c=await NetClient.instance.client;final cookie=AuthService.instance.authCookie??'';final u=Uri.parse('${SiteConfig.base}home.php').replace(queryParameters:{'mod':'space','do':'pm','mobile':'2','_t':'${DateTime.now().millisecondsSinceEpoch}'});final r=await c.get(u,headers:{'User-Agent':NetClient.ua,if(cookie.isNotEmpty)'Cookie':cookie}).timeout(const Duration(seconds:20));if(r.statusCode!=200)throw Exception('请求失败 HTTP ${r.statusCode}');final d=parser.parse(NetClient.decode(r.bodyBytes));for(final n in d.querySelectorAll('script,style,noscript,template'))n.remove();final out=< _Pm>[];final seen=<int>{};for(final a in d.querySelectorAll('a[href]')){final h=(a.attributes['href']??'').trim();final uid=getUid(h);if(uid<=0||uid==AuthService.instance.uid||!isConv(h)||seen.contains(uid))continue;final name=clean(a.text);if(name.isEmpty||generic(name))continue;dynamic n=a;for(var i=0;i<5&&n.parent!=null;i++){final p=n.parent,t=text(p);if(t.length>=name.length&&t.length<500)n=p;else break;}var preview=text(n);preview=remove(preview,name);final time=text(n.querySelector('time,.xg1,.xg2,[class*="time"],[class*="date"]'));if(time.isNotEmpty)preview=remove(preview,time);preview=preview.replaceAll(RegExp(r'^(私人消息|站内私信|私信|消息)\s*'),'').trim();if(preview.isEmpty||generic(preview))continue;seen.add(uid);out.add(_Pm(uid,name,preview,time));}if(mounted)setState(()=>{items=out;loading=false;error=null;});}catch(e){if(mounted)setState(()=>{error=clean(e.toString().replaceFirst('Exception: ',''));loading=false;});}}
+ static bool isConv(String h){final x=h.toLowerCase();return(x.contains('do=pm')||x.contains('ac=pm'))&&(x.contains('touid=')||x.contains('pmid=')||x.contains('subop=view'));}
+ static int getUid(String h){for(final k in const['touid','uid']){final m=RegExp('[?&]$k=(\\d+)').firstMatch(h);final v=int.tryParse(m?.group(1)??'');if(v!=null&&v>0)return v;}return 0;}
+ static bool generic(String s)=>RegExp(r'^(站内私信|私人消息|私信|消息|查看全部私人消息|发送短消息)$').hasMatch(s.trim());
+ static String remove(String s,String v){final i=s.indexOf(v);return i<0?s:'${s.substring(0,i)}${s.substring(i+v.length)}'.trim();}
+ static String text(dynamic n){if(n==null)return'';try{final c=n.clone(true);for(final e in c.querySelectorAll('i.iconfont,i.comiis-icon,.iconfont,svg,[class*="iconfont"],[class*="comiis-icon"]'))e.remove();return(c.text??'').replaceAll(RegExp(r'\s+'),' ').trim();}catch(_){return(n.text??'').trim();}}
+ @override Widget build(BuildContext context){final s=Theme.of(context).colorScheme;return Scaffold(backgroundColor:const Color(0xfff4f4f4),appBar:AppBar(title:const Text('消息'),actions:[IconButton(onPressed:load,icon:const Icon(Icons.refresh)),IconButton(onPressed:(){},icon:const Icon(Icons.edit))]),body:Column(children:[Container(height:48,color:Colors.white,child:Row(children:[Expanded(child:Center(child:Column(mainAxisAlignment:MainAxisAlignment.end,children:[const Text('私人消息',style:TextStyle(fontSize:16,fontWeight:FontWeight.w600)),const SizedBox(height:8),Container(width:30,height:3,color:s.primary)]))),Expanded(child:Center(child:Text('公共消息',style:TextStyle(color:s.onSurfaceVariant,fontSize:16))))])),Expanded(child:loading?const Center(child:CircularProgressIndicator()):error!=null?Center(child:Column(mainAxisSize:MainAxisSize.min,children:[Text(error!,textAlign:TextAlign.center),const SizedBox(height:12),FilledButton(onPressed:load,child:const Text('重试'))])):items.isEmpty?const Center(child:Text('暂无私人消息')):RefreshIndicator(onRefresh:load,child:ListView.separated(itemCount:items.length,separatorBuilder:(_,__)=>const Divider(height:1,indent:92),itemBuilder:(_,i){final x=items[i];return ListTile(contentPadding:const EdgeInsets.symmetric(horizontal:20,vertical:5),leading:CircleAvatar(radius:34,backgroundImage:NetworkImage('${SiteConfig.base}uc_server/avatar.php?uid=${x.uid}&size=small')),title:Text(x.name),subtitle:Text(x.preview,maxLines:1,overflow:TextOverflow.ellipsis),trailing:Text(x.time,style:const TextStyle(fontSize:11)),onTap:()=>Navigator.of(context).push(MaterialPageRoute(builder:(_)=>NativeChatPage(uid:x.uid,username:x.name)));})))]) );}
 }
-
-class _NativeMessageListPageState extends State<NativeMessageListPage> {
-  late Future<List<NativeMessage>> _future;
-
-  @override
-  void initState() {
-    super.initState();
-    _future = MemberServiceV2.instance.fetchMessages();
-  }
-
-  Future<void> _refresh() async {
-    setState(() => _future = MemberServiceV2.instance.fetchMessages());
-    await _future;
-  }
-
-  String _name(NativeMessage item) {
-    final sender = item.sender.trim();
-    if (sender.isNotEmpty && sender != '站内私信') return sender;
-    final title = item.title.trim();
-    return title.isEmpty || title == '站内私信' ? '站内私信' : title;
-  }
-
-  String _initial(String name) => name == '站内私信' || name.isEmpty ? '信' : name.characters.first;
-
-  @override
-  Widget build(BuildContext context) {
-    final scheme = Theme.of(context).colorScheme;
-    return Scaffold(
-      backgroundColor: scheme.surfaceContainerLowest,
-      appBar: AppBar(
-        title: const Text('消息'),
-        actions: [IconButton(onPressed: _refresh, tooltip: '刷新', icon: const Icon(Icons.refresh_rounded))],
-      ),
-      body: FutureBuilder<List<NativeMessage>>(
-        future: _future,
-        builder: (context, snapshot) {
-          if (snapshot.connectionState == ConnectionState.waiting) return const Center(child: CircularProgressIndicator());
-          if (snapshot.hasError) {
-            return _StateView(icon: Icons.cloud_off_rounded, title: '消息加载失败', subtitle: snapshot.error.toString().replaceFirst('Exception: ', ''), action: _refresh);
-          }
-          final items = snapshot.data ?? const <NativeMessage>[];
-          if (items.isEmpty) return _StateView(icon: Icons.forum_outlined, title: '还没有私信', subtitle: '和其他用户开始聊天后，会话会显示在这里。', action: _refresh);
-          return RefreshIndicator(
-            onRefresh: _refresh,
-            child: ListView.separated(
-              physics: const AlwaysScrollableScrollPhysics(),
-              padding: const EdgeInsets.fromLTRB(12, 10, 12, 28),
-              itemCount: items.length,
-              separatorBuilder: (_, __) => const SizedBox(height: 2),
-              itemBuilder: (context, index) {
-                final item = items[index];
-                final name = _name(item);
-                final preview = item.subtitle.trim().isEmpty ? '暂无消息内容' : item.subtitle.trim();
-                return Material(
-                  color: scheme.surface,
-                  borderRadius: BorderRadius.circular(18),
-                  child: InkWell(
-                    borderRadius: BorderRadius.circular(18),
-                    onTap: item.uid > 0
-                        ? () => Navigator.of(context).push(MaterialPageRoute(builder: (_) => NativeChatPage(uid: item.uid, username: name)))
-                        : null,
-                    child: Padding(
-                      padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 13),
-                      child: Row(
-                        children: [
-                          Stack(
-                            clipBehavior: Clip.none,
-                            children: [
-                              CircleAvatar(
-                                radius: 29,
-                                backgroundColor: scheme.primaryContainer,
-                                child: Text(_initial(name), style: TextStyle(fontSize: 20, fontWeight: FontWeight.w700, color: scheme.onPrimaryContainer)),
-                              ),
-                            ],
-                          ),
-                          const SizedBox(width: 13),
-                          Expanded(
-                            child: Column(
-                              crossAxisAlignment: CrossAxisAlignment.start,
-                              children: [
-                                Row(
-                                  children: [
-                                    Expanded(child: Text(name, maxLines: 1, overflow: TextOverflow.ellipsis, style: const TextStyle(fontSize: 16, fontWeight: FontWeight.w800))),
-                                    if (item.time.trim().isNotEmpty) ...[
-                                      const SizedBox(width: 8),
-                                      Text(item.time.trim(), maxLines: 1, overflow: TextOverflow.ellipsis, style: TextStyle(fontSize: 11, color: scheme.onSurfaceVariant)),
-                                    ],
-                                  ],
-                                ),
-                                const SizedBox(height: 5),
-                                Text(preview, maxLines: 1, overflow: TextOverflow.ellipsis, style: TextStyle(fontSize: 13, height: 1.3, color: scheme.onSurfaceVariant)),
-                              ],
-                            ),
-                          ),
-                          const SizedBox(width: 5),
-                          Icon(Icons.chevron_right_rounded, size: 22, color: scheme.outlineVariant),
-                        ],
-                      ),
-                    ),
-                  ),
-                );
-              },
-            ),
-          );
-        },
-      ),
-    );
-  }
-}
-
-class _StateView extends StatelessWidget {
-  final IconData icon;
-  final String title;
-  final String subtitle;
-  final Future<void> Function() action;
-  const _StateView({required this.icon, required this.title, required this.subtitle, required this.action});
-
-  @override
-  Widget build(BuildContext context) {
-    final scheme = Theme.of(context).colorScheme;
-    return RefreshIndicator(
-      onRefresh: action,
-      child: ListView(
-        physics: const AlwaysScrollableScrollPhysics(),
-        children: [
-          const SizedBox(height: 150),
-          Icon(icon, size: 58, color: scheme.outline),
-          const SizedBox(height: 16),
-          Center(child: Text(title, style: const TextStyle(fontSize: 18, fontWeight: FontWeight.w800))),
-          const SizedBox(height: 7),
-          Padding(padding: const EdgeInsets.symmetric(horizontal: 34), child: Text(subtitle, textAlign: TextAlign.center, style: TextStyle(fontSize: 13, color: scheme.onSurfaceVariant, height: 1.5))),
-          const SizedBox(height: 18),
-          Center(child: FilledButton.icon(onPressed: action, icon: const Icon(Icons.refresh_rounded), label: const Text('刷新'))),
-        ],
-      ),
-    );
-  }
-}
+class _Pm{final int uid;final String name,preview,time;const _Pm(this.uid,this.name,this.preview,this.time);}
