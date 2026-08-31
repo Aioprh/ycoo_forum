@@ -271,7 +271,7 @@ class _ProfilePageState extends State<ProfilePage> {
             Container(width: 46, height: 46, decoration: BoxDecoration(color: scheme.secondary, borderRadius: BorderRadius.circular(14)), child: Icon(done ? Icons.check_rounded : Icons.calendar_month_rounded, color: scheme.onSecondary, size: 25)),
             const SizedBox(width: 12),
             Expanded(child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
-              Row(children: [const Text('每日签到', style: TextStyle(fontSize: 16, fontWeight: FontWeight.w800)), if (done) ...[const SizedBox(width: 6), Container(padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 3), decoration: BoxDecoration(color: scheme.primaryContainer, borderRadius: BorderRadius.circular(7)), child: const Text('已完成', style: TextStyle(fontSize: 9, fontWeight: FontWeight.w700)))]),
+              Row(children: [const Text('每日签到', style: TextStyle(fontSize: 16, fontWeight: FontWeight.w800)), if (done) ...[const SizedBox(width: 6), Container(padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 3), decoration: BoxDecoration(color: scheme.primaryContainer, borderRadius: BorderRadius.circular(7)), child: const Text('已完成', style: TextStyle(fontSize: 9, fontWeight: FontWeight.w700)))]]),
               const SizedBox(height: 4),
               Text(subtitle, maxLines: 1, overflow: TextOverflow.ellipsis, style: TextStyle(fontSize: 12, color: scheme.onSurfaceVariant)),
             ])),
@@ -369,3 +369,4 @@ class _ProfilePageState extends State<ProfilePage> {
     );
   }
 }
+
