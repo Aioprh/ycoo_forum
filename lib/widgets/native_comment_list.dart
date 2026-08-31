@@ -5,6 +5,7 @@ import 'package:html/parser.dart' as parser;
 import '../pages/native_profile_page.dart';
 import '../services/auth_service.dart';
 import '../services/comment_profile_resolver.dart';
+import '../services/comment_reply_resolver.dart';
 import 'resolved_user_avatar.dart';
 
 class NativeCommentList extends StatelessWidget {
@@ -99,10 +100,45 @@ class NativeCommentList extends StatelessWidget {
       itemBuilder: (context, index) => _CommentCard(
         comment: comments[index],
         index: index,
-        onReply: onReply ?? (pid, author) => _replyDialog(context, tid, fid, pid, author),
+        onReply: () => _handleReply(context, tid, fid, index, comments[index]),
         onProfile: () => _openProfile(context, comments[index]),
       ),
     );
+  }
+
+  Future<void> _handleReply(
+    BuildContext context,
+    int tid,
+    int fid,
+    int index,
+    _CommentFloor comment,
+  ) async {
+    var pid = comment.pid;
+    if (pid <= 0 && tid > 0) {
+      final messenger = ScaffoldMessenger.of(context);
+      messenger.showSnackBar(const SnackBar(content: Text('正在获取评论楼层…')));
+      try {
+        pid = await CommentReplyResolver.instance.resolvePid(
+          tid: tid,
+          commentIndex: index,
+          author: comment.author,
+          floor: comment.floor,
+        );
+      } catch (_) {
+        pid = 0;
+      }
+      if (!context.mounted) return;
+      messenger.hideCurrentSnackBar();
+    }
+    if (pid <= 0) {
+      ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('未取得评论楼层，请刷新帖子后重试')));
+      return;
+    }
+    if (onReply != null) {
+      onReply!(pid, comment.author);
+    } else {
+      await _replyDialog(context, tid, fid, pid, comment.author);
+    }
   }
 
   Future<void> _openProfile(BuildContext context, _CommentFloor comment) async {
@@ -182,7 +218,7 @@ class _CommentFloor {
 class _CommentCard extends StatelessWidget {
   final _CommentFloor comment;
   final int index;
-  final void Function(int pid, String author) onReply;
+  final VoidCallback onReply;
   final VoidCallback onProfile;
   const _CommentCard({required this.comment, required this.index, required this.onReply, required this.onProfile});
 
@@ -230,11 +266,14 @@ class _CommentCard extends StatelessWidget {
         Container(height: 1, color: s.outlineVariant.withValues(alpha: .35)),
         const SizedBox(height: 10),
         _HtmlNodes(element: comment.body),
-        if (comment.pid > 0)
-          Align(
-            alignment: Alignment.centerRight,
-            child: TextButton.icon(onPressed: () => onReply(comment.pid, comment.author), icon: const Icon(Icons.reply_rounded, size: 17), label: const Text('回复本楼')),
+        Align(
+          alignment: Alignment.centerRight,
+          child: TextButton.icon(
+            onPressed: onReply,
+            icon: const Icon(Icons.reply_rounded, size: 17),
+            label: const Text('回复本楼'),
           ),
+        ),
       ]),
     );
   }
