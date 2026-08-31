@@ -16,7 +16,17 @@ class ThreadDetail {
   final String _commentsHtml;
 
   String get bodyHtml => _sanitizeForumHtml(_bodyHtml);
-  String get commentsHtml => _sanitizeForumHtml(_commentsHtml);
+  String get commentsHtml {
+    final sanitized = _sanitizeForumHtml(_commentsHtml);
+    if (sanitized.trim().isEmpty) return '';
+    if (sanitized.contains('class="comments-section"')) {
+      return sanitized.replaceFirst(
+        'class="comments-section"',
+        'class="comments-section" data-tid="$tid" data-fid="$fid"',
+      );
+    }
+    return '<div class="comments-section" data-tid="$tid" data-fid="$fid">$sanitized</div>';
+  }
 
   /// Discuz 付费主题可能仍提供一部分免费预览内容。
   /// 不能再用“清洗后的正文为空”判断付费状态，否则购买按钮会消失。
