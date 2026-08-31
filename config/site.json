@@ -1,3 +1,5 @@
 {
-  "base": "https://www.ycoo.net/"
+  "base": "https://www.ycoo.net/",
+  "cdn": "",
+  "api": ""
 }
