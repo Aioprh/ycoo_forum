@@ -3,8 +3,8 @@
     <application
         android:label="源论坛"
         android:name="${applicationName}"
-        android:icon="@drawable/ic_launcher_ycoo"
-        android:roundIcon="@drawable/ic_launcher_ycoo"
+        android:icon="@mipmap/ic_launcher"
+        android:roundIcon="@mipmap/ic_launcher"
         android:usesCleartextTraffic="true">
         <activity
             android:name=".MainActivity"
