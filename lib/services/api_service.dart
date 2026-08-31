@@ -172,13 +172,14 @@ class ApiService {
     final body = posts.isEmpty ? '' : '<div class="content-section">${posts.first}</div>';
     final comments = posts.length <= 1
         ? ''
-        : '<div class="comments-section"><div class="comments-title">评论 / 回复</div>${posts.skip(1).join()}</div>';
+        : '<div class="comments-section" data-tid="$tid" data-fid="${_firstInt(RegExp(r'(?:forum-|[?&]fid=)(\d+)'), boardLink?.attributes['href'] ?? '') ?? _firstInt(RegExp(r'(?:forum-|[?&]fid=)(\d+)'), posts.first) ?? 0}"><div class="comments-title">评论 / 回复</div>${posts.skip(1).join()}</div>';
     final firstPost = _firstPostNode(doc);
     final myUid = AuthService.instance.uid ?? 0;
-    final firstPid = _firstInt(RegExp(r'id="pid(\d+)"'), html) ?? 0;
+    final firstPid = _firstPidFromPost(firstPost, html);
     var likeCount = _firstInt(RegExp(r'class="comiis_recommend_nums[^"]*">\s*(\d+)'), html) ?? 0;
     if (likeCount <= 0) likeCount = doc.querySelectorAll('.comiis_recommend_list_a li').length;
     final likedByMe = myUid > 0 && doc.querySelectorAll('.comiis_recommend_list_a a[href*="uid=$myUid"]').isNotEmpty;
+    final fid = _firstInt(RegExp(r'(?:forum-|[?&]fid=)(\d+)'), boardLink?.attributes['href'] ?? '') ?? _firstInt(RegExp(r'(?:forum-|[?&]fid=)(\d+)'), firstPost?.outerHtml ?? '') ?? 0;
     return ThreadDetail(
       tid: tid,
       title: title.isEmpty ? '帖子详情' : title,
@@ -186,7 +187,7 @@ class ApiService {
       avatar: _abs(firstPost?.querySelector('img.top_tximg, .avatar img, .avtm img')?.attributes['src'] ?? doc.querySelector('img.top_tximg, .avatar img, .avtm img')?.attributes['src'] ?? ''),
       level: _normSpace(firstPost?.querySelector('.top_lev, .p_pop')?.text ?? doc.querySelector('.top_lev')?.text ?? ''),
       time: _normSpace(firstPost?.querySelector('.comiis_postli_time .kmtime, .authi em, .pti .authi')?.text ?? ''),
-      fid: _firstInt(RegExp(r'(?:forum-|[?&]fid=)(\d+)'), boardLink?.attributes['href'] ?? '') ?? _firstInt(RegExp(r'(?:forum-|[?&]fid=)(\d+)'), firstPost?.outerHtml ?? '') ?? 0,
+      fid: fid,
       boardName: boardName,
       bodyHtml: body,
       commentsHtml: comments,
@@ -356,6 +357,35 @@ class ApiService {
     return null;
   }
 
+  static int _postPid(dom.Element post) {
+    const attrs = ['data-pid', 'data-post-id', 'data-id', 'pid'];
+    for (final key in attrs) {
+      final value = post.attributes[key];
+      final pid = int.tryParse(value ?? '');
+      if (pid != null && pid > 0) return pid;
+    }
+    final ids = [post.id, post.attributes['name'] ?? ''];
+    for (final value in ids) {
+      final match = RegExp(r'(?:post_|pid)(\d+)', caseSensitive: false).firstMatch(value);
+      final pid = int.tryParse(match?.group(1) ?? '');
+      if (pid != null && pid > 0) return pid;
+    }
+    final pidMatch = RegExp(r'(?:^|[?#&/_-])pid[=_-]?(\d+)', caseSensitive: false).firstMatch(post.outerHtml);
+    return int.tryParse(pidMatch?.group(1) ?? '') ?? 0;
+  }
+
+  static int _firstPidFromPost(dom.Element? post, String html) {
+    if (post != null) {
+      final pid = _postPid(post);
+      if (pid > 0) return pid;
+      final id = post.querySelector('[id^="pid"], [id^="post_"]')?.id ?? '';
+      final match = RegExp(r'(?:pid|post_)(\d+)', caseSensitive: false).firstMatch(id);
+      final parsed = int.tryParse(match?.group(1) ?? '');
+      if (parsed != null && parsed > 0) return parsed;
+    }
+    return _firstInt(RegExp(r'(?:id=["\']pid|id=["\']post_)(\d+)', caseSensitive: false), html) ?? 0;
+  }
+
   static List<String> _collectPosts(dom.Document doc) {
     final out = <String>[];
     final postNodes = doc.querySelectorAll('.comiis_postli, #postlist .plhin, #postlist .plc, #postlist > div[id^="post_"], div[id^="postmessage_"]');
@@ -370,14 +400,23 @@ class ApiService {
       final level = _normSpace(post.querySelector('.top_lev, .p_pop')?.text ?? '');
       final floor = _normSpace(post.querySelector('.f_d.y, .pi .authi em, .pls .authi em')?.text ?? '').replaceAll(RegExp(r'[^0-9A-Za-z一二三四五六七八九十楼主]'), '');
       final time = _normSpace(post.querySelector('.kmtime, .comiis_tm, .authi em')?.text ?? '');
+      final pid = _postPid(post);
+      final uid = _firstInt(RegExp(r'(?:[?&]uid=|data-uid=["\'])(\d+)', caseSensitive: false), post.outerHtml) ?? 0;
       final displayFloor = floor.isEmpty ? (out.isEmpty ? '楼主' : '${out.length + 1}楼') : floor;
-      out.add('<div class="post-card"><div class="post-hd"><span class="p-floor">$displayFloor</span>${author.isEmpty ? '' : '<b class="p-author">$author</b>'}${level.isEmpty ? '' : '<span class="p-level">$level</span>'}</div>${time.isEmpty ? '' : '<div class="p-time">$time</div>'}<div class="p-body">${_cleanPostHtml(html)}</div></div>');
+      final attrs = <String>[
+        'data-pid="$pid"',
+        if (uid > 0) 'data-uid="$uid"',
+      ].join(' ');
+      out.add('<div class="post-card" $attrs><div class="post-hd"><span class="p-floor">$displayFloor</span>${author.isEmpty ? '' : '<b class="p-author">$author</b>'}${level.isEmpty ? '' : '<span class="p-level">$level</span>'}</div>${time.isEmpty ? '' : '<div class="p-time">$time</div>'}<div class="p-body">${_cleanPostHtml(html)}</div></div>');
     }
     if (out.isNotEmpty) return out;
     for (final selector in ['.comiis_message_table', '.t_f', '.pcb', '.postmessage', '[id^="postmessage_"]']) {
       for (final t in doc.querySelectorAll(selector)) {
         final html = t.innerHtml.trim();
-        if (html.isNotEmpty) out.add('<div class="post-card"><div class="p-body">${_cleanPostHtml(html)}</div></div>');
+        if (html.isNotEmpty) {
+          final pid = _firstInt(RegExp(r'(?:postmessage_|pid)(\d+)', caseSensitive: false), t.id) ?? 0;
+          out.add('<div class="post-card" data-pid="$pid"><div class="p-body">${_cleanPostHtml(html)}</div></div>');
+        }
       }
       if (out.isNotEmpty) return out;
     }
