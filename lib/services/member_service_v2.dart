@@ -17,15 +17,8 @@ class NativeMessage {
   final String subtitle;
   final String sender;
   final String time;
-  /// 会话对端用户 uid, 用于打开真正的聊天对话页; 0 表示未能解析。
   final int uid;
-  const NativeMessage({
-    required this.title,
-    required this.subtitle,
-    this.sender = '',
-    this.time = '',
-    this.uid = 0,
-  });
+  const NativeMessage({required this.title, required this.subtitle, this.sender = '', this.time = '', this.uid = 0});
 }
 
 class NativeFriend {
@@ -72,9 +65,7 @@ class MemberServiceV2 {
       try {
         final html = await _get(path);
         if (html.trim().isNotEmpty) return html;
-      } catch (e) {
-        last = e;
-      }
+      } catch (e) { last = e; }
     }
     throw Exception(last?.toString().replaceFirst('Exception: ', '') ?? '请求失败');
   }
@@ -102,96 +93,141 @@ class MemberServiceV2 {
     return result;
   }
 
-  /// 拉取通知列表。网页端通过 view 参数区分分类：
-  ///  all=全部提醒、interactive=坛友互动、system=系统提醒、app=应用提醒、mypost=我的帖子。
   Future<List<NativeNotice>> fetchNotices({String view = 'all'}) async {
     final path = 'home.php?mod=space&do=notice&view=$view';
     final doc = _doc(await _first(['$path&mobile=2', path]));
     final result = <NativeNotice>[];
     final seen = <String>{};
     for (final li in doc.querySelectorAll('li,tr,article,.nts,.notice_li,.comiis_notice,.ntc_list')) {
-      // 通知条目通常以 li 承载，内含 dt(时间/屏蔽) 与 dd(内容)
       final dd = li.querySelector('dd');
       final text = _clean(dd?.text ?? li.text);
       if (text.length < 2 || text.length > 500 || !seen.add(text)) continue;
-      // 排除导航/功能类 li（子分类 Tab 等）与明显非通知文本
       if (_looksLikeNavigation(text) || !RegExp(r'(回复|评论|提到|通知|系统|赞了|收藏|提醒|关注|好友|主题|购买|充值|任务|注册|订单|经验|积分|星币)').hasMatch(text)) continue;
       final time = _clean(li.querySelector('dt,time,[class*="time"],[class*="date"]')?.text ?? '');
       final subtitle = time.isNotEmpty ? '$time $text' : text;
       result.add(NativeNotice(title: text.length > 60 ? text.substring(0, 60) : text, subtitle: subtitle, href: _noticeHref(li)));
       if (result.length >= 100) break;
     }
+    if (view == 'all' || view == 'interactive') {
+      for (final a in doc.querySelectorAll('a[href]')) {
+        final href = (a.attributes['href'] ?? '').trim();
+        if (!_isPmHref(href)) continue;
+        final label = _clean(a.text);
+        final uid = _uidFromPmHref(href);
+        if (label.isEmpty && uid <= 0) continue;
+        final key = 'pm:$href:$label';
+        if (!seen.add(key)) continue;
+        result.add(NativeNotice(title: label.isEmpty ? '站内私信' : label, subtitle: '站内私信', href: href));
+        if (result.length >= 100) break;
+      }
+    }
     return result;
   }
 
-  /// 从通知条目里提取可跳转的来源链接(优先是内容链接: 主题/用户/操作页)。
   static String _noticeHref(dynamic li) {
     final anchors = li.querySelectorAll('a[href]');
     if (anchors.isEmpty) return '';
     for (final a in anchors) {
       final h = (a.attributes['href'] ?? '').trim();
       if (h.isEmpty) continue;
-      // 跳过功能/导航类链接, 保留真正通知指向的内容
-      if (RegExp(r'logging|register|pm\b|friend|notice|logout|spacecp|doing|album|blog').hasMatch(h)) continue;
+      if (RegExp(r'logging|register|friend|notice|logout|spacecp|doing|album|blog').hasMatch(h)) continue;
       if (RegExp(r'thread-|uid=|mod=viewthread|mod=space&view').hasMatch(h)) return h;
     }
-    // 没有明显内容链接时, 取第一个链接兜底
     return (anchors.first.attributes['href'] ?? '').trim();
   }
 
   Future<List<NativeMessage>> fetchMessages() async {
-    final doc = _doc(await _first(['home.php?mod=space&do=pm&mobile=2', 'home.php?mod=space&do=pm']));
+    final doc = _doc(await _first(['home.php?mod=space&do=pm&mobile=2', 'home.php?mod=space&do=pm', 'home.php?mod=spacecp&ac=pm&op=pm']));
     final result = <NativeMessage>[];
     final seen = <String>{};
-    final nodes = doc.querySelectorAll('dl.pml, dl[id^="pmlist_"]');
-    for (final node in nodes) {
-      final message = _parseMessage(node);
-      if (message == null) continue;
-      final key = '${message.sender}|${message.subtitle}|${message.time}'.toLowerCase();
-      if (!seen.add(key)) continue;
-      result.add(message);
+    for (final node in doc.querySelectorAll('dl.pml,dl[id^="pmlist_"],li.pm_list,li.pml,.pm_list > li,.pml > li')) {
+      _addMessage(result, seen, _parseMessage(node));
+      if (result.length >= 100) return result;
+    }
+    for (final a in doc.querySelectorAll('a[href]')) {
+      final href = (a.attributes['href'] ?? '').trim();
+      if (!_isPmHref(href)) continue;
+      var node = a.parent;
+      dynamic best;
+      for (var depth = 0; depth < 6 && node != null; depth++, node = node.parent) {
+        final text = _clean(node.text);
+        if (text.length >= 2 && text.length <= 500) best = node;
+        if (text.length > 500) break;
+      }
+      _addMessage(result, seen, _parseMessage(best ?? a), fallbackHref: href, fallbackTitle: _clean(a.text));
       if (result.length >= 100) break;
     }
-    if (result.isNotEmpty) return result;
-    for (final node in doc.querySelectorAll('li.pm_list,li.pml,.pm_list > li,.pml > li')) {
-      final message = _parseMessage(node);
-      if (message == null) continue;
-      final key = '${message.sender}|${message.subtitle}|${message.time}'.toLowerCase();
-      if (!seen.add(key)) continue;
-      result.add(message);
-      if (result.length >= 100) break;
+    if (result.isEmpty) {
+      for (final node in doc.querySelectorAll('li,article,div')) {
+        final text = _clean(node.text);
+        if (text.length < 3 || text.length > 300) continue;
+        final uid = _pmUid(node);
+        if (uid <= 0 || !_looksLikeMessageText(text)) continue;
+        _addMessage(result, seen, _parseMessage(node));
+        if (result.length >= 100) break;
+      }
     }
     return result;
   }
 
+  static void _addMessage(List<NativeMessage> result, Set<String> seen, NativeMessage? message, {String fallbackHref = '', String fallbackTitle = ''}) {
+    if (message == null && fallbackHref.isEmpty) return;
+    if (message == null) {
+      final uid = _uidFromPmHref(fallbackHref);
+      final sender = fallbackTitle.isEmpty ? '站内私信' : fallbackTitle;
+      message = NativeMessage(title: sender, subtitle: '站内私信', sender: sender, uid: uid);
+    }
+    final key = '${message.uid}|${message.sender}|${message.subtitle}|${message.time}'.toLowerCase();
+    if (seen.add(key)) result.add(message);
+  }
+
   NativeMessage? _parseMessage(dynamic node) {
-    final author = node.querySelector('a[href*="uid="],a[href*="mod=space"]');
+    if (node == null) return null;
+    final author = node.querySelector('a[href*="touid="],a[href*="uid="],a[href*="mod=space"],a[href*="username="]');
     var sender = _clean(author?.text ?? '');
     final time = _clean(node.querySelector('.xg1,.xg2,time,[class*="time"],[class*="date"]')?.text ?? '');
-    var body = _clean(node.querySelector('.ptm')?.text ?? node.text);
+    var body = _clean(node.querySelector('.ptm,.pml_body,.pm_body,.pm_message,.comiis_pmtext,.comiis_pm_content,.xg2')?.text ?? node.text ?? '');
     if (sender.isNotEmpty) body = body.replaceFirst(sender, '').trim();
     if (time.isNotEmpty) body = body.replaceFirst(time, '').trim();
     body = body.replaceAll(RegExp(r'^[:：\-·\s]+|[:：\-·\s]+$'), '').trim();
-    if (body.isEmpty || body == '站内私信' || body == '站内消息' || body == '私信') return null;
-    if (sender.isEmpty) sender = '站内私信';
     final uid = _pmUid(node);
+    if (body.isEmpty || _isUiOnlyMessage(body)) return null;
+    if (sender.isEmpty) sender = '站内私信';
     return NativeMessage(title: sender, subtitle: body, sender: sender, time: time, uid: uid);
   }
 
-  /// 从会话条目中提取对端用户 uid(优先取 subop=view 的 touid, 否则取头像/资料链接的 uid)。
-  static int _pmUid(dynamic node) {
-    for (final a in node.querySelectorAll('a[href*="touid="]')) {
-      final m = RegExp(r'touid=(\d+)').firstMatch(a.attributes['href'] ?? '');
-      final v = int.tryParse(m?.group(1) ?? '');
-      if (v != null && v > 0) return v;
-    }
-    for (final a in node.querySelectorAll('a[href*="uid="]')) {
-      final m = RegExp(r'uid=(\d+)').firstMatch(a.attributes['href'] ?? '');
+  static bool _isPmHref(String href) {
+    final h = href.toLowerCase();
+    return h.contains('do=pm') || h.contains('ac=pm') || h.contains('pmid=') || h.contains('touid=') || h.contains('subop=view');
+  }
+
+  static int _uidFromPmHref(String href) {
+    for (final key in const ['touid', 'uid']) {
+      final m = RegExp('[?&]$key=(\\d+)', caseSensitive: false).firstMatch(href);
       final v = int.tryParse(m?.group(1) ?? '');
       if (v != null && v > 0) return v;
     }
     return 0;
   }
+
+  static int _pmUid(dynamic node) {
+    for (final a in node.querySelectorAll('a[href*="touid="]')) {
+      final v = _uidFromPmHref(a.attributes['href'] ?? '');
+      if (v > 0) return v;
+    }
+    for (final a in node.querySelectorAll('a[href*="uid="]')) {
+      final v = _uidFromPmHref(a.attributes['href'] ?? '');
+      if (v > 0) return v;
+    }
+    return 0;
+  }
+
+  static bool _looksLikeMessageText(String text) {
+    if (text == '站内私信' || text == '私信' || text == '消息') return false;
+    return !RegExp(r'^(首页|登录|注册|退出|下一页|上一页|更多|设置|通知|好友|关注|粉丝)$').hasMatch(text);
+  }
+
+  static bool _isUiOnlyMessage(String text) => RegExp(r'^(站内私信|站内消息|私信|消息|查看|详情|回复|删除)$').hasMatch(text.trim());
 
   Future<List<NativeFriend>> fetchFriends() async {
     final doc = _doc(await _first(['home.php?mod=space&do=friend&mobile=2', 'home.php?mod=space&do=friend']));
@@ -228,61 +264,28 @@ class MemberServiceV2 {
     if (cookie == null || cookie.isEmpty) return '请先登录论坛';
     try {
       final client = await NetClient.instance.client;
-      final headers = <String, String>{
-        'User-Agent': NetClient.ua,
-        'Accept': 'text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8',
-        'Accept-Language': 'zh-CN,zh;q=0.9',
-        'Cache-Control': 'no-cache, no-store',
-        'Pragma': 'no-cache',
-        if (cookie.isNotEmpty) 'Cookie': cookie,
-      };
+      final headers = <String, String>{'User-Agent': NetClient.ua,'Accept': 'text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8','Accept-Language': 'zh-CN,zh;q=0.9','Cache-Control': 'no-cache, no-store','Pragma': 'no-cache',if (cookie.isNotEmpty) 'Cookie': cookie};
       String? formhash;
       String? referer;
-      for (final path in [
-        'home.php?mod=spacecp&ac=pm&op=send&mobile=2',
-        'home.php?mod=space&do=pm&mobile=2',
-        'forum.php?mobile=2',
-      ]) {
+      for (final path in ['home.php?mod=spacecp&ac=pm&op=send&mobile=2','home.php?mod=space&do=pm&mobile=2','forum.php?mobile=2']) {
         try {
-          final uri = Uri.parse('$_base$path').replace(queryParameters: {
-            ...Uri.parse('$_base$path').queryParameters,
-            '_ycoo_ts': DateTime.now().millisecondsSinceEpoch.toString(),
-          });
+          final uri = Uri.parse('$_base$path').replace(queryParameters: {...Uri.parse('$_base$path').queryParameters,'_ycoo_ts': DateTime.now().millisecondsSinceEpoch.toString()});
           final response = await client.get(uri, headers: headers).timeout(const Duration(seconds: 20));
           final html = NetClient.decode(response.bodyBytes);
           if (_looksLikeLogin(html)) return '登录态已失效，请重新登录论坛';
           final candidate = _formhashFromHtml(html);
-          if (candidate.isNotEmpty) {
-            formhash = candidate;
-            referer = uri.toString();
-            break;
-          }
+          if (candidate.isNotEmpty) { formhash = candidate; referer = uri.toString(); break; }
         } catch (_) {}
       }
       if (formhash == null || formhash.isEmpty) return '未取得私信令牌(formhash)，请刷新登录状态后重试';
       final sendUri = Uri.parse('$_base/home.php?mod=spacecp&ac=pm&op=send&mobile=2');
-      final response = await client.post(sendUri, headers: {
-        ...headers,
-        'Referer': referer ?? '$_base',
-        'Origin': _base,
-        'Content-Type': 'application/x-www-form-urlencoded; charset=UTF-8',
-        'X-Requested-With': 'XMLHttpRequest',
-      }, body: {
-        'formhash': formhash,
-        'username': target,
-        'message': text,
-        'pmsubmit': 'yes',
-        'sendpm': 'true',
-      }).timeout(const Duration(seconds: 20));
+      final response = await client.post(sendUri, headers: {...headers,'Referer': referer ?? '$_base','Origin': _base,'Content-Type': 'application/x-www-form-urlencoded; charset=UTF-8','X-Requested-With': 'XMLHttpRequest'}, body: {'formhash': formhash,'username': target,'message': text,'pmsubmit': 'yes','sendpm': 'true'}).timeout(const Duration(seconds: 20));
       final body = NetClient.decode(response.bodyBytes);
       if (_looksLikeSuccess(body)) return null;
       if (body.contains('请先登录') || body.contains('登录后才能')) return '登录态已失效，请重新登录论坛';
       if (body.contains('formhash') || body.contains('操作令牌')) return '私信令牌已失效，请刷新登录状态后重试';
-      final error = _messageFromResponse(body);
-      return error ?? '私信发送失败，请稍后重试';
-    } catch (_) {
-      return '私信请求失败，请检查网络后重试';
-    }
+      return _messageFromResponse(body) ?? '私信发送失败，请稍后重试';
+    } catch (_) { return '私信请求失败，请检查网络后重试'; }
   }
 
   static String _formhashFromHtml(String html) {
@@ -290,7 +293,6 @@ class MemberServiceV2 {
     final input = doc.querySelector('input[name="formhash"]');
     final v = (input?.attributes['value'] ?? '').trim();
     if (v.isNotEmpty) return v;
-    // 兜底: 令牌可能在 JS 变量/链接参数里而非 hidden input。
     final m = RegExp(r'''(?:formhash|formHash)\s*[:=]\s*["']([A-Za-z0-9_-]{6,64})["']''', caseSensitive: false).firstMatch(html);
     return m?.group(1)?.trim() ?? '';
   }
