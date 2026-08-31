@@ -1,5 +1,5 @@
 name: ycoo_forum
-description: "源论坛(YcoForum)民间移动端 - 阅读侧。"
+description: "源论坛(YcooForum)民间移动端 - 阅读侧。"
 publish_to: 'none'
 
 version: 1.0.0+1
@@ -18,6 +18,7 @@ dependencies:
   cronet_http: ^1.9.0
   webview_flutter: ^4.10.0
   file_picker: ^10.3.2
+  charset: ^2.0.1
 
 dev_dependencies:
   flutter_test:
