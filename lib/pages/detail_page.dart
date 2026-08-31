@@ -1,4 +1,6 @@
 import 'package:flutter/material.dart';
+import 'package:flutter/services.dart';
+import 'package:html/parser.dart' as html_parser;
 
 import '../models/thread_detail.dart';
 import '../services/api_service.dart';
@@ -360,8 +362,49 @@ class _DetailPageState extends State<DetailPage> {
         borderRadius: BorderRadius.circular(22),
         border: Border.all(color: c.outlineVariant.withValues(alpha: .5)),
       ),
-      child: NativePostContent(html: html, onLinkTap: _handlePostLink),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Row(
+            children: [
+              Text(
+                '长按正文任意文字即可自由选择复制',
+                style: TextStyle(fontSize: 12, color: c.onSurfaceVariant),
+              ),
+              const Spacer(),
+              _copyAllButton(context, html),
+            ],
+          ),
+          const SizedBox(height: 8),
+          NativePostContent(html: html, onLinkTap: _handlePostLink),
+        ],
+      ),
     );
+  }
+
+  Widget _copyAllButton(BuildContext context, String html) {
+    return TextButton.icon(
+      style: TextButton.styleFrom(
+        visualDensity: VisualDensity.compact,
+        tapTargetSize: MaterialTapTargetSize.shrinkWrap,
+        textStyle: const TextStyle(fontSize: 12.5),
+      ),
+      onPressed: () => _copyBodyAll(html),
+      icon: const Icon(Icons.copy_all_rounded, size: 16),
+      label: const Text('复制全文'),
+    );
+  }
+
+  Future<void> _copyBodyAll(String html) async {
+    final clean = (html_parser.parse(html).body?.text ?? '')
+        .replaceAll(RegExp(r'\s+'), ' ')
+        .trim();
+    if (clean.isEmpty) return;
+    await Clipboard.setData(ClipboardData(text: clean));
+    if (!mounted) return;
+    ScaffoldMessenger.of(
+      context,
+    ).showSnackBar(const SnackBar(content: Text('正文已复制到剪贴板')));
   }
 
   Future<void> _handlePostLink(String url) async {
