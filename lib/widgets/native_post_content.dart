@@ -20,7 +20,10 @@ class NativePostContent extends StatelessWidget {
     final nodes = body.nodes
         .where((node) => node is! dom.Text || _nodeText(node).trim().isNotEmpty)
         .toList();
-    return _NodeList(nodes: nodes, onLinkTap: onLinkTap);
+    // 用 SelectionArea 让整段正文支持长按选择并复制文本。
+    return SelectionArea(
+      child: _NodeList(nodes: nodes, onLinkTap: onLinkTap),
+    );
   }
 }
 
