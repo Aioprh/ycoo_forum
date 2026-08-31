@@ -3,9 +3,12 @@ import 'package:flutter/material.dart';
 import '../models/thread_item.dart';
 import '../services/member_service.dart';
 import '../services/member_service_v2.dart';
+import '../services/site_config.dart';
 import '../utils/forum_text.dart';
 import '../widgets/native_icon_style.dart';
 import 'detail_page.dart';
+import 'native_chat_page.dart';
+import 'webview_page.dart';
 
 class MemberFeaturePage extends StatefulWidget {
   final String title;
@@ -134,6 +137,21 @@ class _NoticeList extends StatelessWidget {
     return Icons.notifications_none_rounded;
   }
 
+  /// 点击通知跳到来源: 是主题就打开原生详情页, 否则用内置 WebView 打开来源页。
+  void _open(BuildContext context, NativeNotice item) {
+    final href = item.href;
+    if (href.isEmpty) return;
+    final thread = RegExp(r'thread-(\d+)').firstMatch(href);
+    final tid = thread == null ? 0 : int.tryParse(thread.group(1)!) ?? 0;
+    if (tid > 0) {
+      Navigator.of(context).push(MaterialPageRoute(builder: (_) => DetailPage(tid: tid, title: forumText(item.title))));
+      return;
+    }
+    final url = SiteConfig.resolve(href);
+    if (url.isEmpty) return;
+    Navigator.of(context).push(MaterialPageRoute(builder: (_) => WebViewPage(url: url, title: forumText(item.title))));
+  }
+
   @override
   Widget build(BuildContext context) {
     if (items.isEmpty) return const _EmptyState(title: '暂时没有提醒内容', subtitle: '新的回复、评论、系统消息等提醒会显示在这里');
@@ -151,6 +169,8 @@ class _NoticeList extends StatelessWidget {
             leading: NativeIconStyle.badge(context, _iconFor(title, subtitle)),
             title: Text(title, maxLines: 2, overflow: TextOverflow.ellipsis, style: const TextStyle(fontWeight: FontWeight.w700)),
             subtitle: subtitle != title ? Text(subtitle, maxLines: 2, overflow: TextOverflow.ellipsis) : null,
+            trailing: item.href.isEmpty ? null : const Icon(Icons.chevron_right_rounded),
+            onTap: item.href.isEmpty ? null : () => _open(context, item),
           ),
         );
       },
@@ -199,6 +219,12 @@ class _MessageList extends StatelessWidget {
 
   Future<void> _open(BuildContext context, NativeMessage item) async {
     final sender = _sender(item);
+    // 解析到了对端 uid: 直接进入真正的聊天对话页, 可查看往来消息并回复。
+    if (item.uid > 0) {
+      final username = (sender.isEmpty || sender == '站内私信') ? '用户' : sender;
+      Navigator.of(context).push(MaterialPageRoute(builder: (_) => NativeChatPage(uid: item.uid, username: username)));
+      return;
+    }
     final body = forumText(item.subtitle);
     await showModalBottomSheet<void>(
       context: context,

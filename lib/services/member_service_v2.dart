@@ -8,7 +8,8 @@ import 'net_client.dart';
 class NativeNotice {
   final String title;
   final String subtitle;
-  const NativeNotice({required this.title, required this.subtitle});
+  final String href;
+  const NativeNotice({required this.title, required this.subtitle, this.href = ''});
 }
 
 class NativeMessage {
@@ -16,7 +17,15 @@ class NativeMessage {
   final String subtitle;
   final String sender;
   final String time;
-  const NativeMessage({required this.title, required this.subtitle, this.sender = '', this.time = ''});
+  /// 会话对端用户 uid, 用于打开真正的聊天对话页; 0 表示未能解析。
+  final int uid;
+  const NativeMessage({
+    required this.title,
+    required this.subtitle,
+    this.sender = '',
+    this.time = '',
+    this.uid = 0,
+  });
 }
 
 class NativeFriend {
@@ -109,10 +118,25 @@ class MemberServiceV2 {
       if (_looksLikeNavigation(text) || !RegExp(r'(回复|评论|提到|通知|系统|赞了|收藏|提醒|关注|好友|主题|购买|充值|任务|注册|订单|经验|积分|星币)').hasMatch(text)) continue;
       final time = _clean(li.querySelector('dt,time,[class*="time"],[class*="date"]')?.text ?? '');
       final subtitle = time.isNotEmpty ? '$time $text' : text;
-      result.add(NativeNotice(title: text.length > 60 ? text.substring(0, 60) : text, subtitle: subtitle));
+      result.add(NativeNotice(title: text.length > 60 ? text.substring(0, 60) : text, subtitle: subtitle, href: _noticeHref(li)));
       if (result.length >= 100) break;
     }
     return result;
+  }
+
+  /// 从通知条目里提取可跳转的来源链接(优先是内容链接: 主题/用户/操作页)。
+  static String _noticeHref(dynamic li) {
+    final anchors = li.querySelectorAll('a[href]');
+    if (anchors.isEmpty) return '';
+    for (final a in anchors) {
+      final h = (a.attributes['href'] ?? '').trim();
+      if (h.isEmpty) continue;
+      // 跳过功能/导航类链接, 保留真正通知指向的内容
+      if (RegExp(r'logging|register|pm\b|friend|notice|logout|spacecp|doing|album|blog').hasMatch(h)) continue;
+      if (RegExp(r'thread-|uid=|mod=viewthread|mod=space&view').hasMatch(h)) return h;
+    }
+    // 没有明显内容链接时, 取第一个链接兜底
+    return (anchors.first.attributes['href'] ?? '').trim();
   }
 
   Future<List<NativeMessage>> fetchMessages() async {
@@ -150,7 +174,23 @@ class MemberServiceV2 {
     body = body.replaceAll(RegExp(r'^[:：\-·\s]+|[:：\-·\s]+$'), '').trim();
     if (body.isEmpty || body == '站内私信' || body == '站内消息' || body == '私信') return null;
     if (sender.isEmpty) sender = '站内私信';
-    return NativeMessage(title: sender, subtitle: body, sender: sender, time: time);
+    final uid = _pmUid(node);
+    return NativeMessage(title: sender, subtitle: body, sender: sender, time: time, uid: uid);
+  }
+
+  /// 从会话条目中提取对端用户 uid(优先取 subop=view 的 touid, 否则取头像/资料链接的 uid)。
+  static int _pmUid(dynamic node) {
+    for (final a in node.querySelectorAll('a[href*="touid="]')) {
+      final m = RegExp(r'touid=(\d+)').firstMatch(a.attributes['href'] ?? '');
+      final v = int.tryParse(m?.group(1) ?? '');
+      if (v != null && v > 0) return v;
+    }
+    for (final a in node.querySelectorAll('a[href*="uid="]')) {
+      final m = RegExp(r'uid=(\d+)').firstMatch(a.attributes['href'] ?? '');
+      final v = int.tryParse(m?.group(1) ?? '');
+      if (v != null && v > 0) return v;
+    }
+    return 0;
   }
 
   Future<List<NativeFriend>> fetchFriends() async {
