@@ -50,9 +50,18 @@ jobs:
           [ -z "$major" ] && major=1
           [ -z "$minor" ] && minor=0
           [ -z "$patch" ] && patch=0
-          new_patch=$((patch + 1))
           new_build=$((build_part + 1))
-          new_version="${major}.${minor}.${new_patch}+${new_build}"
+          # 十进制进位：1.0.9 → 1.1.0 → 1.1.9 → 1.2.0 …
+          patch=$((patch + 1))
+          if [ "$patch" -ge 10 ]; then
+            patch=0
+            minor=$((minor + 1))
+            if [ "$minor" -ge 10 ]; then
+              minor=0
+              major=$((major + 1))
+            fi
+          fi
+          new_version="${major}.${minor}.${patch}+${new_build}"
           sed -i "s/^version:.*/version: ${new_version}/" pubspec.yaml
           echo "新版本号: ${new_version}"
           git config user.name "github-actions[bot]"
