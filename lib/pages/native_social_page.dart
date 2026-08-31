@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 
 import '../services/social_service.dart';
+import '../utils/forum_text.dart';
 import 'native_profile_page.dart';
 
 class NativeSocialPage extends StatefulWidget {
@@ -112,7 +113,7 @@ class _NativeSocialPageState extends State<NativeSocialPage> {
                 }
                 if (snapshot.hasError) {
                   final message = snapshot.error.toString().replaceFirst('Exception: ', '');
-                  return _ErrorState(message: message, onRetry: _refresh);
+                  return _ErrorState(message: forumText(message), onRetry: _refresh);
                 }
                 final users = snapshot.data ?? const <SocialUser>[];
                 if (users.isEmpty) {
@@ -199,7 +200,7 @@ class _UserCard extends StatelessWidget {
     if (!context.mounted) return;
     ScaffoldMessenger.of(context).showSnackBar(
       SnackBar(
-        content: Text(result ?? (follow ? '已关注' : '已取消关注')),
+        content: Text(forumText(result ?? (follow ? '已关注' : '已取消关注'))),
         behavior: SnackBarBehavior.floating,
       ),
     );
@@ -209,7 +210,9 @@ class _UserCard extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final scheme = Theme.of(context).colorScheme;
-    final first = user.name.isEmpty ? '用' : user.name.characters.first;
+    final name = forumText(user.name);
+    final subtitle = forumText(user.subtitle);
+    final first = name.isEmpty ? '用' : name.characters.first;
     return Material(
       color: scheme.surface,
       borderRadius: BorderRadius.circular(18),
@@ -220,7 +223,7 @@ class _UserCard extends StatelessWidget {
                   MaterialPageRoute(
                     builder: (context) => NativeProfilePage(
                       uid: user.uid,
-                      username: user.name,
+                      username: name,
                     ),
                   ),
                 )
@@ -249,14 +252,14 @@ class _UserCard extends StatelessWidget {
                   crossAxisAlignment: CrossAxisAlignment.start,
                   children: [
                     Text(
-                      user.name,
+                      name,
                       maxLines: 1,
                       overflow: TextOverflow.ellipsis,
                       style: const TextStyle(fontSize: 15, fontWeight: FontWeight.w800),
                     ),
                     const SizedBox(height: 4),
                     Text(
-                      user.subtitle.isEmpty ? 'UID ${user.uid}' : user.subtitle,
+                      subtitle.isEmpty ? 'UID ${user.uid}' : subtitle,
                       maxLines: 2,
                       overflow: TextOverflow.ellipsis,
                       style: TextStyle(
