@@ -37,25 +37,29 @@ jobs:
       - name: 检查环境
         run: flutter --version && dart --version
 
-      - name: 自动递增构建号
+      - name: 自动递增版本号
         shell: bash
         run: |
           current=$(grep -E '^version:' pubspec.yaml | awk '{print $2}')
           name_part="${current%%+*}"
           build_part="${current##*+}"
-          if [ -z "$name_part" ] || [ "$build_part" = "$current" ]; then
-            name_part="${current:-1.0.0}"
-            build_part="0"
-          fi
+          if [ -z "$name_part" ]; then name_part="1.0.0"; fi
+          if [ "$build_part" = "$current" ]; then build_part="0"; fi
+          # 递增语义版本名(patch)，确保检测更新无论新旧包都能通过版本名可靠发现
+          IFS='.' read -r major minor patch <<< "$name_part"
+          [ -z "$major" ] && major=1
+          [ -z "$minor" ] && minor=0
+          [ -z "$patch" ] && patch=0
+          new_patch=$((patch + 1))
           new_build=$((build_part + 1))
-          new_version="${name_part}+${new_build}"
+          new_version="${major}.${minor}.${new_patch}+${new_build}"
           sed -i "s/^version:.*/version: ${new_version}/" pubspec.yaml
           echo "新版本号: ${new_version}"
           git config user.name "github-actions[bot]"
           git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
           git add pubspec.yaml
           if ! git diff --cached --quiet; then
-            git commit -m "chore: 自动递增构建号至 ${new_version}"
+            git commit -m "chore: 自动递增版本号至 ${new_version}"
             git push origin main
           fi
 
