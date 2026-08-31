@@ -99,24 +99,14 @@ class MemberServiceV2 {
     final doc = _doc(await _first(['$path&mobile=2', path]));
     final result = <NativeNotice>[];
     final seen = <String>{};
-    // 注意: 该站会把 mobile=2 重定向为 mobile=no, 现实结构为
-    // <div class="nts"> <dl id="notice_xxx"> <dd>头像</dd> <dt>屏蔽+时间</dt> <dd class="ntc_body">正文</dd> </dl>
-    // 必须取 dd.ntc_body, 否则首张 dd(头像)为空导致条目全被跳过。兼容 li 形式。
-    final items = doc.querySelectorAll(
-        '.nts dl, dl[id^="notice"], li[id^="notice"], div[id^="notice"], .ntc_list li, tr, article, .notice_li');
-    for (final node in items) {
-      // 正文: 优先 ntc_body, 否则取最后一个非空 dd(头像 dd 为空)
-      var body = node.querySelector('dd.ntc_body, dd[class*="body"], dd[class*="ntc"]');
-      if (body == null) {
-        final dds = node.querySelectorAll('dd');
-        for (var i = dds.length - 1; i >= 0; i--) {
-          if (_clean(dds[i].text).length >= 2) { body = dds[i]; break; }
-        }
-      }
-      final text = _clean(body?.text ?? node.text).replaceAll(RegExp(r'屏蔽|删除'), '').trim();
+    for (final li in doc.querySelectorAll('li,tr,article,.nts,.notice_li,.comiis_notice,.ntc_list')) {
+      // 通知条目通常以 li 承载，内含 dt(时间/屏蔽) 与 dd(内容)
+      final dd = li.querySelector('dd');
+      final text = _clean(dd?.text ?? li.text);
       if (text.length < 2 || text.length > 500 || !seen.add(text)) continue;
-      if (_looksLikeNavUi(text) || !RegExp(r'(回复|评论|提到|通知|系统|赞了|收藏|提醒|关注|好友|主题|购买|充值|任务|注册|订单|经验|积分|星币|恭喜|欢迎)').hasMatch(text)) continue;
-      final time = _clean(node.querySelector('dt time, dt span.xg1, dt .xg1, dt')?.text ?? '').replaceAll(RegExp(r'屏蔽|删除'), '').trim();
+      // 排除导航/功能类 li（子分类 Tab 等）与明显非通知文本
+      if (_looksLikeNavigation(text) || !RegExp(r'(回复|评论|提到|通知|系统|赞了|收藏|提醒|关注|好友|主题|购买|充值|任务|注册|订单|经验|积分|星币)').hasMatch(text)) continue;
+      final time = _clean(li.querySelector('dt,time,[class*="time"],[class*="date"]')?.text ?? '');
       final subtitle = time.isNotEmpty ? '$time $text' : text;
       result.add(NativeNotice(title: text.length > 60 ? text.substring(0, 60) : text, subtitle: subtitle));
       if (result.length >= 100) break;
@@ -274,23 +264,7 @@ class MemberServiceV2 {
     return uri.replace(queryParameters: q).path + (q.isEmpty ? '' : '?${Uri(queryParameters: q).query}');
   }
 
-  /// 去除会被渲染成乱码/方块的字符:
-  ///  - Unicode 私用区(PUA, 图标字体如 &#xe6xx; 的码点)
-  ///  - 控制符 / 零宽 / 方向标记 / 替换符 / BOM
-  /// 随后压缩空白并去除首尾空格。
-  static String _clean(String text) {
-    final cleaned = text
-        .replaceAll(_puaGlyphs, '')
-        .replaceAll(_controlChars, '')
-        .replaceAll(RegExp(r'\s+'), ' ')
-        .trim();
-    return cleaned;
-  }
-
-  static final RegExp _puaGlyphs =
-      RegExp(r'[\uE000-\uF8FF\uF0000-\uFFFFD\u100000-\u10FFFD]');
-  static final RegExp _controlChars = RegExp(
-      r'[\u0000-\u001F\u007F-\u009F\u200B-\u200F\u202A-\u202E\uFEFF\u2060-\u206F\uFFFD]');
+  static String _clean(String text) => text.replaceAll('\uFFFD', '').replaceAll(RegExp(r'\s+'), ' ').trim();
 
   static bool _looksLikeLogin(String html) {
     final doc = parser.parse(html);
@@ -300,11 +274,4 @@ class MemberServiceV2 {
   }
 
   static bool _looksLikeNavigation(String text) => const {'下一页','上一页','首页','更多','回复','查看','详情','登录','注册','站内私信','私信'}.contains(text);
-
-  /// 通知列表专用: 剔除导航/菜单/功能类短文本(如"任务中心""勋章中心"等)。
-  static bool _looksLikeNavUi(String text) {
-    if (text.length < 2) return true;
-    return const {'首页','社区','导读','兴趣圈','用户排行','话题排行','圈子排行','版块排行','勋章中心','繁星开通','道具中心','任务中心','相册','搜索','心情墙','访问推广','访问电脑版','小黑屋','返回本版','海报','道具','我要签到','签到'}
-        .any(text.contains);
-  }
 }
