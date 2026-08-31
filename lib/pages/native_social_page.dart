@@ -48,27 +48,17 @@ class _NativeSocialPageState extends State<NativeSocialPage> {
     await future;
   }
 
-  String get _tabTitle {
-    switch (_tab) {
-      case _SocialTab.friends:
-        return '好友';
-      case _SocialTab.following:
-        return '关注';
-      case _SocialTab.followers:
-        return '粉丝';
-    }
-  }
+  String get _tabTitle => switch (_tab) {
+        _SocialTab.friends => '好友',
+        _SocialTab.following => '关注',
+        _SocialTab.followers => '粉丝',
+      };
 
-  String get _emptyText {
-    switch (_tab) {
-      case _SocialTab.friends:
-        return '你添加的好友会显示在这里';
-      case _SocialTab.following:
-        return '你关注的用户会显示在这里';
-      case _SocialTab.followers:
-        return '关注你的用户会显示在这里';
-    }
-  }
+  String get _emptyText => switch (_tab) {
+        _SocialTab.friends => '你添加的好友会显示在这里',
+        _SocialTab.following => '你关注的用户会显示在这里',
+        _SocialTab.followers => '关注你的用户会显示在这里',
+      };
 
   @override
   Widget build(BuildContext context) {
@@ -78,11 +68,7 @@ class _NativeSocialPageState extends State<NativeSocialPage> {
       appBar: AppBar(
         title: const Text('好友 / 关注'),
         actions: [
-          IconButton(
-            onPressed: _refresh,
-            tooltip: '刷新',
-            icon: const Icon(Icons.refresh_rounded),
-          ),
+          IconButton(onPressed: _refresh, tooltip: '刷新', icon: const Icon(Icons.refresh_rounded)),
         ],
       ),
       body: Column(
@@ -91,10 +77,7 @@ class _NativeSocialPageState extends State<NativeSocialPage> {
             padding: const EdgeInsets.fromLTRB(14, 8, 14, 10),
             child: Container(
               padding: const EdgeInsets.all(4),
-              decoration: BoxDecoration(
-                color: scheme.surfaceContainerHighest,
-                borderRadius: BorderRadius.circular(14),
-              ),
+              decoration: BoxDecoration(color: scheme.surfaceContainerHighest, borderRadius: BorderRadius.circular(14)),
               child: Row(
                 children: [
                   _tabButton(_SocialTab.friends, '好友', Icons.people_alt_outlined),
@@ -108,29 +91,21 @@ class _NativeSocialPageState extends State<NativeSocialPage> {
             child: FutureBuilder<List<SocialUser>>(
               future: _future,
               builder: (context, snapshot) {
-                if (snapshot.connectionState == ConnectionState.waiting) {
-                  return const Center(child: CircularProgressIndicator());
-                }
+                if (snapshot.connectionState == ConnectionState.waiting) return const Center(child: CircularProgressIndicator());
                 if (snapshot.hasError) {
                   final message = snapshot.error.toString().replaceFirst('Exception: ', '');
                   return _ErrorState(message: forumText(message), onRetry: _refresh);
                 }
                 final users = snapshot.data ?? const <SocialUser>[];
-                if (users.isEmpty) {
-                  return _EmptyState(title: '暂无$_tabTitle', subtitle: _emptyText);
-                }
+                if (users.isEmpty) return _EmptyState(title: '暂无$_tabTitle', subtitle: _emptyText);
                 return RefreshIndicator(
                   onRefresh: _refresh,
                   child: ListView.separated(
                     physics: const AlwaysScrollableScrollPhysics(),
                     padding: const EdgeInsets.fromLTRB(14, 4, 14, 28),
                     itemCount: users.length,
-                    separatorBuilder: (context, index) => const SizedBox(height: 8),
-                    itemBuilder: (context, index) => _UserCard(
-                      user: users[index],
-                      tab: _tab,
-                      onChanged: _refresh,
-                    ),
+                    separatorBuilder: (_, __) => const SizedBox(height: 8),
+                    itemBuilder: (_, index) => _UserCard(user: users[index], tab: _tab, onChanged: _refresh),
                   ),
                 );
               },
@@ -151,27 +126,13 @@ class _NativeSocialPageState extends State<NativeSocialPage> {
         child: AnimatedContainer(
           duration: const Duration(milliseconds: 180),
           padding: const EdgeInsets.symmetric(vertical: 10),
-          decoration: BoxDecoration(
-            color: selected ? scheme.primaryContainer : Colors.transparent,
-            borderRadius: BorderRadius.circular(11),
-          ),
+          decoration: BoxDecoration(color: selected ? scheme.primaryContainer : Colors.transparent, borderRadius: BorderRadius.circular(11)),
           child: Row(
             mainAxisAlignment: MainAxisAlignment.center,
             children: [
-              Icon(
-                icon,
-                size: 17,
-                color: selected ? scheme.onPrimaryContainer : scheme.onSurfaceVariant,
-              ),
+              Icon(icon, size: 17, color: selected ? scheme.onPrimaryContainer : scheme.onSurfaceVariant),
               const SizedBox(width: 5),
-              Text(
-                label,
-                style: TextStyle(
-                  fontSize: 13,
-                  fontWeight: selected ? FontWeight.w800 : FontWeight.w600,
-                  color: selected ? scheme.onPrimaryContainer : scheme.onSurfaceVariant,
-                ),
-              ),
+              Text(label, style: TextStyle(fontSize: 13, fontWeight: selected ? FontWeight.w800 : FontWeight.w600, color: selected ? scheme.onPrimaryContainer : scheme.onSurfaceVariant)),
             ],
           ),
         ),
@@ -185,25 +146,13 @@ class _UserCard extends StatelessWidget {
   final _SocialTab tab;
   final Future<void> Function() onChanged;
 
-  const _UserCard({
-    required this.user,
-    required this.tab,
-    required this.onChanged,
-  });
+  const _UserCard({required this.user, required this.tab, required this.onChanged});
 
   Future<void> _toggle(BuildContext context) async {
     final follow = tab == _SocialTab.followers;
-    final result = await SocialService.instance.toggleFollow(
-      uid: user.uid,
-      follow: follow,
-    );
+    final result = await SocialService.instance.toggleFollow(uid: user.uid, follow: follow);
     if (!context.mounted) return;
-    ScaffoldMessenger.of(context).showSnackBar(
-      SnackBar(
-        content: Text(forumText(result ?? (follow ? '已关注' : '已取消关注'))),
-        behavior: SnackBarBehavior.floating,
-      ),
-    );
+    ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text(forumText(result ?? (follow ? '已关注' : '已取消关注'))), behavior: SnackBarBehavior.floating));
     if (result == null) await onChanged();
   }
 
@@ -218,16 +167,7 @@ class _UserCard extends StatelessWidget {
       borderRadius: BorderRadius.circular(18),
       clipBehavior: Clip.antiAlias,
       child: InkWell(
-        onTap: user.uid > 0
-            ? () => Navigator.of(context).push(
-                  MaterialPageRoute(
-                    builder: (context) => NativeProfilePage(
-                      uid: user.uid,
-                      username: name,
-                    ),
-                  ),
-                )
-            : null,
+        onTap: user.uid > 0 ? () => Navigator.of(context).push(MaterialPageRoute(builder: (_) => NativeProfilePage(uid: user.uid, username: name))) : null,
         child: Padding(
           padding: const EdgeInsets.fromLTRB(14, 13, 12, 13),
           child: Row(
@@ -236,38 +176,16 @@ class _UserCard extends StatelessWidget {
                 radius: 27,
                 backgroundColor: scheme.primaryContainer,
                 backgroundImage: user.avatar.isEmpty ? null : NetworkImage(user.avatar),
-                child: user.avatar.isEmpty
-                    ? Text(
-                        first,
-                        style: TextStyle(
-                          fontWeight: FontWeight.w800,
-                          color: scheme.onPrimaryContainer,
-                        ),
-                      )
-                    : null,
+                child: user.avatar.isEmpty ? Text(first, style: TextStyle(fontWeight: FontWeight.w800, color: scheme.onPrimaryContainer)) : null,
               ),
               const SizedBox(width: 12),
               Expanded(
                 child: Column(
                   crossAxisAlignment: CrossAxisAlignment.start,
                   children: [
-                    Text(
-                      name,
-                      maxLines: 1,
-                      overflow: TextOverflow.ellipsis,
-                      style: const TextStyle(fontSize: 15, fontWeight: FontWeight.w800),
-                    ),
-                    const SizedBox(height: 4),
-                    Text(
-                      subtitle.isEmpty ? 'UID ${user.uid}' : subtitle,
-                      maxLines: 2,
-                      overflow: TextOverflow.ellipsis,
-                      style: TextStyle(
-                        fontSize: 11,
-                        height: 1.3,
-                        color: scheme.onSurfaceVariant,
-                      ),
-                    ),
+                    Text(name, maxLines: 1, overflow: TextOverflow.ellipsis, style: const TextStyle(fontSize: 15, fontWeight: FontWeight.w800)),
+                    const SizedBox(height: 5),
+                    _SocialMetaText(text: subtitle.isEmpty ? 'UID ${user.uid}' : subtitle),
                   ],
                 ),
               ),
@@ -276,10 +194,7 @@ class _UserCard extends StatelessWidget {
                   height: 34,
                   child: OutlinedButton(
                     onPressed: () => _toggle(context),
-                    style: OutlinedButton.styleFrom(
-                      padding: const EdgeInsets.symmetric(horizontal: 11),
-                      visualDensity: VisualDensity.compact,
-                    ),
+                    style: OutlinedButton.styleFrom(padding: const EdgeInsets.symmetric(horizontal: 11), visualDensity: VisualDensity.compact),
                     child: Text(tab == _SocialTab.followers ? '关注' : '取消关注'),
                   ),
                 )
@@ -293,78 +208,66 @@ class _UserCard extends StatelessWidget {
   }
 }
 
+/// Discuz 的“备注 / 星标”等项目原本依赖 Comiis 私有字体。
+/// Native 页面不再把私有区字符交给 Text，而是使用真正的 Flutter Icon。
+class _SocialMetaText extends StatelessWidget {
+  final String text;
+  const _SocialMetaText({required this.text});
+
+  @override
+  Widget build(BuildContext context) {
+    final value = forumText(text);
+    final normalized = value.replaceAll(RegExp(r'\s+'), ' ').trim();
+    final hasNote = normalized.contains('备注');
+    final hasStar = normalized.contains('星标');
+
+    if (!hasNote && !hasStar) {
+      return Text(normalized, maxLines: 2, overflow: TextOverflow.ellipsis, style: TextStyle(fontSize: 11, height: 1.3, color: Theme.of(context).colorScheme.onSurfaceVariant));
+    }
+
+    final scheme = Theme.of(context).colorScheme;
+    return Wrap(
+      spacing: 10,
+      runSpacing: 4,
+      children: [
+        if (hasNote) _MetaChip(icon: Icons.sticky_note_2_outlined, label: '备注', color: scheme.onSurfaceVariant),
+        if (hasStar) _MetaChip(icon: Icons.star_border_rounded, label: '星标', color: scheme.onSurfaceVariant),
+      ],
+    );
+  }
+}
+
+class _MetaChip extends StatelessWidget {
+  final IconData icon;
+  final String label;
+  final Color color;
+  const _MetaChip({required this.icon, required this.label, required this.color});
+
+  @override
+  Widget build(BuildContext context) {
+    return Row(mainAxisSize: MainAxisSize.min, children: [Icon(icon, size: 15, color: color), const SizedBox(width: 3), Text(label, style: TextStyle(fontSize: 11, color: color))]);
+  }
+}
+
 class _EmptyState extends StatelessWidget {
   final String title;
   final String subtitle;
-
   const _EmptyState({required this.title, required this.subtitle});
 
   @override
   Widget build(BuildContext context) {
     final scheme = Theme.of(context).colorScheme;
-    return Center(
-      child: Padding(
-        padding: const EdgeInsets.all(32),
-        child: Column(
-          mainAxisSize: MainAxisSize.min,
-          children: [
-            Container(
-              width: 68,
-              height: 68,
-              decoration: BoxDecoration(
-                color: scheme.primaryContainer,
-                shape: BoxShape.circle,
-              ),
-              child: Icon(
-                Icons.people_outline_rounded,
-                size: 32,
-                color: scheme.onPrimaryContainer,
-              ),
-            ),
-            const SizedBox(height: 14),
-            Text(
-              title,
-              style: const TextStyle(fontSize: 17, fontWeight: FontWeight.w800),
-            ),
-            const SizedBox(height: 6),
-            Text(
-              subtitle,
-              textAlign: TextAlign.center,
-              style: TextStyle(fontSize: 12, color: scheme.onSurfaceVariant),
-            ),
-          ],
-        ),
-      ),
-    );
+    return Center(child: Padding(padding: const EdgeInsets.all(32), child: Column(mainAxisSize: MainAxisSize.min, children: [Container(width: 68, height: 68, decoration: BoxDecoration(color: scheme.primaryContainer, shape: BoxShape.circle), child: Icon(Icons.people_outline_rounded, size: 32, color: scheme.onPrimaryContainer)), const SizedBox(height: 14), Text(title, style: const TextStyle(fontSize: 17, fontWeight: FontWeight.w800)), const SizedBox(height: 6), Text(subtitle, textAlign: TextAlign.center, style: TextStyle(fontSize: 12, color: scheme.onSurfaceVariant))])));
   }
 }
 
 class _ErrorState extends StatelessWidget {
   final String message;
   final Future<void> Function() onRetry;
-
   const _ErrorState({required this.message, required this.onRetry});
 
   @override
   Widget build(BuildContext context) {
-    return Center(
-      child: Padding(
-        padding: const EdgeInsets.all(24),
-        child: Column(
-          mainAxisSize: MainAxisSize.min,
-          children: [
-            const Icon(Icons.cloud_off_rounded, size: 48),
-            const SizedBox(height: 12),
-            Text(message, textAlign: TextAlign.center),
-            const SizedBox(height: 12),
-            FilledButton.icon(
-              onPressed: onRetry,
-              icon: const Icon(Icons.refresh_rounded),
-              label: const Text('重试'),
-            ),
-          ],
-        ),
-      ),
-    );
+    return Center(child: Padding(padding: const EdgeInsets.all(24), child: Column(mainAxisSize: MainAxisSize.min, children: [const Icon(Icons.cloud_off_rounded, size: 48), const SizedBox(height: 12), Text(message, textAlign: TextAlign.center), const SizedBox(height: 12), FilledButton.icon(onPressed: onRetry, icon: const Icon(Icons.refresh_rounded), label: const Text('重试'))])));
   }
 }
