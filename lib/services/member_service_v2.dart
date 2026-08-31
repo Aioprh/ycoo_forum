@@ -99,15 +99,24 @@ class MemberServiceV2 {
     final doc = _doc(await _first(['$path&mobile=2', path]));
     final result = <NativeNotice>[];
     final seen = <String>{};
-    // App 端拉取的是移动版页面, 通知分散在 li / dl / .nts 等结构中,
-    // 采用宽选择器扫描(能显示的基线版本即如此), 乱码由 _clean 剔除图标字体码点。
-    for (final node in doc.querySelectorAll('li,tr,article,.nts,.notice_li,.comiis_notice,.ntc_list,dl.ntc,dl.cl')) {
-      final dd = node.querySelector('dd');
-      final text = _clean(dd?.text ?? node.text).replaceAll(RegExp(r'屏蔽|删除'), '').trim();
+    // 注意: 该站会把 mobile=2 重定向为 mobile=no, 现实结构为
+    // <div class="nts"> <dl id="notice_xxx"> <dd>头像</dd> <dt>屏蔽+时间</dt> <dd class="ntc_body">正文</dd> </dl>
+    // 必须取 dd.ntc_body, 否则首张 dd(头像)为空导致条目全被跳过。兼容 li 形式。
+    final items = doc.querySelectorAll(
+        '.nts dl, dl[id^="notice"], li[id^="notice"], div[id^="notice"], .ntc_list li, tr, article, .notice_li');
+    for (final node in items) {
+      // 正文: 优先 ntc_body, 否则取最后一个非空 dd(头像 dd 为空)
+      var body = node.querySelector('dd.ntc_body, dd[class*="body"], dd[class*="ntc"]');
+      if (body == null) {
+        final dds = node.querySelectorAll('dd');
+        for (var i = dds.length - 1; i >= 0; i--) {
+          if (_clean(dds[i].text).length >= 2) { body = dds[i]; break; }
+        }
+      }
+      final text = _clean(body?.text ?? node.text).replaceAll(RegExp(r'屏蔽|删除'), '').trim();
       if (text.length < 2 || text.length > 500 || !seen.add(text)) continue;
-      // 排除导航/功能类(子分类 Tab 等)与明显非通知文本
       if (_looksLikeNavUi(text) || !RegExp(r'(回复|评论|提到|通知|系统|赞了|收藏|提醒|关注|好友|主题|购买|充值|任务|注册|订单|经验|积分|星币|恭喜|欢迎)').hasMatch(text)) continue;
-      final time = _clean(node.querySelector('dt,time,[class*="time"],[class*="date"]')?.text ?? '').replaceAll(RegExp(r'屏蔽|删除'), '').trim();
+      final time = _clean(node.querySelector('dt time, dt span.xg1, dt .xg1, dt')?.text ?? '').replaceAll(RegExp(r'屏蔽|删除'), '').trim();
       final subtitle = time.isNotEmpty ? '$time $text' : text;
       result.add(NativeNotice(title: text.length > 60 ? text.substring(0, 60) : text, subtitle: subtitle));
       if (result.length >= 100) break;
