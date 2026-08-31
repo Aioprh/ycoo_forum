@@ -4,6 +4,7 @@ import '../models/thread_item.dart';
 import '../services/member_service.dart';
 import '../services/member_service_v2.dart';
 import '../utils/forum_text.dart';
+import '../widgets/native_icon_style.dart';
 import 'detail_page.dart';
 
 class MemberFeaturePage extends StatefulWidget {
@@ -65,9 +66,9 @@ class _MemberFeaturePageState extends State<MemberFeaturePage> {
           builder: (dialogContext) => AlertDialog(
             title: const Text('发送私信'),
             content: Column(mainAxisSize: MainAxisSize.min, children: [
-              TextField(controller: toCtrl, autofocus: true, decoration: const InputDecoration(labelText: '收件人用户名', prefixIcon: Icon(Icons.person_outline))),
+              TextField(controller: toCtrl, autofocus: true, decoration: const InputDecoration(labelText: '收件人用户名', prefixIcon: Icon(Icons.person_outline_rounded))),
               const SizedBox(height: 12),
-              TextField(controller: msgCtrl, minLines: 2, maxLines: 5, decoration: const InputDecoration(labelText: '私信内容', prefixIcon: Icon(Icons.chat_bubble_outline), alignLabelWithHint: true)),
+              TextField(controller: msgCtrl, minLines: 2, maxLines: 5, decoration: const InputDecoration(labelText: '私信内容', prefixIcon: Icon(Icons.chat_bubble_outline_rounded), alignLabelWithHint: true)),
             ]),
             actions: [
               TextButton(onPressed: () => Navigator.pop(dialogContext, false), child: const Text('取消')),
@@ -124,19 +125,18 @@ class _NoticeList extends StatelessWidget {
 
   IconData _iconFor(String title, String subtitle) {
     final text = forumText('$title $subtitle');
-    if (text.contains('购买') || text.contains('订单') || text.contains('星币')) return Icons.receipt_long_outlined;
+    if (text.contains('购买') || text.contains('订单') || text.contains('星币')) return Icons.receipt_long_rounded;
     if (text.contains('任务') || text.contains('积分')) return Icons.task_alt_rounded;
     if (text.contains('评论') || text.contains('回复')) return Icons.chat_bubble_outline_rounded;
-    if (text.contains('关注') || text.contains('好友')) return Icons.people_outline_rounded;
-    if (text.contains('主题')) return Icons.forum_outlined;
-    if (text.contains('注册') || text.contains('欢迎')) return Icons.verified_user_outlined;
+    if (text.contains('关注') || text.contains('好友')) return Icons.people_alt_rounded;
+    if (text.contains('主题')) return Icons.forum_rounded;
+    if (text.contains('注册') || text.contains('欢迎')) return Icons.verified_user_rounded;
     return Icons.notifications_none_rounded;
   }
 
   @override
   Widget build(BuildContext context) {
     if (items.isEmpty) return const _EmptyState(title: '暂时没有提醒内容', subtitle: '新的回复、评论、系统消息等提醒会显示在这里');
-    final scheme = Theme.of(context).colorScheme;
     return ListView.separated(
       padding: const EdgeInsets.fromLTRB(14, 12, 14, 28),
       itemCount: items.length,
@@ -148,11 +148,7 @@ class _NoticeList extends StatelessWidget {
         return Card(
           clipBehavior: Clip.antiAlias,
           child: ListTile(
-            leading: CircleAvatar(
-              radius: 20,
-              backgroundColor: scheme.secondaryContainer,
-              child: Icon(_iconFor(title, subtitle), color: scheme.onSecondaryContainer, size: 21),
-            ),
+            leading: NativeIconStyle.badge(context, _iconFor(title, subtitle)),
             title: Text(title, maxLines: 2, overflow: TextOverflow.ellipsis, style: const TextStyle(fontWeight: FontWeight.w700)),
             subtitle: subtitle != title ? Text(subtitle, maxLines: 2, overflow: TextOverflow.ellipsis) : null,
           ),
@@ -278,7 +274,7 @@ class _FriendList extends StatelessWidget {
       padding: const EdgeInsets.all(14),
       itemCount: items.length,
       separatorBuilder: (_, __) => const SizedBox(height: 8),
-      itemBuilder: (_, i) => Card(child: ListTile(leading: const CircleAvatar(child: Icon(Icons.person_outline_rounded)), title: Text(forumText(items[i].name)), subtitle: Text(forumText(items[i].subtitle)))),
+      itemBuilder: (_, i) => Card(child: ListTile(leading: NativeIconStyle.badge(context, Icons.person_rounded), title: Text(forumText(items[i].name)), subtitle: Text(forumText(items[i].subtitle)))),
     );
   }
 }
