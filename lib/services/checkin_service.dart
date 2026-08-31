@@ -54,6 +54,14 @@ class CheckinService {
     return null;
   }
 
+  /// 页面是否已呈现“已签到”状态（按钮 btnvisted 或文字提示）。
+  /// K-Misign 在展示层用该标记表示今日已完成签到。
+  bool _isSignedState(String html) =>
+      html.contains('btnvisted') ||
+      html.contains('已签到') ||
+      html.contains('今天已经签到') ||
+      html.contains('今日已签');
+
   bool _isLoggedInHtml(String html) {
     final doc = parser.parse(html);
     if (doc.querySelector('a[href*="action=logout"], a[href*="logout"], .logout, #logout') != null) {
@@ -153,6 +161,9 @@ class CheckinService {
         return '签到页面缺少有效的操作令牌，请重新打开论坛后重试';
       }
 
+      // 若当前页面已显示“已签到”，直接提示，避免重复提交。
+      if (_isSignedState(pageHtml)) return '今天已经签到';
+
       Uri? signUri = _findRealSignAction(pageHtml, pageUrl, formhash);
       signUri ??= Uri.parse('${_base}plugin.php').replace(
         queryParameters: {
@@ -173,6 +184,22 @@ class CheckinService {
       final result = _resultMessage(body);
       if (result != null) return result;
       if (body.contains('btnvisted') || body.contains('已签到')) return '签到成功';
+
+      // 服务端返回的签名/回显未必直接给出“签到成功”字样（K-Misign 常返回空或 JS），
+      // 且首次签到实际已成功但未识别时，不能误报失败。这里回查签到页：
+      // 只要按钮此时已变为“已签到”，即判定本次签到真实成功。
+      try {
+        final recheck = await NetClient.retry(() => client.get(
+              Uri.parse('${_base}plugin.php?id=k_misign:sign'),
+              headers: _headers(_base),
+            ).timeout(NetClient.timeout));
+        if (recheck.statusCode >= 200 &&
+            recheck.statusCode < 400 &&
+            _isSignedState(NetClient.decode(recheck.bodyBytes))) {
+          return '签到成功';
+        }
+      } catch (_) {}
+
       return '签到失败，请稍后重试';
     } catch (_) {
       return '签到请求失败，请检查网络后重试';
