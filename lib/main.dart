@@ -19,6 +19,16 @@ class YcoForumApp extends StatelessWidget {
       debugShowCheckedModeBanner: false,
       theme: ThemeData(
         useMaterial3: true,
+        // Android 系统 CJK/Emoji fallback，避免网页中文、扩展汉字和符号
+        // 因默认字体缺少 glyph 而显示成“方框 X”。
+        fontFamilyFallback: const <String>[
+          'Noto Sans CJK SC',
+          'Noto Sans CJK TC',
+          'Noto Sans CJK JP',
+          'Noto Sans Symbols 2',
+          'Noto Color Emoji',
+          'sans-serif',
+        ],
         colorScheme: ColorScheme.fromSeed(
           seedColor: const Color(0xFF4E6EF2),
           brightness: Brightness.light,
