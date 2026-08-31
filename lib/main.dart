@@ -1,4 +1,5 @@
 import 'package:flutter/material.dart';
+import 'package:flutter_localizations/flutter_localizations.dart';
 
 import 'pages/board_page.dart';
 import 'pages/home_page.dart';
@@ -17,6 +18,14 @@ class YcoForumApp extends StatelessWidget {
     return MaterialApp(
       title: '源论坛',
       debugShowCheckedModeBanner: false,
+      // 中文本地化：让文本选择菜单(复制/全选等)显示中文
+      localizationsDelegates: const [
+        GlobalMaterialLocalizations.delegate,
+        GlobalWidgetsLocalizations.delegate,
+        GlobalCupertinoLocalizations.delegate,
+      ],
+      supportedLocales: const [Locale('zh', 'CN'), Locale('en')],
+      locale: const Locale('zh', 'CN'),
       theme: ThemeData(
         useMaterial3: true,
         // Android 系统 CJK/Emoji fallback，避免网页中文、扩展汉字和符号
