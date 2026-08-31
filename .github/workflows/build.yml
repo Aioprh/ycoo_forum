@@ -5,7 +5,10 @@ on:
     tags: ['v*']
     branches: ['main']
     paths:
-      - 'android/app/src/main/res/drawable/ic_launcher_foreground_small.xml'
+      - 'lib/**'
+      - 'pubspec.yaml'
+      - 'pubspec.lock'
+      - 'android/**'
       - '.github/workflows/build.yml'
   workflow_dispatch:
 
@@ -73,7 +76,6 @@ jobs:
       - name: 拉取依赖
         run: flutter pub get
 
-      # 保持 Flutter 静态分析作为正式构建前的质量门槛。
       - name: 静态分析
         run: flutter analyze --no-fatal-infos --no-fatal-warnings
 
