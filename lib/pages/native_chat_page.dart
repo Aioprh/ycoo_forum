@@ -47,25 +47,76 @@ class _NativeChatPageState extends State<NativeChatPage> {
       if (!AuthService.instance.isLoggedIn) throw Exception('请先登录论坛');
       final client = await NetClient.instance.client;
       final cookie = AuthService.instance.authCookie ?? '';
-      final uri = Uri.parse('${SiteConfig.base}home.php').replace(queryParameters: {
-        'mod': 'space',
-        'do': 'pm',
-        'subop': 'view',
-        'touid': '${widget.uid}',
-        'mobile': '2',
-        '_ycoo_ts': DateTime.now().millisecondsSinceEpoch.toString(),
-      });
-      final response = await client.get(uri, headers: {
+      final headers = <String, String>{
         'User-Agent': NetClient.ua,
         'Accept': 'text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8',
         'Accept-Language': 'zh-CN,zh;q=0.9',
         'Cache-Control': 'no-cache, no-store',
         'Pragma': 'no-cache',
         if (cookie.isNotEmpty) 'Cookie': cookie,
-        'Referer': '${SiteConfig.base}home.php?mod=space&do=pm&mobile=2',
+      };
+
+      // 先读取私信列表，找到论坛实际生成的“查看此会话”链接。
+      // Comiis 模板的会话链接不一定等价于简单的 touid 查询，因此优先使用真实 href。
+      String? conversationHref;
+      final listUri = Uri.parse('${SiteConfig.base}home.php').replace(queryParameters: {
+        'mod': 'space',
+        'do': 'pm',
+        'mobile': '2',
+        '_ycoo_ts': DateTime.now().millisecondsSinceEpoch.toString(),
+      });
+      try {
+        final listResponse = await client.get(listUri, headers: headers).timeout(const Duration(seconds: 20));
+        if (listResponse.statusCode == 200) {
+          final listHtml = NetClient.decode(listResponse.bodyBytes);
+          if (_looksLikeLogin(listHtml)) throw Exception('登录态已失效，请重新登录论坛');
+          final listDoc = parser.parse(listHtml);
+          for (final node in listDoc.querySelectorAll('script,style,noscript,template')) { node.remove(); }
+          for (final a in listDoc.querySelectorAll('a[href]')) {
+            final href = (a.attributes['href'] ?? '').trim();
+            if (!_isConversationHref(href)) continue;
+            if (_hrefUid(href) == widget.uid) {
+              conversationHref = href;
+              break;
+            }
+            // 有些模板把 touid 放在父级节点而不是链接本身。
+            final parent = a.parent;
+            final parentText = _cleanNode(parent?.text ?? '');
+            final parentHasUid = parent?.querySelector('a[href*="touid=${widget.uid}"],a[href*="uid=${widget.uid}"]') != null;
+            if (parentHasUid && parentText.isNotEmpty) {
+              conversationHref = href;
+              break;
+            }
+          }
+        }
+      } catch (e) {
+        if (e is Exception && e.toString().contains('登录态已失效')) rethrow;
+      }
+
+      Uri conversationUri;
+      if (conversationHref != null && conversationHref!.isNotEmpty) {
+        conversationUri = Uri.parse(SiteConfig.resolve(conversationHref!)).replace(queryParameters: {
+          ...Uri.parse(SiteConfig.resolve(conversationHref!)).queryParameters,
+          '_ycoo_ts': DateTime.now().millisecondsSinceEpoch.toString(),
+        });
+      } else {
+        conversationUri = Uri.parse('${SiteConfig.base}home.php').replace(queryParameters: {
+          'mod': 'space',
+          'do': 'pm',
+          'subop': 'view',
+          'touid': '${widget.uid}',
+          'mobile': '2',
+          '_ycoo_ts': DateTime.now().millisecondsSinceEpoch.toString(),
+        });
+      }
+
+      final response = await client.get(conversationUri, headers: {
+        ...headers,
+        'Referer': listUri.toString(),
       }).timeout(const Duration(seconds: 20));
       if (response.statusCode != 200) throw Exception('请求失败 HTTP ${response.statusCode}');
       final html = NetClient.decode(response.bodyBytes);
+      if (_looksLikeLogin(html)) throw Exception('登录态已失效，请重新登录论坛');
       final doc = parser.parse(html);
       for (final node in doc.querySelectorAll('script,style,noscript,template')) { node.remove(); }
 
@@ -94,10 +145,9 @@ class _NativeChatPageState extends State<NativeChatPage> {
         }
       }
 
-      // 某些 Comiis 模板不会给会话消息固定 class，只能从当前 touid 会话中的文本节点兜底解析。
       if (list.isEmpty) {
         for (final node in doc.querySelectorAll('li,article,div')) {
-          final text = _clean(node.text);
+          final text = _cleanNodeText(node);
           if (text.length < 2 || text.length > 500) continue;
           if (RegExp(r'^(首页|消息|私信|返回|刷新|发送|回复|删除)$').hasMatch(text)) continue;
           final hasConversationLink = node.querySelector('a[href*="touid=${widget.uid}"],a[href*="subop=view"],a[href*="do=pm"]') != null;
@@ -123,15 +173,50 @@ class _NativeChatPageState extends State<NativeChatPage> {
 
   NativeMessage? _parseNode(dynamic node) {
     final author = node.querySelector('a[href*="uid="],a[href*="touid="],a[href*="mod=space"],a[href*="username="]');
-    var sender = _clean(author?.text ?? '');
-    final time = _clean(node.querySelector('.xg1,.xg2,time,[class*="time"],[class*="date"]')?.text ?? '');
-    var body = _clean(node.querySelector('.ptm,.pml_body,.pm_body,.pm_message,.comiis_pmtext,.comiis_pm_content,.pmtext')?.text ?? node.text ?? '');
+    var sender = _cleanNodeText(author);
+    final time = _cleanNodeText(node.querySelector('.xg1,.xg2,time,[class*="time"],[class*="date"]'));
+    var body = _cleanNodeText(node.querySelector('.ptm,.pml_body,.pm_body,.pm_message,.comiis_pmtext,.comiis_pm_content,.pmtext') ?? node);
     if (sender.isNotEmpty) body = body.replaceFirst(sender, '').trim();
     if (time.isNotEmpty) body = body.replaceFirst(time, '').trim();
     body = _clean(body.replaceAll(RegExp(r'^[:：\-·\s]+|[:：\-·\s]+$'), ''));
     if (body.isEmpty || RegExp(r'^(站内私信|站内消息|私信|消息|查看|详情|回复|删除)$').hasMatch(body)) return null;
     if (sender.isEmpty) sender = _clean(widget.username);
     return NativeMessage(title: sender, subtitle: body, sender: sender, time: time, uid: widget.uid);
+  }
+
+  static String _cleanNodeText(dynamic node) {
+    if (node == null) return '';
+    try {
+      final clone = node.clone(true);
+      for (final icon in clone.querySelectorAll('i.iconfont,i.comiis-icon,i.comiis_icon,.iconfont,.comiis-icon,[class*="iconfont"],[class*="comiis-icon"],[class*="icon-"]')) {
+        icon.remove();
+      }
+      for (final el in clone.querySelectorAll('svg')) { el.remove(); }
+      return forumText((clone.text ?? '').replaceAll(RegExp(r'\s+'), ' ').trim());
+    } catch (_) {
+      return _clean(node.text ?? '');
+    }
+  }
+
+  static bool _isConversationHref(String href) {
+    final h = href.toLowerCase();
+    return h.contains('do=pm') || h.contains('ac=pm') || h.contains('pmid=') || h.contains('touid=') || h.contains('subop=view');
+  }
+
+  static int _hrefUid(String href) {
+    for (final key in const ['touid', 'uid', 'fuid']) {
+      final m = RegExp('[?&]$key=(\\d+)', caseSensitive: false).firstMatch(href);
+      final v = int.tryParse(m?.group(1) ?? '');
+      if (v != null && v > 0) return v;
+    }
+    return 0;
+  }
+
+  static bool _looksLikeLogin(String html) {
+    final doc = parser.parse(html);
+    for (final node in doc.querySelectorAll('script,style,noscript,template')) { node.remove(); }
+    final text = _cleanNodeText(doc.body);
+    return text.isNotEmpty && RegExp(r'(用户名|登录密码)').hasMatch(text) && text.contains('登录') && !html.contains('action=logout');
   }
 
   Future<void> _send() async {
