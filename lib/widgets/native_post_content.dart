@@ -20,7 +20,10 @@ class NativePostContent extends StatelessWidget {
     final nodes = body.nodes
         .where((node) => node is! dom.Text || _nodeText(node).trim().isNotEmpty)
         .toList();
-    // 用 SelectionArea 让整段正文支持长按选择并复制文本。
+
+    // SelectionArea 负责整篇正文的统一选择。
+    // 相比给每个段落单独套 SelectableText，可以连续跨段落拖动选择，
+    // 长按后直接使用系统的复制/全选菜单，体验更接近原生阅读 App。
     return SelectionArea(
       child: _NodeList(nodes: nodes, onLinkTap: onLinkTap),
     );
@@ -168,17 +171,22 @@ class _InlineContent extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final spans = <InlineSpan>[];
-    for (final node in nodes)
+    for (final node in nodes) {
       _appendSpan(
         spans,
         node,
         DefaultTextStyle.of(context).style.copyWith(fontSize: 16, height: 1.62),
       );
-    return RichText(
-      text: TextSpan(
+    }
+
+    // 使用 Text.rich 而不是裸 RichText，让 SelectionArea 可以更稳定地
+    // 将富文本纳入统一的文本选择体系，同时保留粗体、斜体、链接等样式。
+    return Text.rich(
+      TextSpan(
         style: DefaultTextStyle.of(context).style,
         children: spans,
       ),
+      selectionColor: Theme.of(context).colorScheme.primary.withValues(alpha: .22),
     );
   }
 
