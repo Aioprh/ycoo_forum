@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 
 import 'member_feature_page.dart';
+import 'native_message_list_page.dart';
 import 'native_social_page.dart';
 
 class NativeNoticeHubPage extends StatelessWidget {
@@ -69,7 +70,7 @@ class NativeNoticeHubPage extends StatelessWidget {
             color: Colors.lightBlue,
             title: '我的消息',
             subtitle: '站内私信',
-            onTap: () => _open(context, const MemberFeaturePage(title: '消息', path: 'home.php?mod=space&do=pm&mobile=2', type: MemberFeatureType.messages)),
+            onTap: () => _open(context, const NativeMessageListPage()),
           ),
           const Divider(height: 1),
           _item(
