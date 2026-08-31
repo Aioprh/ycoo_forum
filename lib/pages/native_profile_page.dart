@@ -197,32 +197,23 @@ class _Stats extends StatelessWidget {
     child: Card(
       margin: EdgeInsets.zero,
       child: Padding(
-        padding: const EdgeInsets.symmetric(vertical: 16, horizontal: 4),
-        child: LayoutBuilder(builder: (context, constraints) {
-          // 每项给出最小宽度，空间不足时整行可横向滑动，保证最后一项（积分）完整可见。
-          const minItemWidth = 54.0;
-          final total = minItemWidth * 6;
-          final itemWidth = total <= constraints.maxWidth
-              ? constraints.maxWidth / 6
-              : minItemWidth;
-          final children = [
-            _S('主题', '${profile.threads}'),
-            _S('回帖', '${profile.replies}'),
-            _S('关注', '${profile.following}'),
-            _S('粉丝', '${profile.followers}'),
-            _S('星币', '${profile.credits}'),
-            _S('积分', '${profile.points}'),
-          ];
-          if (total <= constraints.maxWidth) {
-            return Row(children: children);
-          }
-          return SingleChildScrollView(
-            scrollDirection: Axis.horizontal,
-            child: Row(
-              children: children.map((c) => SizedBox(width: itemWidth, child: c)).toList(),
-            ),
-          );
-        }),
+        padding: const EdgeInsets.symmetric(vertical: 14, horizontal: 4),
+        child: Column(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            Row(children: [
+              _S('主题', '${profile.threads}'),
+              _S('回帖', '${profile.replies}'),
+              _S('关注', '${profile.following}'),
+            ]),
+            const SizedBox(height: 12),
+            Row(children: [
+              _S('粉丝', '${profile.followers}'),
+              _S('星币', '${profile.credits}'),
+              _S('积分', '${profile.points}'),
+            ]),
+          ],
+        ),
       ),
     ),
   );
