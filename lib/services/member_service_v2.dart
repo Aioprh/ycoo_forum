@@ -99,28 +99,16 @@ class MemberServiceV2 {
     final doc = _doc(await _first(['$path&mobile=2', path]));
     final result = <NativeNotice>[];
     final seen = <String>{};
-    // 网页端用 <div class="nts"> 容器包裹若干 <dl class="cl"> 条目,
-    // 每条内含 dd(头像) / dt(屏蔽+时间) / dd.ntc_body(正文)。
-    final container =
-        doc.querySelector('.nts, .notice_list, #ntlist, ul[id*="nt"], .comiis_notice');
-    final items = container != null
-        ? container.querySelectorAll('dl,li')
-        : doc.querySelectorAll('.nts dl, dl.cl, dl[class*="cl"], .ntc_list li');
-    for (final item in items) {
-      // 提前摘取时间(dt 内含"屏蔽"链接+时间), 再移除 dt 以免干扰正文
-      String? time;
-      final dt = item.querySelector('dt');
-      if (dt != null) {
-        final dtText = _clean(dt.text).replaceAll(RegExp(r'屏蔽|删除'), '').trim();
-        time = dtText.isNotEmpty ? dtText : null;
-        dt.remove();
-      }
-      final body = item.querySelector('dd.ntc_body, dd[class*="body"], dd[class*="ct"]');
-      final text = _clean(body?.text ?? item.text).replaceAll(RegExp(r'屏蔽|删除'), '').trim();
+    // App 端拉取的是移动版页面, 通知分散在 li / dl / .nts 等结构中,
+    // 采用宽选择器扫描(能显示的基线版本即如此), 乱码由 _clean 剔除图标字体码点。
+    for (final node in doc.querySelectorAll('li,tr,article,.nts,.notice_li,.comiis_notice,.ntc_list,dl.ntc,dl.cl')) {
+      final dd = node.querySelector('dd');
+      final text = _clean(dd?.text ?? node.text).replaceAll(RegExp(r'屏蔽|删除'), '').trim();
       if (text.length < 2 || text.length > 500 || !seen.add(text)) continue;
-      // 排除明显导航/功能文本与无通知特征的片段
+      // 排除导航/功能类(子分类 Tab 等)与明显非通知文本
       if (_looksLikeNavUi(text) || !RegExp(r'(回复|评论|提到|通知|系统|赞了|收藏|提醒|关注|好友|主题|购买|充值|任务|注册|订单|经验|积分|星币|恭喜|欢迎)').hasMatch(text)) continue;
-      final subtitle = (time != null && time.isNotEmpty) ? '$time $text' : text;
+      final time = _clean(node.querySelector('dt,time,[class*="time"],[class*="date"]')?.text ?? '').replaceAll(RegExp(r'屏蔽|删除'), '').trim();
+      final subtitle = time.isNotEmpty ? '$time $text' : text;
       result.add(NativeNotice(title: text.length > 60 ? text.substring(0, 60) : text, subtitle: subtitle));
       if (result.length >= 100) break;
     }
