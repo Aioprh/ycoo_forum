@@ -268,7 +268,18 @@ class ProfileService {
   static String? _message(String html) => RegExp(r'''(?:showError|showDialog)\(\s*['"]([^'"]+)''').firstMatch(html)?.group(1);
   static String? _hidden(String html, String name) {
     final e = RegExp.escape(name);
-    return RegExp('name\\s*=\\s*["\\\']$e["\\\'][^>]*value\\s*=\\s*["\\\']([^"\\\']+)', caseSensitive: false).firstMatch(html)?.group(1);
+    // 逐 input 标签匹配, 兼容 name/value 出现的先后顺序。
+    final inputRe = RegExp(r'<input\b[^>]*>', caseSensitive: false);
+    for (final m in inputRe.allMatches(html)) {
+      final tag = m.group(0)!;
+      final a = RegExp('name\\s*=\\s*["\\\']$e["\\\'][^>]*value\\s*=\\s*["\\\']([^"\\\']+)["\\\']', caseSensitive: false).firstMatch(tag)?.group(1);
+      if (a != null && a.trim().isNotEmpty) return a.trim();
+      final b = RegExp('value\\s*=\\s*["\\\']([^"\\\']+)["\\\'][^>]*name\\s*=\\s*["\\\']$e["\\\']', caseSensitive: false).firstMatch(tag)?.group(1);
+      if (b != null && b.trim().isNotEmpty) return b.trim();
+    }
+    // 兜底: 令牌存在 JS 变量/链接参数里。
+    final js = RegExp('["\\\']$e["\\\']\\s*[:=]\\s*["\\\']([A-Za-z0-9_-]{8,64})["\\\']', caseSensitive: false).firstMatch(html);
+    return js?.group(1)?.trim();
   }
   static String _clean(String s) => s.replaceAll(RegExp(r'\s+'), ' ').trim();
   static String _abs(String u) { if (u.isEmpty) return ''; if (u.startsWith('http')) return u; if (u.startsWith('//')) return 'https:$u'; if (u.startsWith('/')) return _base + u.substring(1); return _base + u.replaceFirst(RegExp(r'^\./'), ''); }

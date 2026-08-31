@@ -288,7 +288,11 @@ class MemberServiceV2 {
   static String _formhashFromHtml(String html) {
     final doc = parser.parse(html);
     final input = doc.querySelector('input[name="formhash"]');
-    return (input?.attributes['value'] ?? '').trim();
+    final v = (input?.attributes['value'] ?? '').trim();
+    if (v.isNotEmpty) return v;
+    // 兜底: 令牌可能在 JS 变量/链接参数里而非 hidden input。
+    final m = RegExp(r'''(?:formhash|formHash)\s*[:=]\s*["']([A-Za-z0-9_-]{6,64})["']''', caseSensitive: false).firstMatch(html);
+    return m?.group(1)?.trim() ?? '';
   }
 
   static String? _messageFromResponse(String body) {

@@ -130,6 +130,13 @@ class _ProfileEditPageState extends State<ProfileEditPage> {
 
   Future<void> _save() async {
     if (_saving) return;
+    // 资料表单必须携带论坛操作令牌 formhash, 缺了会提交失败; 提前拦截给出明确提示。
+    if ((_hidden['formhash'] ?? '').trim().isEmpty) {
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('表单缺少有效令牌(formhash)，请重新进入后再试'), behavior: SnackBarBehavior.floating));
+      }
+      return;
+    }
     setState(() => _saving = true);
     try {
       await AuthService.instance.init();
