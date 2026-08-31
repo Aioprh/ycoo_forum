@@ -85,9 +85,9 @@ class MemberServiceV2 {
       final m = RegExp(r'(?:thread-|[?&]tid=)(\d+)', caseSensitive: false).firstMatch(href);
       if (m == null) continue;
       final tid = int.tryParse(m.group(1)!) ?? 0;
-      final title = _clean(a.text);
+      final title = _cleanNodeText(a);
       if (tid <= 0 || title.length < 2 || !seen.add(tid) || _looksLikeNavigation(title)) continue;
-      final parent = _clean(a.parent?.text ?? '');
+      final parent = _cleanNodeText(a.parent);
       result.add(ThreadItem(tid: tid, title: title, author: '', avatar: '', fid: 0, boardName: '', level: '', time: '', subtitle: parent == title ? '' : parent.replaceFirst(title, '').trim(), cover: '', likeCount: 0, replyCount: 0, viewCount: 0));
     }
     return result;
@@ -100,10 +100,10 @@ class MemberServiceV2 {
     final seen = <String>{};
     for (final li in doc.querySelectorAll('li,tr,article,.nts,.notice_li,.comiis_notice,.ntc_list')) {
       final dd = li.querySelector('dd');
-      final text = _clean(dd?.text ?? li.text);
+      final text = _cleanNodeText(dd ?? li);
       if (text.length < 2 || text.length > 500 || !seen.add(text)) continue;
       if (_looksLikeNavigation(text) || !RegExp(r'(回复|评论|提到|通知|系统|赞了|收藏|提醒|关注|好友|主题|购买|充值|任务|注册|订单|经验|积分|星币)').hasMatch(text)) continue;
-      final time = _clean(li.querySelector('dt,time,[class*="time"],[class*="date"]')?.text ?? '');
+      final time = _cleanNodeText(li.querySelector('dt,time,[class*="time"],[class*="date"]'));
       final subtitle = time.isNotEmpty ? '$time $text' : text;
       result.add(NativeNotice(title: text.length > 60 ? text.substring(0, 60) : text, subtitle: subtitle, href: _noticeHref(li)));
       if (result.length >= 100) break;
@@ -112,7 +112,7 @@ class MemberServiceV2 {
       for (final a in doc.querySelectorAll('a[href]')) {
         final href = (a.attributes['href'] ?? '').trim();
         if (!_isPmHref(href)) continue;
-        final label = _clean(a.text);
+        final label = _cleanNodeText(a);
         final uid = _uidFromPmHref(href);
         if (label.isEmpty && uid <= 0) continue;
         final key = 'pm:$href:$label';
@@ -150,16 +150,16 @@ class MemberServiceV2 {
       var node = a.parent;
       dynamic best;
       for (var depth = 0; depth < 6 && node != null; depth++, node = node.parent) {
-        final text = _clean(node.text);
+        final text = _cleanNodeText(node);
         if (text.length >= 2 && text.length <= 500) best = node;
         if (text.length > 500) break;
       }
-      _addMessage(result, seen, _parseMessage(best ?? a), fallbackHref: href, fallbackTitle: _clean(a.text));
+      _addMessage(result, seen, _parseMessage(best ?? a), fallbackHref: href, fallbackTitle: _cleanNodeText(a));
       if (result.length >= 100) break;
     }
     if (result.isEmpty) {
       for (final node in doc.querySelectorAll('li,article,div')) {
-        final text = _clean(node.text);
+        final text = _cleanNodeText(node);
         if (text.length < 3 || text.length > 300) continue;
         final uid = _pmUid(node);
         if (uid <= 0 || !_looksLikeMessageText(text)) continue;
@@ -184,9 +184,9 @@ class MemberServiceV2 {
   NativeMessage? _parseMessage(dynamic node) {
     if (node == null) return null;
     final author = node.querySelector('a[href*="touid="],a[href*="uid="],a[href*="mod=space"],a[href*="username="]');
-    var sender = _clean(author?.text ?? '');
-    final time = _clean(node.querySelector('.xg1,.xg2,time,[class*="time"],[class*="date"]')?.text ?? '');
-    var body = _clean(node.querySelector('.ptm,.pml_body,.pm_body,.pm_message,.comiis_pmtext,.comiis_pm_content,.xg2')?.text ?? node.text ?? '');
+    var sender = _cleanNodeText(author);
+    final time = _cleanNodeText(node.querySelector('.xg1,.xg2,time,[class*="time"],[class*="date"]'));
+    var body = _cleanNodeText(node.querySelector('.ptm,.pml_body,.pm_body,.pm_message,.comiis_pmtext,.comiis_pm_content,.xg2') ?? node);
     if (sender.isNotEmpty) body = body.replaceFirst(sender, '').trim();
     if (time.isNotEmpty) body = body.replaceFirst(time, '').trim();
     body = body.replaceAll(RegExp(r'^[:：\-·\s]+|[:：\-·\s]+$'), '').trim();
@@ -234,9 +234,9 @@ class MemberServiceV2 {
     final result = <NativeFriend>[];
     final seen = <String>{};
     for (final a in doc.querySelectorAll('a[href*="uid="],a[href*="username="]')) {
-      final name = _clean(a.text);
+      final name = _cleanNodeText(a);
       if (name.isEmpty || name.length > 40 || _looksLikeNavigation(name) || !seen.add(name)) continue;
-      final parent = _clean(a.parent?.text ?? '');
+      final parent = _cleanNodeText(a.parent);
       result.add(NativeFriend(name: name, subtitle: parent == name ? '好友 / 关注' : parent.replaceFirst(name, '').trim()));
       if (result.length >= 100) break;
     }
@@ -245,10 +245,10 @@ class MemberServiceV2 {
 
   Future<NativeCreditSummary> fetchCredits() async {
     final doc = _doc(await _first(['home.php?mod=spacecp&ac=credit&mobile=2', 'home.php?mod=spacecp&ac=credit']));
-    final text = _clean(doc.body?.text ?? '');
+    final text = _cleanNodeText(doc.body);
     final records = <String>[];
     for (final node in doc.querySelectorAll('table tr,li,p,.credit_box,.comiis_credit,.credit_list,.mt')) {
-      final value = _clean(node.text);
+      final value = _cleanNodeText(node);
       if (value.isNotEmpty && value.length <= 300 && RegExp(r'(星币|积分|余额|充值|消费|交易|收入|支出)').hasMatch(value) && !records.contains(value)) records.add(value);
     }
     final balance = RegExp(r'(?:星币(?:余额)?|余额)\s*[:：]?\s*(\d+(?:\.\d+)?)').firstMatch(text)?.group(1) ?? '—';
@@ -311,12 +311,26 @@ class MemberServiceV2 {
     return uri.replace(queryParameters: q).path + (q.isEmpty ? '' : '?${Uri(queryParameters: q).query}');
   }
 
+  static String _cleanNodeText(dynamic node) {
+    if (node == null) return '';
+    try {
+      final clone = node.clone(true);
+      for (final icon in clone.querySelectorAll('i.iconfont,i.comiis-icon,i.comiis_icon,.iconfont,.comiis-icon,[class*="iconfont"],[class*="comiis-icon"],[class*="icon-"]')) {
+        icon.remove();
+      }
+      for (final el in clone.querySelectorAll('svg')) { el.remove(); }
+      return _clean(clone.text);
+    } catch (_) {
+      return _clean(node.text ?? '');
+    }
+  }
+
   static String _clean(String text) => text.replaceAll('\uFFFD', '').replaceAll(RegExp(r'\s+'), ' ').trim();
 
   static bool _looksLikeLogin(String html) {
     final doc = parser.parse(html);
     for (final node in doc.querySelectorAll('script,style,noscript,template')) { node.remove(); }
-    final text = _clean(doc.body?.text ?? '');
+    final text = _cleanNodeText(doc.body);
     return text.isNotEmpty && RegExp(r'(用户名|登录密码)').hasMatch(text) && text.contains('登录') && !html.contains('action=logout');
   }
 
