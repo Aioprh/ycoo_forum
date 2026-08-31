@@ -56,8 +56,6 @@ class _NativeChatPageState extends State<NativeChatPage> {
         if (cookie.isNotEmpty) 'Cookie': cookie,
       };
 
-      // 先读取私信列表，找到论坛实际生成的“查看此会话”链接。
-      // Comiis 模板的会话链接不一定等价于简单的 touid 查询，因此优先使用真实 href。
       String? conversationHref;
       final listUri = Uri.parse('${SiteConfig.base}home.php').replace(queryParameters: {
         'mod': 'space',
@@ -79,9 +77,8 @@ class _NativeChatPageState extends State<NativeChatPage> {
               conversationHref = href;
               break;
             }
-            // 有些模板把 touid 放在父级节点而不是链接本身。
             final parent = a.parent;
-            final parentText = _cleanNode(parent?.text ?? '');
+            final parentText = _clean(parent?.text ?? '');
             final parentHasUid = parent?.querySelector('a[href*="touid=${widget.uid}"],a[href*="uid=${widget.uid}"]') != null;
             if (parentHasUid && parentText.isNotEmpty) {
               conversationHref = href;
@@ -93,22 +90,19 @@ class _NativeChatPageState extends State<NativeChatPage> {
         if (e is Exception && e.toString().contains('登录态已失效')) rethrow;
       }
 
-      Uri conversationUri;
-      if (conversationHref != null && conversationHref!.isNotEmpty) {
-        conversationUri = Uri.parse(SiteConfig.resolve(conversationHref!)).replace(queryParameters: {
-          ...Uri.parse(SiteConfig.resolve(conversationHref!)).queryParameters,
-          '_ycoo_ts': DateTime.now().millisecondsSinceEpoch.toString(),
-        });
-      } else {
-        conversationUri = Uri.parse('${SiteConfig.base}home.php').replace(queryParameters: {
-          'mod': 'space',
-          'do': 'pm',
-          'subop': 'view',
-          'touid': '${widget.uid}',
-          'mobile': '2',
-          '_ycoo_ts': DateTime.now().millisecondsSinceEpoch.toString(),
-        });
-      }
+      final conversationUri = conversationHref != null && conversationHref!.isNotEmpty
+          ? Uri.parse(SiteConfig.resolve(conversationHref!)).replace(queryParameters: {
+              ...Uri.parse(SiteConfig.resolve(conversationHref!)).queryParameters,
+              '_ycoo_ts': DateTime.now().millisecondsSinceEpoch.toString(),
+            })
+          : Uri.parse('${SiteConfig.base}home.php').replace(queryParameters: {
+              'mod': 'space',
+              'do': 'pm',
+              'subop': 'view',
+              'touid': '${widget.uid}',
+              'mobile': '2',
+              '_ycoo_ts': DateTime.now().millisecondsSinceEpoch.toString(),
+            });
 
       final response = await client.get(conversationUri, headers: {
         ...headers,
@@ -122,20 +116,10 @@ class _NativeChatPageState extends State<NativeChatPage> {
 
       final list = <NativeMessage>[];
       final seen = <String>{};
-      final selectors = <String>[
-        'dl.pml',
-        'dl[id^="pmlist_"]',
-        'li.pm_list',
-        'li.pml',
-        '.pm_list > li',
-        '.pml > li',
-        '.pmlist li',
-        '[id*="pmlist"] li',
-        '.comiis_pm_list li',
-        '.comiis_pmitem',
-        '.comiis_pm_content',
+      const selectors = <String>[
+        'dl.pml', 'dl[id^="pmlist_"]', 'li.pm_list', 'li.pml', '.pm_list > li', '.pml > li',
+        '.pmlist li', '[id*="pmlist"] li', '.comiis_pm_list li', '.comiis_pmitem', '.comiis_pm_content',
       ];
-
       for (final selector in selectors) {
         for (final node in doc.querySelectorAll(selector)) {
           final message = _parseNode(node);
@@ -194,7 +178,7 @@ class _NativeChatPageState extends State<NativeChatPage> {
       for (final el in clone.querySelectorAll('svg')) { el.remove(); }
       return forumText((clone.text ?? '').replaceAll(RegExp(r'\s+'), ' ').trim());
     } catch (_) {
-      return _clean(node.text ?? '');
+      return forumText((node.text ?? '').replaceAll(RegExp(r'\s+'), ' ').trim());
     }
   }
 
@@ -273,37 +257,25 @@ class _NativeChatPageState extends State<NativeChatPage> {
                                     constraints: const BoxConstraints(maxWidth: 310),
                                     margin: const EdgeInsets.only(bottom: 10),
                                     padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 10),
-                                    decoration: BoxDecoration(
-                                      color: mine ? scheme.primaryContainer : scheme.surfaceContainerHighest,
-                                      borderRadius: BorderRadius.circular(16),
-                                    ),
-                                    child: Column(
-                                      crossAxisAlignment: CrossAxisAlignment.start,
-                                      children: [
-                                        Text(forumText(m.subtitle), style: const TextStyle(fontSize: 15, height: 1.45)),
-                                        if (m.time.isNotEmpty) ...[
-                                          const SizedBox(height: 4),
-                                          Text(forumText(m.time), style: TextStyle(fontSize: 10, color: scheme.onSurfaceVariant)),
-                                        ],
-                                      ],
-                                    ),
+                                    decoration: BoxDecoration(color: mine ? scheme.primaryContainer : scheme.surfaceContainerHighest, borderRadius: BorderRadius.circular(16)),
+                                    child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
+                                      Text(forumText(m.subtitle), style: const TextStyle(fontSize: 15, height: 1.45)),
+                                      if (m.time.isNotEmpty) ...[const SizedBox(height: 4), Text(forumText(m.time), style: TextStyle(fontSize: 10, color: scheme.onSurfaceVariant))],
+                                    ]),
                                   ),
                                 );
                               },
                             ),
                     ),
                   ),
-                  SafeArea(
-                    top: false,
-                    child: Padding(
-                      padding: const EdgeInsets.fromLTRB(12, 8, 12, 10),
-                      child: Row(children: [
-                        Expanded(child: TextField(controller: _controller, minLines: 1, maxLines: 5, textInputAction: TextInputAction.newline, decoration: InputDecoration(hintText: '发送给 $username', filled: true, border: OutlineInputBorder(borderRadius: BorderRadius.circular(22), borderSide: BorderSide.none), contentPadding: const EdgeInsets.symmetric(horizontal: 16, vertical: 10)))),
-                        const SizedBox(width: 8),
-                        IconButton.filled(onPressed: _sending ? null : _send, icon: _sending ? const SizedBox(width: 18, height: 18, child: CircularProgressIndicator(strokeWidth: 2)) : const Icon(Icons.send_rounded)),
-                      ]),
-                    ),
-                  ),
+                  SafeArea(top: false, child: Padding(
+                    padding: const EdgeInsets.fromLTRB(12, 8, 12, 10),
+                    child: Row(children: [
+                      Expanded(child: TextField(controller: _controller, minLines: 1, maxLines: 5, textInputAction: TextInputAction.newline, decoration: InputDecoration(hintText: '发送给 $username', filled: true, border: OutlineInputBorder(borderRadius: BorderRadius.circular(22), borderSide: BorderSide.none), contentPadding: const EdgeInsets.symmetric(horizontal: 16, vertical: 10)))),
+                      const SizedBox(width: 8),
+                      IconButton.filled(onPressed: _sending ? null : _send, icon: _sending ? const SizedBox(width: 18, height: 18, child: CircularProgressIndicator(strokeWidth: 2)) : const Icon(Icons.send_rounded)),
+                    ]),
+                  )),
                 ]),
     );
   }
