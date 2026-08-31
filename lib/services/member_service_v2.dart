@@ -92,15 +92,23 @@ class MemberServiceV2 {
     return result;
   }
 
-  Future<List<NativeNotice>> fetchNotices() async {
-    final doc = _doc(await _first(['home.php?mod=space&do=notice&mobile=2', 'home.php?mod=space&do=notice']));
+  /// 拉取通知列表。网页端通过 view 参数区分分类：
+  ///  all=全部提醒、interactive=坛友互动、system=系统提醒、app=应用提醒、mypost=我的帖子。
+  Future<List<NativeNotice>> fetchNotices({String view = 'all'}) async {
+    final path = 'home.php?mod=space&do=notice&view=$view';
+    final doc = _doc(await _first(['$path&mobile=2', path]));
     final result = <NativeNotice>[];
     final seen = <String>{};
-    for (final node in doc.querySelectorAll('li,tr,article,.nts,.notice,.notice_li,.comiis_notice,.ntc_list')) {
-      final text = _clean(node.text);
+    for (final li in doc.querySelectorAll('li,tr,article,.nts,.notice_li,.comiis_notice,.ntc_list')) {
+      // 通知条目通常以 li 承载，内含 dt(时间/屏蔽) 与 dd(内容)
+      final dd = li.querySelector('dd');
+      final text = _clean(dd?.text ?? li.text);
       if (text.length < 2 || text.length > 500 || !seen.add(text)) continue;
-      if (!RegExp(r'(回复|评论|提到|通知|系统|赞了|收藏|提醒|关注|好友|主题)').hasMatch(text)) continue;
-      result.add(NativeNotice(title: text.length > 60 ? text.substring(0, 60) : text, subtitle: text));
+      // 排除导航/功能类 li（子分类 Tab 等）与明显非通知文本
+      if (_looksLikeNavigation(text) || !RegExp(r'(回复|评论|提到|通知|系统|赞了|收藏|提醒|关注|好友|主题|购买|充值|任务|注册|订单|经验|积分|星币)').hasMatch(text)) continue;
+      final time = _clean(li.querySelector('dt,time,[class*="time"],[class*="date"]')?.text ?? '');
+      final subtitle = time.isNotEmpty ? '$time $text' : text;
+      result.add(NativeNotice(title: text.length > 60 ? text.substring(0, 60) : text, subtitle: subtitle));
       if (result.length >= 100) break;
     }
     return result;

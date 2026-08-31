@@ -5,6 +5,7 @@ import '../services/checkin_service.dart';
 import '../services/profile_identity_service.dart';
 import 'login_page.dart';
 import 'member_feature_page.dart';
+import 'native_notice_hub_page.dart';
 import 'native_profile_page.dart';
 import 'native_site_page.dart';
 import 'native_social_page.dart';
@@ -422,7 +423,7 @@ class _ProfilePageState extends State<ProfilePage> {
           _featureTile(icon: Icons.article_outlined, title: '我的主题', subtitle: '我发布的帖子', onTap: () => _openNative(title: '我的主题', path: 'home.php?mod=space&do=thread&view=me&mobile=2', type: MemberFeatureType.threads)),
           _featureTile(icon: Icons.forum_outlined, title: '我的回帖', subtitle: '我参与的帖子', onTap: () => _openNative(title: '我的回帖', path: 'home.php?mod=space&do=thread&view=me&type=reply&mobile=2', type: MemberFeatureType.replies)),
           _featureTile(icon: Icons.bookmark_border, title: '我的收藏', subtitle: '收藏的主题', onTap: () => _openNative(title: '我的收藏', path: 'home.php?mod=space&do=favorite&view=me&mobile=2', type: MemberFeatureType.favorites)),
-          _featureTile(icon: Icons.notifications_none, title: '通知', subtitle: '回复、提醒、赞', onTap: () => _openNative(title: '通知', path: 'home.php?mod=space&do=notice&mobile=2', type: MemberFeatureType.notices)),
+          _featureTile(icon: Icons.notifications_none, title: '通知', subtitle: '回复、提醒、赞', onTap: () => Navigator.of(context).push(MaterialPageRoute(builder: (_) => const NativeNoticeHubPage()))),
           _featureTile(icon: Icons.mail_outline, title: '消息', subtitle: '站内私信', onTap: () => _openNative(title: '消息', path: 'home.php?mod=space&do=pm&mobile=2', type: MemberFeatureType.messages)),
           _featureTile(icon: Icons.people_outline, title: '好友 / 关注', subtitle: '好友、关注与粉丝', onTap: _openSocial),
         ],

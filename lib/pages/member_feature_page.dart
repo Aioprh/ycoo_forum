@@ -4,7 +4,6 @@ import '../models/thread_item.dart';
 import '../services/member_service.dart';
 import '../services/member_service_v2.dart';
 import 'detail_page.dart';
-import 'native_notice_hub_page.dart';
 
 class MemberFeaturePage extends StatefulWidget {
   final String title;
@@ -21,6 +20,15 @@ enum MemberFeatureType { threads, replies, favorites, notices, messages, friends
 class _MemberFeaturePageState extends State<MemberFeaturePage> {
   late Future<Object> _future;
 
+  /// 根据页面标题映射通知分类 view 参数，确保三个分类各自加载对应内容。
+  String get _viewForNotice => switch (widget.title) {
+        '坛友互动' => 'interactive',
+        '系统提醒' => 'system',
+        '应用提醒' => 'app',
+        '我的帖子' => 'mypost',
+        _ => 'all',
+      };
+
   @override
   void initState() {
     super.initState();
@@ -34,7 +42,7 @@ class _MemberFeaturePageState extends State<MemberFeaturePage> {
       case MemberFeatureType.favorites:
         return MemberService.instance.fetchThreads(widget.path);
       case MemberFeatureType.notices:
-        return MemberServiceV2.instance.fetchNotices();
+        return MemberServiceV2.instance.fetchNotices(view: _viewForNotice);
       case MemberFeatureType.messages:
         return MemberServiceV2.instance.fetchMessages();
       case MemberFeatureType.friends:
@@ -83,7 +91,6 @@ class _MemberFeaturePageState extends State<MemberFeaturePage> {
 
   @override
   Widget build(BuildContext context) {
-    if (widget.type == MemberFeatureType.notices) return const NativeNoticeHubPage();
     return Scaffold(
       backgroundColor: Theme.of(context).colorScheme.surfaceContainerLowest,
       appBar: AppBar(
@@ -102,10 +109,45 @@ class _MemberFeaturePageState extends State<MemberFeaturePage> {
           if (value is List<ThreadItem>) return _ThreadList(items: value);
           if (value is List<NativeMessage>) return _MessageList(items: value, onCompose: _openSendPm);
           if (value is List<NativeFriend>) return _FriendList(items: value);
+          if (value is List<NativeNotice>) return _NoticeList(items: value);
           if (value is NativeCreditSummary) return _CreditView(summary: value);
           return const _EmptyState(title: '暂无内容', subtitle: '这里暂时没有可显示的数据');
         },
       ),
+    );
+  }
+}
+
+class _NoticeList extends StatelessWidget {
+  final List<NativeNotice> items;
+  const _NoticeList({required this.items});
+
+  @override
+  Widget build(BuildContext context) {
+    if (items.isEmpty) {
+      return const _EmptyState(title: '暂时没有提醒内容', subtitle: '新的回复、评论、系统消息等提醒会显示在这里');
+    }
+    final scheme = Theme.of(context).colorScheme;
+    return ListView.separated(
+      padding: const EdgeInsets.fromLTRB(14, 12, 14, 28),
+      itemCount: items.length,
+      separatorBuilder: (_, __) => const SizedBox(height: 9),
+      itemBuilder: (context, i) {
+        final item = items[i];
+        final title = item.title.trim();
+        return Card(
+          clipBehavior: Clip.antiAlias,
+          child: ListTile(
+            leading: CircleAvatar(
+              radius: 20,
+              backgroundColor: scheme.secondaryContainer,
+              child: Text(title.isEmpty ? '提' : title.characters.first, style: const TextStyle(fontWeight: FontWeight.w800)),
+            ),
+            title: Text(title, maxLines: 2, overflow: TextOverflow.ellipsis, style: const TextStyle(fontWeight: FontWeight.w700)),
+            subtitle: item.subtitle != title ? Text(item.subtitle, maxLines: 2, overflow: TextOverflow.ellipsis) : null,
+          ),
+        );
+      },
     );
   }
 }
