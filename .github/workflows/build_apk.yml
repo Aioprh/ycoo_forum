@@ -49,11 +49,15 @@ jobs:
           from pathlib import Path
           p = Path('lib/services/api_service.dart')
           s = p.read_text(encoding='utf-8')
-          old = "return _firstInt(RegExp(r'(?:id=[\"\\']pid|id=[\"\\']post_)(\\d+)', caseSensitive: false), html) ?? 0;"
-          new = "return _firstInt(RegExp(r'''(?:id=[\"'](?:pid|post_))(\\d+)''', caseSensitive: false), html) ?? 0;"
-          if old in s:
-              p.write_text(s.replace(old, new), encoding='utf-8')
+          replacements = {
+              "RegExp(r'(?:id=[\"\\']pid|id=[\"\\']post_)(\\d+)', caseSensitive: false)": "RegExp(r'''(?:id=[\"'](?:pid|post_))(\\d+)''', caseSensitive: false)",
+              "RegExp(r'(?:[?&]uid=|data-uid=[\"\\'])(\\d+)', caseSensitive: false)": "RegExp(r'''(?:[?&]uid=|data-uid=[\"'])(\\d+)''', caseSensitive: false)",
+          }
+          for old, new in replacements.items():
+              s = s.replace(old, new)
+          p.write_text(s, encoding='utf-8')
           PY
+          grep -n "_firstPidFromPost\|data-uid" lib/services/api_service.dart
 
       - name: 静态分析
         run: flutter analyze --no-fatal-infos --no-fatal-warnings
