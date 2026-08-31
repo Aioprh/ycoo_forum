@@ -430,7 +430,6 @@ class _ProfilePageState extends State<ProfilePage> {
           _featureTile(icon: Icons.article_outlined, title: '我的主题', subtitle: '我发布的帖子', onTap: () => _openNative(title: '我的主题', path: 'home.php?mod=space&do=thread&view=me&mobile=2', type: MemberFeatureType.threads)),
           _featureTile(icon: Icons.forum_outlined, title: '我的回帖', subtitle: '我参与的帖子', onTap: () => _openNative(title: '我的回帖', path: 'home.php?mod=space&do=thread&view=me&type=reply&mobile=2', type: MemberFeatureType.replies)),
           _featureTile(icon: Icons.bookmark_border, title: '我的收藏', subtitle: '收藏的主题', onTap: () => _openNative(title: '我的收藏', path: 'home.php?mod=space&do=favorite&view=me&mobile=2', type: MemberFeatureType.favorites)),
-          _featureTile(icon: Icons.info_outline_rounded, title: '关于', subtitle: '项目地址、版本与更新', onTap: _openAbout),
           _featureTile(icon: Icons.notifications_none, title: '通知', subtitle: '回复、提醒、赞', onTap: () => Navigator.of(context).push(MaterialPageRoute(builder: (_) => const NativeNoticeHubPage()))),
           _featureTile(icon: Icons.mail_outline, title: '消息', subtitle: '站内私信', onTap: () => _openNative(title: '消息', path: 'home.php?mod=space&do=pm&mobile=2', type: MemberFeatureType.messages)),
           _featureTile(icon: Icons.people_outline, title: '好友 / 关注', subtitle: '好友、关注与粉丝', onTap: _openSocial),
@@ -457,6 +456,8 @@ class _ProfilePageState extends State<ProfilePage> {
       _featureTile(icon: Icons.add_card, title: '源币充值', subtitle: '充值与订单信息', onTap: () => _openNativeSite('home.php?ac=plugin&id=boan_buycredit:buycredit&mod=spacecp&op=credit', '源币充值')),
       const SizedBox(height: 10),
       _featureTile(icon: Icons.manage_accounts_outlined, title: '帐号设置', subtitle: '帐号资料与安全', onTap: _openEdit),
+      _sectionHeader(context, '其他'),
+      _featureTile(icon: Icons.info_outline_rounded, title: '关于', subtitle: '项目地址、版本与更新', onTap: _openAbout),
       const SizedBox(height: 8),
       ListTile(
         contentPadding: const EdgeInsets.symmetric(horizontal: 14),
