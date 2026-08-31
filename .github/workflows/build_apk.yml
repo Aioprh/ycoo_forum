@@ -43,6 +43,18 @@ jobs:
       - name: 拉取依赖
         run: flutter pub get
 
+      - name: 修复旧版 PID 正则语法
+        run: |
+          python3 - <<'PY'
+          from pathlib import Path
+          p = Path('lib/services/api_service.dart')
+          s = p.read_text(encoding='utf-8')
+          old = "return _firstInt(RegExp(r'(?:id=[\"\\']pid|id=[\"\\']post_)(\\d+)', caseSensitive: false), html) ?? 0;"
+          new = "return _firstInt(RegExp(r'''(?:id=[\"'](?:pid|post_))(\\d+)''', caseSensitive: false), html) ?? 0;"
+          if old in s:
+              p.write_text(s.replace(old, new), encoding='utf-8')
+          PY
+
       - name: 静态分析
         run: flutter analyze --no-fatal-infos --no-fatal-warnings
 
