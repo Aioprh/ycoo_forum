@@ -51,15 +51,12 @@ class NetClient {
     try {
       return const Utf8Decoder(allowMalformed: false).convert(bytes);
     } on FormatException {
+      // charset 包的 GBK 编码器可以直接处理非 UTF-8 的中文页面。
       try {
-        final detected = Charset.detect(
-          bytes,
-          defaultEncoding: utf8,
-          orders: <Encoding>[gbk, utf8],
-        );
-        if (detected != null) return detected.decode(bytes);
-      } catch (_) {}
-      return const Utf8Decoder(allowMalformed: true).convert(bytes);
+        return gbk.decode(bytes);
+      } catch (_) {
+        return const Utf8Decoder(allowMalformed: true).convert(bytes);
+      }
     }
   }
 
@@ -68,10 +65,13 @@ class NetClient {
     final ascii = String.fromCharCodes(
       bytes.take(length).map((b) => b < 128 ? b : 32),
     );
+
+    // 使用三引号 raw string，避免 Dart 字符串与正则中的引号互相转义。
     final match = RegExp(
-      r"(?:charset\s*=\s*[\"']?|content-type[^>]*charset\s*=\s*[\"']?)([A-Za-z0-9._-]+)",
+      r'''charset\s*=\s*["']?\s*([A-Za-z0-9._-]+)''',
       caseSensitive: false,
     ).firstMatch(ascii);
+
     return match?.group(1)?.trim().toLowerCase();
   }
 
