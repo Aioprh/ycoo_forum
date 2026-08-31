@@ -1,72 +1,73 @@
-name: 准备 v1.0.0 正式版
+name: 构建并发布正式版
 
 on:
   push:
-    branches: [main]
+    tags:
+      - 'v*.*.*'
+  workflow_dispatch:
+    inputs:
+      tag:
+        description: '要发布的版本标签，例如 v1.0.0'
+        required: true
+        default: 'v1.0.0'
 
 permissions:
   contents: write
 
 jobs:
-  prepare:
-    if: github.actor != 'github-actions[bot]'
+  release:
+    name: 构建 Android 正式版并发布 Release
     runs-on: ubuntu-latest
     steps:
-      - name: 检出 main
+      - name: 检出代码
         uses: actions/checkout@v4
         with:
           fetch-depth: 0
 
-      - name: 注入关于入口并创建正式版 tag
-        env:
-          VERSION: 1.0.0
+      - name: 设置 Java
+        uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: '17'
+          cache: gradle
+
+      - name: 设置 Flutter
+        uses: subosito/flutter-action@v2
+        with:
+          flutter-version: '3.35.7'
+          channel: stable
+          cache: true
+
+      - name: 安装依赖
+        run: flutter pub get
+
+      - name: 静态分析
+        run: flutter analyze
+
+      - name: 运行测试
+        run: flutter test
+
+      - name: 构建 Release APK
+        run: flutter build apk --release
+
+      - name: 准备 APK
         run: |
           set -euo pipefail
+          TAG="${GITHUB_REF_NAME}"
+          mkdir -p release
+          cp build/app/outputs/flutter-apk/app-release.apk "release/ycoo_forum-${TAG}.apk"
+          sha256sum "release/ycoo_forum-${TAG}.apk" > release/SHA256SUMS.txt
 
-          git config user.name "Aioprh"
-          git config user.email "108421380+Aioprh@users.noreply.github.com"
-
-          if git ls-remote --exit-code --tags origin "refs/tags/v${VERSION}" >/dev/null 2>&1; then
-            echo "v${VERSION} 已存在，跳过。"
-            exit 0
+      - name: 创建 GitHub Release
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          set -euo pipefail
+          TAG="${GITHUB_REF_NAME}"
+          if gh release view "$TAG" >/dev/null 2>&1; then
+            gh release upload "$TAG" release/ycoo_forum-${TAG}.apk release/SHA256SUMS.txt --clobber
+          else
+            gh release create "$TAG" release/ycoo_forum-${TAG}.apk release/SHA256SUMS.txt \
+              --title "源论坛 ${TAG} 正式版" \
+              --generate-notes
           fi
-
-          python3 - <<'PY'
-          from pathlib import Path
-          p = Path('lib/pages/profile_page.dart')
-          s = p.read_text(encoding='utf-8')
-
-          if "import 'about_page.dart';" not in s:
-              marker = "import 'search_page.dart';"
-              if marker not in s:
-                  raise SystemExit('profile_page.dart 未找到 search_page.dart import')
-              s = s.replace(marker, marker + "\nimport 'about_page.dart';", 1)
-
-          if 'void _openAbout()' not in s:
-              marker = '  void _openMySpace() {'
-              method = "  void _openAbout() {\n    Navigator.of(context).push(\n      MaterialPageRoute(builder: (_) => const AboutPage()),\n    );\n  }\n\n"
-              if marker not in s:
-                  raise SystemExit('profile_page.dart 未找到 _openMySpace')
-              s = s.replace(marker, method + marker, 1)
-
-          tile = "          _featureTile(icon: Icons.info_outline_rounded, title: '关于', subtitle: '项目地址、版本与更新', onTap: _openAbout),\n"
-          if "title: '关于'" not in s:
-              marker = "          _featureTile(icon: Icons.notifications_none, title: '通知'"
-              if marker not in s:
-                  raise SystemExit('profile_page.dart 未找到通知入口')
-              s = s.replace(marker, tile + marker, 1)
-
-          p.write_text(s, encoding='utf-8')
-          PY
-
-          git add lib/pages/profile_page.dart
-          if ! git diff --cached --quiet; then
-            git commit -m "feat: add about entry to profile"
-            git push origin HEAD:main
-          fi
-
-          git fetch origin main --tags
-          git checkout main
-          git pull --ff-only origin main
-          git tag -a "v${VERSION}" -m "源论坛 v${VERSION} 正式版" HEAD
-          git push origin "v${VERSION}"
