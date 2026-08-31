@@ -36,7 +36,6 @@ class SocialService {
         'Accept': 'text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8',
         'Accept-Language': 'zh-CN,zh;q=0.9',
         'Cache-Control': 'no-cache, no-store',
-        'Pragma': 'no-cache',
         if (cookie != null && cookie.isNotEmpty) 'Cookie': cookie,
       },
     ).timeout(const Duration(seconds: 20)));
@@ -70,17 +69,11 @@ class SocialService {
   Future<List<SocialUser>> _fetchCandidates(List<String> paths) async {
     Object? last;
     List<SocialUser> best = const [];
-    var bestScore = -1;
     for (final path in paths) {
       try {
         final users = await _parseUsers(await _get(path));
-        final score = _qualityScore(users);
-        if (score > bestScore) {
-          best = users;
-          bestScore = score;
-        }
-        // A scoped relation list with real users is preferred immediately.
-        if (users.isNotEmpty && score >= users.length * 6) return users;
+        if (users.length > best.length) best = users;
+        if (users.isNotEmpty) return users;
       } catch (e) {
         last = e;
       }
@@ -97,18 +90,18 @@ class SocialService {
     }
 
     final currentUid = AuthService.instance.uid ?? 0;
-    final currentUsername = _clean(AuthService.instance.username ?? '');
-
-    // Critical fix: do not scan every uid link in the whole document. Discuz
-    // pages contain the logged-in user's avatar/profile, navigation and action
-    // links outside the actual social list. Prefer the list containers used by
-    // friend/follow pages, and only use the document-wide scan as a fallback.
+    final currentName = _clean(AuthService.instance.username ?? '');
     final scopes = _relationScopes(doc);
-    final scoped = scopes.isNotEmpty;
-    final roots = scoped ? scopes : <Element>[doc];
+    final roots = <Element>[];
+    if (scopes.isNotEmpty) {
+      roots.addAll(scopes);
+    } else if (doc.body != null) {
+      // Document is not an Element. Use its body for the unscoped fallback.
+      roots.add(doc.body!);
+    }
+
     final seen = <int>{};
     final result = <SocialUser>[];
-
     for (final root in roots) {
       final links = root.querySelectorAll('a[href*="uid="],a[href*="space-uid-"]');
       for (final link in links) {
@@ -116,15 +109,15 @@ class SocialService {
         if (uid <= 0 || uid == currentUid || seen.contains(uid)) continue;
 
         final container = _userContainer(link, root);
-        if (!_looksLikeRelationItem(link, container, scoped)) continue;
+        final scoped = scopes.isNotEmpty;
+        if (!scoped && !_isProfileHref(link.attributes['href'] ?? '')) continue;
+        if (!_looksLikeRelationItem(link, container)) continue;
 
         final profileAnchor = _bestProfileAnchor(container, uid) ?? link;
         var name = _extractName(profileAnchor, container, uid);
         var avatar = _extractAvatar(profileAnchor, container);
         var subtitle = _extractSubtitle(container, name, uid);
 
-        // Never turn a malformed relationship entry into the current user's
-        // profile. Resolve only the candidate UID we actually found.
         if (_badName(name)) {
           try {
             final profile = await ProfileService.instance.fetchProfile(uid);
@@ -136,14 +129,9 @@ class SocialService {
           } catch (_) {}
         }
 
-        if (_badName(name) || name == currentUsername) continue;
+        if (_badName(name) || (currentName.isNotEmpty && name == currentName)) continue;
         seen.add(uid);
-        result.add(SocialUser(
-          uid: uid,
-          name: name,
-          avatar: avatar,
-          subtitle: subtitle,
-        ));
+        result.add(SocialUser(uid: uid, name: name, avatar: avatar, subtitle: subtitle));
         if (result.length >= 200) return result;
       }
     }
@@ -151,21 +139,10 @@ class SocialService {
   }
 
   List<Element> _relationScopes(Document doc) {
-    const selectors = [
-      '#ct .buddy',
-      '#ct .buddylist',
-      '#ct .flw_list',
-      '#ct .flw_ulist',
-      '#ct .follow_list',
-      '#ct .friend_list',
-      '#ct ul.buddy',
-      '#ct ul.flw_list',
-      '.buddy',
-      '.buddylist',
-      '.flw_list',
-      '.flw_ulist',
-      '.follow_list',
-      '.friend_list',
+    const selectors = <String>[
+      '#ct .buddy', '#ct .buddylist', '#ct .flw_list', '#ct .flw_ulist',
+      '#ct .follow_list', '#ct .friend_list', '#ct ul.buddy', '#ct ul.flw_list',
+      '.buddy', '.buddylist', '.flw_list', '.flw_ulist', '.follow_list', '.friend_list',
     ];
     final found = <Element>[];
     final seen = <Element>{};
@@ -177,45 +154,37 @@ class SocialService {
     return found;
   }
 
-  bool _looksLikeRelationItem(Element link, Element? container, bool scoped) {
-    if (!scoped) {
-      final href = (link.attributes['href'] ?? '').toLowerCase();
-      // In fallback mode, only accept canonical profile links. This prevents
-      // the page header/action uid from becoming a fake relationship user.
-      if (!_isProfileHref(href)) return false;
-    }
+  bool _looksLikeRelationItem(Element link, Element? container) {
     final text = _clean(container?.text ?? link.text);
     if (text.length > 500) return false;
-    if (container != null) {
-      final hasAvatar = container.querySelector('img') != null;
-      final hasProfile = container.querySelector('a[href*="uid="],a[href*="space-uid-"]') != null;
-      if (!hasAvatar && !hasProfile) return false;
-    }
-    return true;
+    if (container == null) return true;
+    return container.querySelector('a[href*="uid="],a[href*="space-uid-"]') != null ||
+        container.querySelector('img') != null;
   }
 
   Element? _bestProfileAnchor(Element? container, int uid) {
     if (container == null) return null;
-    final candidates = container.querySelectorAll('a[href*="uid="],a[href*="space-uid-"]')
+    final candidates = container
+        .querySelectorAll('a[href*="uid="],a[href*="space-uid-"]')
         .where((a) => _uidFrom(a.attributes['href'] ?? '') == uid)
         .toList();
     candidates.sort((a, b) {
       final ap = _isProfileHref(a.attributes['href'] ?? '') ? 0 : 1;
       final bp = _isProfileHref(b.attributes['href'] ?? '') ? 0 : 1;
       if (ap != bp) return ap - bp;
-      return _nameScore(_clean(a.text)).compareTo(_nameScore(_clean(b.text)));
+      return _nameScore(_clean(b.text)).compareTo(_nameScore(_clean(a.text)));
     });
     return candidates.isEmpty ? null : candidates.first;
   }
 
   Element? _userContainer(Element anchor, Element root) {
     Element? node = anchor.parent;
-    for (var i = 0; i < 6 && node != null && node != root.parent; i++) {
+    for (var i = 0; i < 6 && node != null && node != root; i++) {
       final text = _clean(node.text);
-      final hasUserLink = node.querySelector('a[href*="uid="],a[href*="space-uid-"]') != null;
+      final hasLink = node.querySelector('a[href*="uid="],a[href*="space-uid-"]') != null;
       final hasImage = node.querySelector('img') != null;
-      if (hasUserLink && hasImage && text.length <= 300) return node;
-      if (hasUserLink && text.length <= 180) return node;
+      if (hasLink && hasImage && text.length <= 300) return node;
+      if (hasLink && text.length <= 180) return node;
       node = node.parent;
     }
     return anchor.parent;
@@ -247,10 +216,7 @@ class SocialService {
     if (anchorImage != null) images.add(anchorImage);
     if (container != null) images.addAll(container.querySelectorAll('img'));
     for (final image in images) {
-      final raw = (image.attributes['data-src'] ??
-              image.attributes['data-original'] ??
-              image.attributes['src'] ?? '')
-          .trim();
+      final raw = (image.attributes['data-src'] ?? image.attributes['data-original'] ?? image.attributes['src'] ?? '').trim();
       if (_validImageSource(raw)) return _absolute(raw);
     }
     return '';
@@ -258,10 +224,10 @@ class SocialService {
 
   String _extractSubtitle(Element? container, String name, int uid) {
     if (container == null) return 'UID $uid';
-    var subtitle = _clean(container.text);
-    if (name.isNotEmpty) subtitle = subtitle.replaceFirst(name, '').trim();
-    if (subtitle.length > 120 || _isNavigation(subtitle)) return 'UID $uid';
-    return subtitle.isEmpty ? 'UID $uid' : subtitle;
+    var text = _clean(container.text);
+    if (name.isNotEmpty) text = text.replaceFirst(name, '').trim();
+    if (text.isEmpty || text.length > 120 || _isNavigation(text)) return 'UID $uid';
+    return text;
   }
 
   int _nameScore(String value) {
@@ -270,17 +236,6 @@ class SocialService {
     if (RegExp(r'[\u4e00-\u9fffA-Za-z0-9]').hasMatch(value)) score += 5;
     if (value.length >= 2) score += 2;
     if (value.length <= 32) score += 1;
-    return score;
-  }
-
-  int _qualityScore(List<SocialUser> users) {
-    if (users.isEmpty) return 0;
-    var score = users.length * 2;
-    for (final user in users) {
-      if (_badName(user.name)) score -= 8;
-      if (user.name.length >= 2) score += 2;
-      if (user.avatar.isNotEmpty) score += 2;
-    }
     return score;
   }
 
@@ -304,12 +259,7 @@ class SocialService {
           'Content-Type': 'application/x-www-form-urlencoded; charset=UTF-8',
           if (cookie.isNotEmpty) 'Cookie': cookie,
         },
-        body: {
-          'formhash': formhash,
-          'uid': '$uid',
-          'op': follow ? 'add' : 'del',
-          'inajax': '1',
-        },
+        body: {'formhash': formhash, 'uid': '$uid', 'op': follow ? 'add' : 'del', 'inajax': '1'},
       ).timeout(const Duration(seconds: 20)));
       final body = NetClient.decode(response.bodyBytes);
       if (RegExp(r'(succeed|成功|已关注|关注成功|取消关注成功)', caseSensitive: false).hasMatch(body)) return null;
@@ -333,8 +283,7 @@ class SocialService {
     final lower = href.toLowerCase();
     if (lower.contains('space-uid-')) return true;
     if (!lower.contains('uid=') || !lower.contains('mod=space')) return false;
-    return !lower.contains('mod=spacecp') &&
-        (!lower.contains('do=') || lower.contains('do=profile'));
+    return !lower.contains('mod=spacecp') && (!lower.contains('do=') || lower.contains('do=profile'));
   }
 
   static String _absolute(String value) {
@@ -346,13 +295,11 @@ class SocialService {
 
   static bool _validImageSource(String value) {
     if (value.isEmpty || value == '×' || value.toLowerCase() == 'x') return false;
-    if (value.contains('\uFFFD') || value.contains('�')) return false;
-    return value.startsWith('http://') || value.startsWith('https://') ||
-        value.startsWith('//') || value.startsWith('/');
+    if (value.contains('�') || value.contains('\uFFFD')) return false;
+    return value.startsWith('http://') || value.startsWith('https://') || value.startsWith('//') || value.startsWith('/');
   }
 
-  static bool _validProfileName(String value) =>
-      !_badName(value) &&
+  static bool _validProfileName(String value) => !_badName(value) &&
       !RegExp(r'^(?:用户|资料|个人资料|用户名|昵称)$').hasMatch(value.trim());
 
   static bool _badName(String value) {
@@ -367,12 +314,11 @@ class SocialService {
     return !RegExp(r'[\u4e00-\u9fffA-Za-z0-9]').hasMatch(v);
   }
 
-  static String _clean(String value) =>
-      value.replaceAll('\uFFFD', '�').replaceAll(RegExp(r'\s+'), ' ').trim();
+  static String _clean(String value) => value.replaceAll('\uFFFD', '�').replaceAll(RegExp(r'\s+'), ' ').trim();
 
   static bool _isNavigation(String value) => const {
-        '首页','下一页','上一页','更多','关注','粉丝','好友','删除','取消关注'
-      }.contains(value);
+    '首页','下一页','上一页','更多','关注','粉丝','好友','删除','取消关注'
+  }.contains(value);
 
   static String _hiddenValue(String html, String name) {
     final doc = parser.parse(html);
@@ -393,8 +339,7 @@ class SocialService {
     return '';
   }
 
-  static bool _tokenFailed(String body) =>
-      body.contains('formhash') &&
+  static bool _tokenFailed(String body) => body.contains('formhash') &&
       (body.contains('错误') || body.contains('失效') || body.contains('非法') || body.contains('验证失败'));
 
   static bool _looksLikeLogin(String html) {
@@ -403,9 +348,7 @@ class SocialService {
       node.remove();
     }
     final text = _clean(doc.body?.text ?? '');
-    return text.isNotEmpty &&
-        RegExp(r'(用户名|登录密码)').hasMatch(text) &&
-        text.contains('登录') &&
-        !html.contains('action=logout');
+    return text.isNotEmpty && RegExp(r'(用户名|登录密码)').hasMatch(text) &&
+        text.contains('登录') && !html.contains('action=logout');
   }
 }
