@@ -25,6 +25,7 @@ jobs:
         run: |
           python3 - <<'PY'
           from pathlib import Path
+
           p = Path('lib/widgets/native_post_content.dart')
           s = p.read_text()
           s = s.replace("String _nodeText(dom.Node node) => node is dom.Text ? node.text : node.text;", "String _nodeText(dom.Node node) => node.text ?? '';" )
@@ -71,16 +72,42 @@ jobs:
               else:
                   out.append(line)
           p.write_text('\n'.join(out) + '\n')
+
+          p = Path('lib/pages/create_thread_page.dart')
+          s = p.read_text()
+          s = s.replace(
+              "pickFiles(allowMultiple: true, withData: false, type:",
+              "pickFiles(allowMultiple: true, withData: true, type:",
+          )
+          s = s.replace(
+              "ReorderableDragStartListener(index: index, enabled: !_uploading && !_submitting, child: _attachmentTile(context, _attachments[index], index))",
+              "ReorderableDelayedDragStartListener(index: index, enabled: !_uploading && !_submitting, child: _attachmentTile(context, _attachments[index], index))",
+          )
+          s = s.replace(
+              "Text('点按缩略图插入正文 · 长按拖动可调整顺序 · 单个文件最大 10 MB'",
+              "Text('点击缩略图预览 · 长按拖动排序 · 点按插入正文 · 单个文件最大 10 MB'",
+          )
+          p.write_text(s)
+
+          p = Path('lib/services/attachment_upload_service.dart')
+          s = p.read_text()
+          if "import 'dart:io';" not in s:
+              s = s.replace("import 'dart:convert';", "import 'dart:convert';\nimport 'dart:io';")
+          old = "    final parsed = _parseUploadResponse(body, file.name, size, file.path);"
+          new = "    String? previewPath = file.path;\n    try {\n      final ext = file.name.contains('.') ? '.${file.name.split('.').last}' : '';\n      final safeName = 'ycoo_attachment_${DateTime.now().microsecondsSinceEpoch}$ext';\n      final copy = File('${Directory.systemTemp.path}/$safeName');\n      await File(file.path!).copy(copy.path);\n      previewPath = copy.path;\n    } catch (_) {}\n    final parsed = _parseUploadResponse(body, file.name, size, previewPath);"
+          if old in s:
+              s = s.replace(old, new)
+          p.write_text(s)
           PY
-          dart format lib/pages/detail_page.dart lib/widgets/native_post_content.dart
+          dart format lib/pages/create_thread_page.dart lib/services/attachment_upload_service.dart lib/pages/detail_page.dart lib/widgets/native_post_content.dart
           flutter pub get
           flutter analyze --no-fatal-infos --no-fatal-warnings
       - name: Commit fix
         run: |
           git config user.name 'github-actions[bot]'
           git config user.email '41898282+github-actions[bot]@users.noreply.github.com'
-          git add lib/pages/detail_page.dart lib/widgets/native_post_content.dart .github/workflows/fix_ci_syntax.yml
-          git commit -m 'fix: resolve native renderer analyzer errors [skip ci]' || exit 0
+          git add lib/pages/create_thread_page.dart lib/services/attachment_upload_service.dart lib/pages/detail_page.dart lib/widgets/native_post_content.dart .github/workflows/fix_ci_syntax.yml
+          git commit -m 'fix: repair post attachment preview and interactions [skip ci]' || exit 0
           git rm .github/workflows/fix_ci_syntax.yml
           git commit -m 'chore: remove temporary CI fix workflow [skip ci]' || exit 0
           git push origin main
