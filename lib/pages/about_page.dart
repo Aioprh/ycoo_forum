@@ -12,7 +12,7 @@ class AboutPage extends StatefulWidget {
 }
 
 class _AboutPageState extends State<AboutPage> {
-  static const _version = '1.0.0';
+  static const _version = '1.0.1';
   static const _repositoryUrl = 'https://github.com/Aioprh/ycoo_forum';
   static const _latestReleaseApi = 'https://api.github.com/repos/Aioprh/ycoo_forum/releases/latest';
   static const _latestApkUrl = 'https://github.com/Aioprh/ycoo_forum/releases/latest/download/ycooforum.apk';
@@ -66,7 +66,6 @@ class _AboutPageState extends State<AboutPage> {
 
       final data = jsonDecode(response.body) as Map<String, dynamic>;
       final tag = (data['tag_name'] as String?)?.trim();
-      final releaseUrl = (data['html_url'] as String?)?.trim() ?? _repositoryUrl;
       final releaseName = (data['name'] as String?)?.trim();
       if (tag == null || tag.isEmpty) throw const FormatException('版本信息无效');
 
