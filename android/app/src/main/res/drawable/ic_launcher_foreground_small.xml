@@ -1,0 +1,30 @@
+<?xml version="1.0" encoding="utf-8"?>
+<vector xmlns:android="http://schemas.android.com/apk/res/android"
+    android:width="108dp"
+    android:height="108dp"
+    android:viewportWidth="108"
+    android:viewportHeight="108">
+    <!-- Keep the logo comfortably inside the adaptive-icon safe zone. -->
+    <group
+        android:translateX="18"
+        android:translateY="18">
+        <path
+            android:fillColor="#FFFFFFFF"
+            android:pathData="M12,10h48c8.84,0 16,7.16 16,16v18c0,8.84 -7.16,16 -16,16H36L22,72v-12h-10C3.16,60 -4,52.84 -4,44V26C-4,17.16 3.16,10 12,10z" />
+        <circle
+            android:fillColor="#4E6EF2"
+            android:cx="22"
+            android:cy="35"
+            android:r="4" />
+        <circle
+            android:fillColor="#4E6EF2"
+            android:cx="36"
+            android:cy="35"
+            android:r="4" />
+        <circle
+            android:fillColor="#4E6EF2"
+            android:cx="50"
+            android:cy="35"
+            android:r="4" />
+    </group>
+</vector>
