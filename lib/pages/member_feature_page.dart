@@ -122,6 +122,17 @@ class _NoticeList extends StatelessWidget {
   final List<NativeNotice> items;
   const _NoticeList({required this.items});
 
+  IconData _iconFor(String title, String subtitle) {
+    final text = forumText('$title $subtitle');
+    if (text.contains('购买') || text.contains('订单') || text.contains('星币')) return Icons.receipt_long_outlined;
+    if (text.contains('任务') || text.contains('积分')) return Icons.task_alt_rounded;
+    if (text.contains('评论') || text.contains('回复')) return Icons.chat_bubble_outline_rounded;
+    if (text.contains('关注') || text.contains('好友')) return Icons.people_outline_rounded;
+    if (text.contains('主题')) return Icons.forum_outlined;
+    if (text.contains('注册') || text.contains('欢迎')) return Icons.verified_user_outlined;
+    return Icons.notifications_none_rounded;
+  }
+
   @override
   Widget build(BuildContext context) {
     if (items.isEmpty) return const _EmptyState(title: '暂时没有提醒内容', subtitle: '新的回复、评论、系统消息等提醒会显示在这里');
@@ -134,14 +145,13 @@ class _NoticeList extends StatelessWidget {
         final item = items[i];
         final title = forumText(item.title);
         final subtitle = forumText(item.subtitle);
-        final initial = title.isEmpty ? '提' : title.characters.first;
         return Card(
           clipBehavior: Clip.antiAlias,
           child: ListTile(
             leading: CircleAvatar(
               radius: 20,
               backgroundColor: scheme.secondaryContainer,
-              child: Text(initial, style: const TextStyle(fontWeight: FontWeight.w800)),
+              child: Icon(_iconFor(title, subtitle), color: scheme.onSecondaryContainer, size: 21),
             ),
             title: Text(title, maxLines: 2, overflow: TextOverflow.ellipsis, style: const TextStyle(fontWeight: FontWeight.w700)),
             subtitle: subtitle != title ? Text(subtitle, maxLines: 2, overflow: TextOverflow.ellipsis) : null,
