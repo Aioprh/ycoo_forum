@@ -6,6 +6,7 @@ on:
     branches: ['main']
     paths:
       - 'android/app/src/main/res/drawable/ic_launcher_foreground_small.xml'
+      - '.github/workflows/build.yml'
   workflow_dispatch:
 
 permissions:
@@ -36,6 +37,28 @@ jobs:
       - name: 检查环境
         run: flutter --version && dart --version
 
+      - name: 自动递增构建号
+        shell: bash
+        run: |
+          current=$(grep -E '^version:' pubspec.yaml | awk '{print $2}')
+          name_part="${current%%+*}"
+          build_part="${current##*+}"
+          if [ -z "$name_part" ] || [ "$build_part" = "$current" ]; then
+            name_part="${current:-1.0.0}"
+            build_part="0"
+          fi
+          new_build=$((build_part + 1))
+          new_version="${name_part}+${new_build}"
+          sed -i "s/^version:.*/version: ${new_version}/" pubspec.yaml
+          echo "新版本号: ${new_version}"
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add pubspec.yaml
+          if ! git diff --cached --quiet; then
+            git commit -m "chore: 自动递增构建号至 ${new_version}"
+            git push origin main
+          fi
+
       - name: 拉取依赖
         run: flutter pub get
 
@@ -45,8 +68,8 @@ jobs:
       - name: 运行测试
         run: flutter test --dart-define=cronetHttpNoPlay=true
 
-      - name: 构建 Release APK
-        run: flutter build apk --release --dart-define=cronetHttpNoPlay=true
+      - name: 构建 ABI 分包 Release APK
+        run: flutter build apk --split-per-abi --release --dart-define=cronetHttpNoPlay=true
 
       - name: 读取应用版本
         id: meta
@@ -65,9 +88,17 @@ jobs:
           body: |
             ## 源论坛 YcooForum v${{ steps.meta.outputs.version }}
 
-            Android 正式版 APK。
+            Android 正式版 APK（按 ABI 拆分）：
+
+            - **arm64-v8a**：适用于主流 64 位 ARM 机型（推荐）
+            - **armeabi-v7a**：适用于较旧的 32 位 ARM 机型
+            - **x86_64**：适用于 x86_64 模拟器 / 部分设备
 
             - 数据来源：https://www.ycoo.net
             - 项目地址：https://github.com/Aioprh/ycoo_forum
-          files: build/app/outputs/flutter-apk/app-release.apk
+            - 安装提示：请选择与你的设备 CPU 架构匹配的包；不确定时优先选 **arm64-v8a**
+          files: |
+            build/app/outputs/flutter-apk/app-arm64-v8a-release.apk
+            build/app/outputs/flutter-apk/app-armeabi-v7a-release.apk
+            build/app/outputs/flutter-apk/app-x86_64-release.apk
           fail_on_unmatched_files: true
