@@ -45,13 +45,11 @@ jobs:
           build_part="${current##*+}"
           if [ -z "$name_part" ]; then name_part="1.0.0"; fi
           if [ "$build_part" = "$current" ]; then build_part="0"; fi
-          # 递增语义版本名(patch)，确保检测更新无论新旧包都能通过版本名可靠发现
           IFS='.' read -r major minor patch <<< "$name_part"
           [ -z "$major" ] && major=1
           [ -z "$minor" ] && minor=0
           [ -z "$patch" ] && patch=0
           new_build=$((build_part + 1))
-          # 十进制进位：1.0.9 → 1.1.0 → 1.1.9 → 1.2.0 …
           patch=$((patch + 1))
           if [ "$patch" -ge 10 ]; then
             patch=0
@@ -75,6 +73,7 @@ jobs:
       - name: 拉取依赖
         run: flutter pub get
 
+      # 保持 Flutter 静态分析作为正式构建前的质量门槛。
       - name: 静态分析
         run: flutter analyze --no-fatal-infos --no-fatal-warnings
 
