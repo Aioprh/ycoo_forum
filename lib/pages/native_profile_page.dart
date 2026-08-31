@@ -3,6 +3,7 @@ import 'package:flutter/material.dart';
 import '../models/thread_item.dart';
 import '../services/profile_service.dart';
 import '../services/profile_username_service.dart';
+import '../services/follow_service.dart';
 import 'detail_page.dart';
 import 'native_chat_page.dart';
 
@@ -53,7 +54,7 @@ class _NativeProfilePageState extends State<NativeProfilePage> with SingleTicker
   Future<void> _follow() async {
     final p = _profile; if (_followBusy || p == null) return;
     final next = !p.followedByMe; setState(() => _followBusy = true);
-    final err = await ProfileService.instance.setFollow(widget.uid, next);
+    final err = await FollowService.instance.toggle(uid: widget.uid, follow: next);
     if (!mounted) return; setState(() => _followBusy = false);
     if (err != null) { ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text(err))); return; }
     setState(() => _profile = p.copyWith(following: p.following + (next ? 1 : -1), followedByMe: next));
