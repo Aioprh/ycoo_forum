@@ -3,6 +3,7 @@ import 'package:flutter/material.dart';
 import '../models/thread_item.dart';
 import '../services/member_service.dart';
 import '../services/member_service_v2.dart';
+import '../utils/forum_text.dart';
 import 'detail_page.dart';
 
 class MemberFeaturePage extends StatefulWidget {
@@ -20,7 +21,6 @@ enum MemberFeatureType { threads, replies, favorites, notices, messages, friends
 class _MemberFeaturePageState extends State<MemberFeaturePage> {
   late Future<Object> _future;
 
-  /// 根据页面标题映射通知分类 view 参数，确保三个分类各自加载对应内容。
   String get _viewForNotice => switch (widget.title) {
         '坛友互动' => 'interactive',
         '系统提醒' => 'system',
@@ -85,7 +85,7 @@ class _MemberFeaturePageState extends State<MemberFeaturePage> {
     toCtrl.dispose();
     msgCtrl.dispose();
     if (!mounted) return;
-    ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text(error ?? '私信已发送'), behavior: SnackBarBehavior.floating));
+    ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text(forumText(error ?? '私信已发送')), behavior: SnackBarBehavior.floating));
     if (error == null) await _refresh();
   }
 
@@ -94,7 +94,7 @@ class _MemberFeaturePageState extends State<MemberFeaturePage> {
     return Scaffold(
       backgroundColor: Theme.of(context).colorScheme.surfaceContainerLowest,
       appBar: AppBar(
-        title: Text(widget.title),
+        title: Text(forumText(widget.title)),
         actions: [
           if (widget.type == MemberFeatureType.messages) IconButton(onPressed: _openSendPm, tooltip: '新建私信', icon: const Icon(Icons.edit_outlined)),
           IconButton(onPressed: _refresh, tooltip: '刷新', icon: const Icon(Icons.refresh_rounded)),
@@ -104,7 +104,7 @@ class _MemberFeaturePageState extends State<MemberFeaturePage> {
         future: _future,
         builder: (context, snapshot) {
           if (snapshot.connectionState == ConnectionState.waiting) return const Center(child: CircularProgressIndicator());
-          if (snapshot.hasError) return _ErrorState(message: snapshot.error.toString().replaceFirst('Exception: ', ''), onRetry: _refresh);
+          if (snapshot.hasError) return _ErrorState(message: forumText(snapshot.error.toString().replaceFirst('Exception: ', '')), onRetry: _refresh);
           final value = snapshot.data;
           if (value is List<ThreadItem>) return _ThreadList(items: value);
           if (value is List<NativeMessage>) return _MessageList(items: value, onCompose: _openSendPm);
@@ -124,9 +124,7 @@ class _NoticeList extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    if (items.isEmpty) {
-      return const _EmptyState(title: '暂时没有提醒内容', subtitle: '新的回复、评论、系统消息等提醒会显示在这里');
-    }
+    if (items.isEmpty) return const _EmptyState(title: '暂时没有提醒内容', subtitle: '新的回复、评论、系统消息等提醒会显示在这里');
     final scheme = Theme.of(context).colorScheme;
     return ListView.separated(
       padding: const EdgeInsets.fromLTRB(14, 12, 14, 28),
@@ -134,17 +132,19 @@ class _NoticeList extends StatelessWidget {
       separatorBuilder: (_, __) => const SizedBox(height: 9),
       itemBuilder: (context, i) {
         final item = items[i];
-        final title = item.title.trim();
+        final title = forumText(item.title);
+        final subtitle = forumText(item.subtitle);
+        final initial = title.isEmpty ? '提' : title.characters.first;
         return Card(
           clipBehavior: Clip.antiAlias,
           child: ListTile(
             leading: CircleAvatar(
               radius: 20,
               backgroundColor: scheme.secondaryContainer,
-              child: Text(title.isEmpty ? '提' : title.characters.first, style: const TextStyle(fontWeight: FontWeight.w800)),
+              child: Text(initial, style: const TextStyle(fontWeight: FontWeight.w800)),
             ),
             title: Text(title, maxLines: 2, overflow: TextOverflow.ellipsis, style: const TextStyle(fontWeight: FontWeight.w700)),
-            subtitle: item.subtitle != title ? Text(item.subtitle, maxLines: 2, overflow: TextOverflow.ellipsis) : null,
+            subtitle: subtitle != title ? Text(subtitle, maxLines: 2, overflow: TextOverflow.ellipsis) : null,
           ),
         );
       },
@@ -167,10 +167,10 @@ class _ThreadList extends StatelessWidget {
         return Card(
           clipBehavior: Clip.antiAlias,
           child: ListTile(
-            title: Text(item.title, maxLines: 2, overflow: TextOverflow.ellipsis, style: const TextStyle(fontWeight: FontWeight.w700)),
-            subtitle: Text(item.boardName.isEmpty ? '主题 #${item.tid}' : item.boardName),
+            title: Text(forumText(item.title), maxLines: 2, overflow: TextOverflow.ellipsis, style: const TextStyle(fontWeight: FontWeight.w700)),
+            subtitle: Text(item.boardName.isEmpty ? '主题 #${item.tid}' : forumText(item.boardName)),
             trailing: const Icon(Icons.chevron_right_rounded),
-            onTap: () => Navigator.of(context).push(MaterialPageRoute(builder: (_) => DetailPage(tid: item.tid, title: item.title))),
+            onTap: () => Navigator.of(context).push(MaterialPageRoute(builder: (_) => DetailPage(tid: item.tid, title: forumText(item.title)))),
           ),
         );
       },
@@ -184,13 +184,16 @@ class _MessageList extends StatelessWidget {
   const _MessageList({required this.items, required this.onCompose});
 
   String _sender(NativeMessage item) {
-    if (item.sender.trim().isNotEmpty && item.sender != '站内私信') return item.sender.trim();
-    final title = item.title.trim();
+    final rawSender = forumText(item.sender);
+    if (rawSender.trim().isNotEmpty && rawSender != '站内私信') return rawSender.trim();
+    final title = forumText(item.title).trim();
     final m = RegExp(r'^(?:来自|发自|消息来自)\s*[:：]?\s*(.+)$').firstMatch(title);
-    return m?.group(1)?.trim().isNotEmpty == true ? m!.group(1)!.trim() : (title.isEmpty ? '站内私信' : title);
+    return m?.group(1)?.trim().isNotEmpty == true ? forumText(m!.group(1)!.trim()) : (title.isEmpty ? '站内私信' : title);
   }
 
   Future<void> _open(BuildContext context, NativeMessage item) async {
+    final sender = _sender(item);
+    final body = forumText(item.subtitle);
     await showModalBottomSheet<void>(
       context: context,
       showDragHandle: true,
@@ -199,12 +202,12 @@ class _MessageList extends StatelessWidget {
           padding: const EdgeInsets.fromLTRB(20, 4, 20, 24),
           child: Column(mainAxisSize: MainAxisSize.min, crossAxisAlignment: CrossAxisAlignment.start, children: [
             Row(children: [
-              CircleAvatar(radius: 23, child: Text(_sender(item).characters.first)),
+              CircleAvatar(radius: 23, child: Text(sender.isEmpty ? '信' : sender.characters.first)),
               const SizedBox(width: 12),
-              Expanded(child: Text(_sender(item), style: const TextStyle(fontSize: 17, fontWeight: FontWeight.w800))),
+              Expanded(child: Text(sender, style: const TextStyle(fontSize: 17, fontWeight: FontWeight.w800))),
             ]),
             const SizedBox(height: 16),
-            Container(width: double.infinity, padding: const EdgeInsets.all(15), decoration: BoxDecoration(color: Theme.of(sheet).colorScheme.surfaceContainerHighest, borderRadius: BorderRadius.circular(16)), child: Text(item.subtitle, style: const TextStyle(height: 1.5))),
+            Container(width: double.infinity, padding: const EdgeInsets.all(15), decoration: BoxDecoration(color: Theme.of(sheet).colorScheme.surfaceContainerHighest, borderRadius: BorderRadius.circular(16)), child: Text(body, style: const TextStyle(height: 1.5))),
             const SizedBox(height: 14),
             SizedBox(width: double.infinity, child: FilledButton.icon(onPressed: () { Navigator.pop(sheet); onCompose(); }, icon: const Icon(Icons.reply_rounded), label: const Text('发送新私信'))),
           ]),
@@ -239,12 +242,13 @@ class _MessageList extends StatelessWidget {
         }
         final item = items[index - 1];
         final sender = _sender(item);
+        final subtitle = forumText(item.subtitle);
         return Card(
           clipBehavior: Clip.antiAlias,
           child: ListTile(
-            leading: CircleAvatar(backgroundColor: scheme.secondaryContainer, child: Text(sender.characters.first)),
+            leading: CircleAvatar(backgroundColor: scheme.secondaryContainer, child: Text(sender.isEmpty ? '信' : sender.characters.first)),
             title: Text(sender, maxLines: 1, overflow: TextOverflow.ellipsis, style: const TextStyle(fontWeight: FontWeight.w800)),
-            subtitle: Text(item.subtitle, maxLines: 2, overflow: TextOverflow.ellipsis),
+            subtitle: Text(subtitle, maxLines: 2, overflow: TextOverflow.ellipsis),
             trailing: const Icon(Icons.chevron_right_rounded),
             onTap: () => _open(context, item),
           ),
@@ -264,7 +268,7 @@ class _FriendList extends StatelessWidget {
       padding: const EdgeInsets.all(14),
       itemCount: items.length,
       separatorBuilder: (_, __) => const SizedBox(height: 8),
-      itemBuilder: (_, i) => Card(child: ListTile(leading: const CircleAvatar(child: Icon(Icons.person_outline_rounded)), title: Text(items[i].name), subtitle: Text(items[i].subtitle))),
+      itemBuilder: (_, i) => Card(child: ListTile(leading: const CircleAvatar(child: Icon(Icons.person_outline_rounded)), title: Text(forumText(items[i].name)), subtitle: Text(forumText(items[i].subtitle)))),
     );
   }
 }
@@ -277,9 +281,9 @@ class _CreditView extends StatelessWidget {
     return ListView(
       padding: const EdgeInsets.all(16),
       children: [
-        Card(child: Padding(padding: const EdgeInsets.all(20), child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [const Text('余额', style: TextStyle(fontSize: 13)), const SizedBox(height: 5), Text(summary.balance, style: const TextStyle(fontSize: 30, fontWeight: FontWeight.w800))]))),
+        Card(child: Padding(padding: const EdgeInsets.all(20), child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [const Text('余额', style: TextStyle(fontSize: 13)), const SizedBox(height: 5), Text(forumText(summary.balance), style: const TextStyle(fontSize: 30, fontWeight: FontWeight.w800))]))),
         const SizedBox(height: 10),
-        ...summary.records.map((e) => Card(child: ListTile(title: Text(e)))),
+        ...summary.records.map((e) => Card(child: ListTile(title: Text(forumText(e))))),
       ],
     );
   }
