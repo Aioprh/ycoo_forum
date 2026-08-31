@@ -1,4 +1,3 @@
-import 'package:html/dom.dart' as dom;
 import 'package:html/parser.dart' as parser;
 
 import '../models/thread_detail.dart';
@@ -109,65 +108,58 @@ class ThreadInteractionService {
     }
   }
 
-  Future<String?> reward({required int tid, required int pid, required int amount}) async {
+  /// 打赏（网页端实际是 Discuz 评分，星币 credit=4）。
+  /// 提交参数与登录后网页评分弹窗一致：
+  /// forum.php?mod=misc&action=rate&ratesubmit=yes&infloat=yes
+  /// formhash / tid / pid / referer / handlekey=rate / score4=数量 / reason=鼓励语 / sendreasonpm=on / ratesubmit=true
+  Future<String?> reward({
+    required int tid,
+    required int pid,
+    required int amount,
+    String reason = '',
+    bool notifyAuthor = true,
+  }) async {
     if (!_loggedIn) return '请先登录论坛';
     if (tid <= 0 || pid <= 0) return '未取得有效的帖子楼层，请刷新帖子后重试';
     if (amount <= 0) return '请输入有效的打赏数量';
     try {
       final html = await _fetchThreadHtml(tid);
-      final doc = parser.parse(html);
       final hash = _formhash(html);
       final client = await NetClient.instance.client;
       final referer = '${_base}thread-$tid-1-1.html';
 
-      // 优先寻找原站已经渲染出来的“打赏”表单/链接，避免假定插件固定接口。
-      for (final e in doc.querySelectorAll('form,a[href],button[onclick],input[onclick]')) {
-        final blob = '${e.text} ${e.attributes['title'] ?? ''} ${e.attributes['value'] ?? ''} ${e.attributes['href'] ?? ''} ${e.attributes['onclick'] ?? ''}'.toLowerCase();
-        if (!blob.contains('打赏') && !blob.contains('reward')) continue;
-        final form = e.localName == 'form' ? e : e.parent?.querySelector('form');
-        if (form != null) {
-          final action = _abs(form.attributes['action'] ?? '');
-          if (action.isEmpty) continue;
-          final fields = <String, String>{};
-          for (final input in form.querySelectorAll('input')) {
-            final name = input.attributes['name'];
-            if (name != null && name.isNotEmpty) fields[name] = input.attributes['value'] ?? '';
-          }
-          fields['formhash'] = fields['formhash']?.isNotEmpty == true ? fields['formhash']! : hash;
-          fields.putIfAbsent('tid', () => '$tid');
-          fields.putIfAbsent('pid', () => '$pid');
-          fields['amount'] = '$amount';
-          fields['reward'] = '$amount';
-          final resp = await client.post(Uri.parse(action), headers: {..._headers(referer, ajax: true), 'Content-Type': 'application/x-www-form-urlencoded; charset=UTF-8'}, body: fields).timeout(NetClient.timeout);
-          return _parseResponse(resp.bodyBytes) ?? '打赏成功';
-        }
-        var href = e.attributes['href'] ?? '';
-        if (href.isEmpty || href.startsWith('javascript:')) href = _extractUrl(e.attributes['onclick'] ?? '');
-        if (href.isNotEmpty) {
-          var uri = Uri.parse(_abs(href));
-          final q = {...uri.queryParameters, 'formhash': hash, 'hash': hash, 'tid': '$tid', 'pid': '$pid', 'amount': '$amount', 'reward': '$amount'};
-          uri = uri.replace(queryParameters: q);
-          final resp = await client.get(uri, headers: _headers(referer, ajax: true)).timeout(NetClient.timeout);
-          return _parseResponse(resp.bodyBytes) ?? '打赏成功';
-        }
+      final uri = Uri.parse('${_base}forum.php').replace(queryParameters: {
+        'mod': 'misc',
+        'action': 'rate',
+        'ratesubmit': 'yes',
+        'infloat': 'yes',
+      });
+      final body = <String, String>{
+        'formhash': hash,
+        'tid': '$tid',
+        'pid': '$pid',
+        'referer': _abs('forum.php?mod=viewthread&tid=$tid&page=0#pid$pid'),
+        'handlekey': 'rate',
+        'score4': '$amount',
+        'reason': reason,
+        if (notifyAuthor) 'sendreasonpm': 'on',
+        'ratesubmit': 'true',
+      };
+      final resp = await NetClient.retry(() => client.post(
+        uri,
+        headers: {..._headers(referer, ajax: true), 'Content-Type': 'application/x-www-form-urlencoded; charset=UTF-8'},
+        body: body,
+      ).timeout(NetClient.timeout));
+      final respText = NetClient.decode(resp.bodyBytes);
+      if (respText.contains('评级操作成功') || respText.contains('操作成功') || respText.contains('succeed')) return null;
+      if (respText.contains('评分等级已用完') || respText.contains('今日评分')) {
+        final m = RegExp(r'''showDialog\([^)]*['"]([^'"]+)['"]''').firstMatch(respText);
+        return m?.group(1) ?? '今日评分额度已用完';
       }
-
-      return '当前帖子没有可用的原站打赏入口';
+      return _parseResponse(resp.bodyBytes) ?? '打赏成功';
     } catch (e) {
       return '打赏请求失败，请检查网络后重试';
     }
-  }
-
-  String _extractUrl(String js) {
-    final patterns = <RegExp>[
-      RegExp(r'''['"]((?:forum\\.php|home\\.php|plugin\\.php|thread-[^'"]+)[^'"]*)['"]''', caseSensitive: false),
-      RegExp(r'''['"](https?://[^'"]+)['"]''', caseSensitive: false),
-    ];
-    for (final re in patterns) {
-      final m = re.firstMatch(js);
-      if (m != null) return m.group(1)!;
-    }
-    return '';
   }
 
   String _abs(String url) {

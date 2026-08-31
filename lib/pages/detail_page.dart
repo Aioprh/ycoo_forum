@@ -179,43 +179,79 @@ class _DetailPageState extends State<DetailPage> {
       if (!_loggedIn) return;
     }
     if (_rewarding || d.firstPid <= 0) return;
-    final input = TextEditingController(text: '10');
-    final amount = await showDialog<int>(
+    final amountCtrl = TextEditingController(text: '1');
+    final reasonCtrl = TextEditingController();
+    var notify = true;
+    final confirm = await showDialog<({int amount, String reason, bool notify})>(
       context: context,
-      builder: (c) => AlertDialog(
-        title: const Text('打赏作者'),
-        content: TextField(
-          controller: input,
-          autofocus: true,
-          keyboardType: TextInputType.number,
-          decoration: InputDecoration(
-            labelText: '打赏数量',
-            suffixText: '积分',
-            border: OutlineInputBorder(borderRadius: BorderRadius.circular(14)),
+      builder: (c) => StatefulBuilder(
+        builder: (c, setDialog) => AlertDialog(
+          title: const Text('打赏作者'),
+          content: SingleChildScrollView(
+            child: Column(
+              mainAxisSize: MainAxisSize.min,
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                TextField(
+                  controller: amountCtrl,
+                  autofocus: true,
+                  keyboardType: TextInputType.number,
+                  decoration: InputDecoration(
+                    labelText: '星币数量',
+                    helperText: '每楼可打赏 1~3 星币',
+                    suffixText: '星币',
+                    border: OutlineInputBorder(borderRadius: BorderRadius.circular(14)),
+                  ),
+                ),
+                const SizedBox(height: 12),
+                TextField(
+                  controller: reasonCtrl,
+                  maxLines: 2,
+                  maxLength: 200,
+                  decoration: InputDecoration(
+                    labelText: '鼓励语（可选）',
+                    hintText: '写几句鼓励的话吧',
+                    border: OutlineInputBorder(borderRadius: BorderRadius.circular(14)),
+                  ),
+                ),
+                const SizedBox(height: 4),
+                CheckboxListTile(
+                  value: notify,
+                  contentPadding: EdgeInsets.zero,
+                  controlAffinity: ListTileControlAffinity.leading,
+                  title: const Text('通知作者'),
+                  onChanged: (v) => setDialog(() => notify = v ?? true),
+                ),
+              ],
+            ),
           ),
+          actions: [
+            TextButton(
+              onPressed: () => Navigator.pop(c),
+              child: const Text('取消'),
+            ),
+            FilledButton(
+              onPressed: () {
+                final v = int.tryParse(amountCtrl.text.trim()) ?? 0;
+                if (v <= 0) return;
+                Navigator.pop(c, (amount: v, reason: reasonCtrl.text.trim(), notify: notify));
+              },
+              child: const Text('确认打赏'),
+            ),
+          ],
         ),
-        actions: [
-          TextButton(
-            onPressed: () => Navigator.pop(c),
-            child: const Text('取消'),
-          ),
-          FilledButton(
-            onPressed: () {
-              final v = int.tryParse(input.text.trim()) ?? 0;
-              if (v > 0) Navigator.pop(c, v);
-            },
-            child: const Text('确认打赏'),
-          ),
-        ],
       ),
     );
-    input.dispose();
-    if (amount == null || !mounted) return;
+    amountCtrl.dispose();
+    reasonCtrl.dispose();
+    if (confirm == null || !mounted) return;
     setState(() => _rewarding = true);
     final result = await ThreadInteractionService.instance.reward(
       tid: d.tid,
       pid: d.firstPid,
-      amount: amount,
+      amount: confirm.amount,
+      reason: confirm.reason,
+      notifyAuthor: confirm.notify,
     );
     if (!mounted) return;
     setState(() => _rewarding = false);
