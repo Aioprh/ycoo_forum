@@ -100,12 +100,14 @@ class MemberServiceV2 {
     final result = <NativeNotice>[];
     final seen = <String>{};
     for (final li in doc.querySelectorAll('li,tr,article,.nts,.notice_li,.comiis_notice,.ntc_list')) {
-      // 通知条目通常以 li 承载，内含 dt(时间/屏蔽) 与 dd(内容)
+      // 网页端通知条目结构固定为 <li> 内 <dt>(时间/屏蔽) + <dd>(正文)。
+      // 若无 dd 则说明只是导航/子分类菜单, 跳过以避免杂项混入。
       final dd = li.querySelector('dd');
-      final text = _clean(dd?.text ?? li.text);
+      if (dd == null) continue;
+      final text = _clean(dd.text);
       if (text.length < 2 || text.length > 500 || !seen.add(text)) continue;
-      // 排除导航/功能类 li（子分类 Tab 等）与明显非通知文本
-      if (_looksLikeNavigation(text) || !RegExp(r'(回复|评论|提到|通知|系统|赞了|收藏|提醒|关注|好友|主题|购买|充值|任务|注册|订单|经验|积分|星币)').hasMatch(text)) continue;
+      // 排除明显导航/功能文本与无通知特征的片段
+      if (_looksLikeNavUi(text) || !RegExp(r'(回复|评论|提到|通知|系统|赞了|收藏|提醒|关注|好友|主题|购买|充值|任务|注册|订单|经验|积分|星币|楼主)').hasMatch(text)) continue;
       final time = _clean(li.querySelector('dt,time,[class*="time"],[class*="date"]')?.text ?? '');
       final subtitle = time.isNotEmpty ? '$time $text' : text;
       result.add(NativeNotice(title: text.length > 60 ? text.substring(0, 60) : text, subtitle: subtitle));
@@ -264,7 +266,23 @@ class MemberServiceV2 {
     return uri.replace(queryParameters: q).path + (q.isEmpty ? '' : '?${Uri(queryParameters: q).query}');
   }
 
-  static String _clean(String text) => text.replaceAll('\uFFFD', '').replaceAll(RegExp(r'\s+'), ' ').trim();
+  /// 去除会被渲染成乱码/方块的字符:
+  ///  - Unicode 私用区(PUA, 图标字体如 &#xe6xx; 的码点)
+  ///  - 控制符 / 零宽 / 方向标记 / 替换符 / BOM
+  /// 随后压缩空白并去除首尾空格。
+  static String _clean(String text) {
+    final cleaned = text
+        .replaceAll(_puaGlyphs, '')
+        .replaceAll(_controlChars, '')
+        .replaceAll(RegExp(r'\s+'), ' ')
+        .trim();
+    return cleaned;
+  }
+
+  static final RegExp _puaGlyphs =
+      RegExp(r'[\uE000-\uF8FF\uF0000-\uFFFFD\u100000-\u10FFFD]');
+  static final RegExp _controlChars = RegExp(
+      r'[\u0000-\u001F\u007F-\u009F\u200B-\u200F\u202A-\u202E\uFEFF\u2060-\u206F\uFFFD]');
 
   static bool _looksLikeLogin(String html) {
     final doc = parser.parse(html);
@@ -274,4 +292,11 @@ class MemberServiceV2 {
   }
 
   static bool _looksLikeNavigation(String text) => const {'下一页','上一页','首页','更多','回复','查看','详情','登录','注册','站内私信','私信'}.contains(text);
+
+  /// 通知列表专用: 剔除导航/菜单/功能类短文本(如"任务中心""勋章中心"等)。
+  static bool _looksLikeNavUi(String text) {
+    if (text.length < 2) return true;
+    return const {'首页','社区','导读','兴趣圈','用户排行','话题排行','圈子排行','版块排行','勋章中心','繁星开通','道具中心','任务中心','相册','搜索','心情墙','访问推广','访问电脑版','小黑屋','返回本版','海报','道具','我要签到','签到'}
+        .any(text.contains);
+  }
 }
