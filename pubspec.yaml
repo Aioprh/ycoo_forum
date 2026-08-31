@@ -21,6 +21,9 @@ dependencies:
   charset: ^2.0.1
   url_launcher: ^6.3.2
   package_info_plus: ^8.3.0
+  device_info_plus: ^10.1.2
+  path_provider: ^2.1.4
+  open_filex: ^4.5.0
 
 dev_dependencies:
   flutter_test:
