@@ -44,3 +44,8 @@ app.*.map.json
 
 # Widget Preview related
 .widget_preview/
+
+# 调试/抓包临时文件（勿入库）
+.sr_*.html
+.sr_cookies.txt
+.trae-html-share-packages/
