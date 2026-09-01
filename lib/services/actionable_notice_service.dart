@@ -6,9 +6,6 @@ import 'net_client.dart';
 import 'site_config.dart';
 
 /// Reads notification pages while preserving the original action href.
-/// This is deliberately separate from the legacy member parser so existing
-/// member pages remain compatible while the native notification center gets
-/// enough information to perform the next action.
 class ActionableNoticeService {
   ActionableNoticeService._();
   static final instance = ActionableNoticeService._();
@@ -27,14 +24,36 @@ class ActionableNoticeService {
       'Accept-Language': 'zh-CN,zh;q=0.9',
       'Cache-Control': 'no-cache, no-store',
       'Pragma': 'no-cache',
+      'Referer': '${SiteConfig.base}forum.php?mobile=2',
       if (cookie != null && cookie.isNotEmpty) 'Cookie': cookie,
     }).timeout(const Duration(seconds: 20)));
     if (response.statusCode != 200) throw Exception('请求失败 HTTP ${response.statusCode}');
     final html = NetClient.decode(response.bodyBytes);
-    if (RegExp(r'(登录|请先登录|用户登录|login)', caseSensitive: false).hasMatch(html) && !html.contains('退出登录')) {
+
+    // 不要通过“页面里是否出现登录二字”判断登录失效。论坛页的导航、
+    // 帮助文本、通知正文甚至用户名都可能包含“登录”，会造成整个通知中心
+    // 被误判为登录失效。只有确认页面本身是 Discuz 登录表单，且没有登录态
+    // 标记时，才认为会话已经失效。
+    if (_isLoginPage(html)) {
       throw Exception('登录态已失效，请重新登录论坛');
     }
     return html;
+  }
+
+  static bool _isLoginPage(String html) {
+    final lower = html.toLowerCase();
+    final hasLogout = lower.contains('action=logout') || html.contains('退出登录');
+    if (hasLogout) return false;
+
+    final hasLoginForm = RegExp(
+      r'<form\b[^>]*(?:action\s*=\s*["\'][^"\']*logging[^"\']*action=login|id\s*=\s*["\'](?:login|loginform)["\'])',
+      caseSensitive: false,
+    ).hasMatch(html);
+    final hasLoginInput = RegExp(
+      r'<input\b[^>]*name\s*=\s*["\'](?:username|password|loginfield)["\']',
+      caseSensitive: false,
+    ).hasMatch(html);
+    return hasLoginForm && hasLoginInput;
   }
 
   Future<List<NativeNotice>> fetch({String view = 'all'}) async {
