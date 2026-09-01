@@ -77,6 +77,7 @@ jobs:
           echo "固定 Release 签名验证通过"
 
       - name: 自动计算构建版本号
+        id: bump
         shell: bash
         run: |
           current=$(grep -E '^version:' pubspec.yaml | awk '{print $2}')
@@ -101,6 +102,28 @@ jobs:
           new_version="${major}.${minor}.${patch}+${new_build}"
           sed -i "s/^version:.*/version: ${new_version}/" pubspec.yaml
           echo "新版本号: ${new_version}"
+          echo "new_version=${new_version}" >> "$GITHUB_OUTPUT"
+
+      - name: 提交并推送新版本号
+        shell: bash
+        env:
+          GITHUB_TOKEN: ${{ github.token }}
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          # 先同步远端，避免版本号提交冲突
+          git pull --rebase --no-edit \
+            "https://x-access-token:${GITHUB_TOKEN}@github.com/${GITHUB_REPOSITORY}" \
+            "${GITHUB_REF_NAME}" || true
+          git add pubspec.yaml
+          if git diff --cached --quiet; then
+            echo "版本号无变化，跳过提交"
+          else
+            git commit -m "chore: bump version to ${{ steps.bump.outputs.new_version }} [skip ci]"
+            git push \
+              "https://x-access-token:${GITHUB_TOKEN}@github.com/${GITHUB_REPOSITORY}" \
+              "HEAD:${GITHUB_REF_NAME}"
+          fi
 
       - name: 拉取依赖
         run: flutter pub get
@@ -133,12 +156,13 @@ jobs:
           echo "version=$version" >> "$GITHUB_OUTPUT"
           echo "name=${version%%+*}" >> "$GITHUB_OUTPUT"
           echo "build=${version##*+}" >> "$GITHUB_OUTPUT"
+          echo "sha=$(git rev-parse HEAD)" >> "$GITHUB_OUTPUT"
 
       - name: 发布到 GitHub Releases
         uses: softprops/action-gh-release@v2
         with:
           tag_name: v${{ steps.meta.outputs.version }}
-          target_commitish: ${{ github.sha }}
+          target_commitish: ${{ steps.meta.outputs.sha }}
           name: 源论坛 YcooForum v${{ steps.meta.outputs.version }} (build ${{ steps.meta.outputs.build }})
           generate_release_notes: true
           body: |
