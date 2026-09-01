@@ -49,3 +49,5 @@ app.*.map.json
 .sr_*.html
 .sr_cookies.txt
 .trae-html-share-packages/
+# Local debugging session cookies (never commit)
+.ycoo_cookies.txt
