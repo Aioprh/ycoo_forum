@@ -31,8 +31,6 @@ class ActionableNoticeService {
       throw Exception('请求失败 HTTP ${response.statusCode}');
     }
     final html = NetClient.decode(response.bodyBytes);
-
-    // 只有页面确实是登录表单时才判定登录失效，不能仅凭“登录”文字判断。
     if (_isLoginPage(html)) {
       throw Exception('登录态已失效，请重新登录论坛');
     }
@@ -42,21 +40,16 @@ class ActionableNoticeService {
   static bool _isLoginPage(String html) {
     final doc = parser.parse(html);
     final hasLogout = doc.querySelectorAll('a[href],form[action]').any((element) {
-      final href = element.attributes['href'];
-      final action = element.attributes['action'];
-      final hrefText = href == null ? '' : href.toLowerCase();
-      final actionText = action == null ? '' : action.toLowerCase();
+      final hrefText = (element.attributes['href'] ?? '').toString().toLowerCase();
+      final actionText = (element.attributes['action'] ?? '').toString().toLowerCase();
       return hrefText.contains('action=logout') || actionText.contains('action=logout');
     }) || doc.text.contains('退出登录');
     if (hasLogout) return false;
 
     final hasLoginForm = doc.querySelectorAll('form').any((form) {
-      final action = form.attributes['action'];
-      final id = form.attributes['id'];
-      final cls = form.attributes['class'];
-      final actionText = action == null ? '' : action.toLowerCase();
-      final idText = id == null ? '' : id.toLowerCase();
-      final classText = cls == null ? '' : cls.toLowerCase();
+      final actionText = (form.attributes['action'] ?? '').toString().toLowerCase();
+      final idText = (form.attributes['id'] ?? '').toString().toLowerCase();
+      final classText = (form.attributes['class'] ?? '').toString().toLowerCase();
       return actionText.contains('logging') ||
           actionText.contains('login') ||
           idText == 'login' ||
@@ -65,9 +58,7 @@ class ActionableNoticeService {
     });
 
     final hasLoginInput = doc.querySelectorAll('input[name]').any((input) {
-      final name = input.attributes['name'];
-      if (name == null) return false;
-      final normalized = name.toLowerCase();
+      final normalized = (input.attributes['name'] ?? '').toString().toLowerCase();
       return normalized == 'username' ||
           normalized == 'password' ||
           normalized == 'loginfield';
