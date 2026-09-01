@@ -65,11 +65,39 @@ class _NativeChatPageState extends State<NativeChatPage> {
 
       final result = <_ChatMessage>[];
       final seen = <String>{};
-      // 标准 Discuz：每条私信对应一个 dl#pmlist_<pmid>。
-      final primary = doc.querySelectorAll('dl[id^="pmlist_"]');
-      for (final node in primary) _add(result, seen, _parseMessage(node), node.attributes['id']);
 
-      // 手机版/Comiis 有些版本会去掉 pmlist_* id，但仍保留 dd.ptm。
+      // Discuz 标准模板使用 dl#pmlist_<pmid> + dd.ptm。
+      for (final node in doc.querySelectorAll('dl[id^="pmlist_"]')) {
+        _add(result, seen, _parseMessage(node), node.attributes['id']);
+      }
+
+      // Comiis/二次开发模板可能保留 dd.ptm，但改变了外层容器。
+      // 直接从每一个 dd.ptm 向上找最近的消息容器，避免因为模板结构变化而丢失记录。
+      if (result.isEmpty) {
+        for (final content in doc.querySelectorAll('dd.ptm')) {
+          dynamic container = content;
+          for (var i = 0; i < 5; i++) {
+            final parent = container.parent;
+            if (parent == null) break;
+            container = parent;
+            if (container.localName == 'dl' || container.localName == 'li') break;
+          }
+          _add(result, seen, _parseMessage(container));
+        }
+      }
+
+      // 最后使用原始 HTML 匹配 dd.ptm。某些 Discuz 模板 HTML 不规范，
+      // html parser 会自动修正 DOM，导致标准选择器反而找不到完整的 dd。
+      if (result.isEmpty) {
+        final raw = RegExp(r'<dd[^>]*class=["\'][^"\']*\\bptm\\b[^"\']*["\'][^>]*>([\\s\\S]*?)</dd>', caseSensitive: false).allMatches(html);
+        for (final match in raw) {
+          final fragment = match.group(0) ?? '';
+          final node = parser.parseFragment(fragment);
+          _add(result, seen, _parseMessage(node));
+        }
+      }
+
+      // 手机版/Comiis 有些版本会去掉 pmlist_* id，但仍保留 dd.ptm 或自定义消息容器。
       if (result.isEmpty) {
         for (final node in doc.querySelectorAll('dl.bbda.cl,dl.bbda,dl.cl,dl')) {
           if (node.querySelector('dd.ptm') == null) continue;
@@ -77,8 +105,6 @@ class _NativeChatPageState extends State<NativeChatPage> {
         }
       }
 
-      // 定制模板可能使用 li/div 容器；只接受明确包含“正文节点”的容器，
-      // 避免把整个页面的导航、积分、菜单误当成聊天记录。
       if (result.isEmpty) {
         for (final node in doc.querySelectorAll('li.comiis_pmitem,li.pm_list,li.pml,.comiis_pm_list > li,.pmlist > li,.pm_message,.pml_body,.pm_body,.comiis_pmtext,.comiis_pm_content')) {
           final target = node.localName == 'li' || node.localName == 'div' ? node : node.parent;
@@ -103,9 +129,12 @@ class _NativeChatPageState extends State<NativeChatPage> {
     if (node == null) return null;
     final content = node.querySelector('dd.ptm') ?? node.querySelector('.pm_message,.pml_body,.pm_body,.comiis_pmtext,.comiis_pm_content,.pmtext');
     if (content == null) return null;
-    final author = node.querySelector('dd.ptm a[href*="mod=space&uid="],dd.ptm a[href*="uid="],a[href*="mod=space&uid="],a[href*="mod=space%26uid="],a[href*="uid="]');
+
+    final author = content.querySelector('a[href*="mod=space&uid="],a[href*="mod=space%26uid="],a[href*="uid="]') ??
+        node.querySelector('a[href*="mod=space&uid="],a[href*="mod=space%26uid="],a[href*="uid="]');
     final sender = _cleanText(author);
-    final uid = _extractUid(node);
+    final uid = _extractUid(content) > 0 ? _extractUid(content) : _extractUid(node);
+
     var body = _cleanText(content);
     if (sender.isNotEmpty) body = _removeFirst(body, sender);
     final timeNode = content.querySelector('.xg1,.xg2,time,[class*="time"],[class*="date"]') ?? node.querySelector('.xg1,.xg2,time,[class*="time"],[class*="date"]');
@@ -113,6 +142,7 @@ class _NativeChatPageState extends State<NativeChatPage> {
     if (time.isNotEmpty) body = _removeFirst(body, time);
     body = _clean(body.replaceAll(RegExp(r'^[:：\-·\s]+|[:：\-·\s]+$'), ''));
     if (body.isEmpty || _isUiOnly(body)) return null;
+
     final currentName = _clean(AuthService.instance.username ?? '');
     final finalSender = sender.isNotEmpty ? sender : (uid == AuthService.instance.uid ? currentName : _clean(widget.username));
     return _ChatMessage(uid: uid, sender: finalSender.isEmpty ? _clean(widget.username) : finalSender, body: body, time: time);
@@ -128,6 +158,7 @@ class _NativeChatPageState extends State<NativeChatPage> {
   }
 
   static int _extractUid(dynamic node) {
+    if (node == null) return 0;
     final links = node.querySelectorAll('a[href*="mod=space&uid="],a[href*="mod=space%26uid="],a[href*="?uid="],a[href*="&uid="],a[href*="uid="]');
     for (final link in links) {
       final href = link.attributes['href'] ?? '';
