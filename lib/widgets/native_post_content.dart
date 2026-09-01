@@ -288,9 +288,10 @@ class _InlineContent extends StatelessWidget {
   }
 }
 
-/// Discuz/Comiis 常见图片地址可能位于 lazy-load 属性，而 src 只是占位图。
+/// Discuz/Comiis 图片可能把真实地址放在 comiis_loadimages，而 src 只是占位图。
 String _imageUrl(dom.Element e) {
   const candidates = [
+    'comiis_loadimages',
     'data-src',
     'data-original',
     'data-url',
@@ -301,20 +302,21 @@ String _imageUrl(dom.Element e) {
     'src',
   ];
 
-  String normalize(String value) {
+  String normalize(String value, {bool forumPath = false}) {
     var v = value.trim();
     if (v.isEmpty || v.startsWith('data:')) return '';
-    if (v.startsWith('//')) return 'https:$v';
     if (v.contains(',')) {
       v = v.split(',').first.trim().split(RegExp(r'\s+')).first;
     }
-    return SiteConfig.resolveCdn(v);
+    if (v.startsWith('//')) return 'https:$v';
+    if (v.startsWith('http://') || v.startsWith('https://')) return v;
+    return forumPath ? SiteConfig.resolve(v) : SiteConfig.resolveCdn(v);
   }
 
   for (final key in candidates) {
     final value = e.attributes[key];
     if (value == null || value.trim().isEmpty) continue;
-    final url = normalize(value);
+    final url = normalize(value, forumPath: key == 'comiis_loadimages');
     if (url.isNotEmpty && !_looksLikePlaceholder(url)) return url;
   }
 
@@ -329,7 +331,9 @@ String _imageUrl(dom.Element e) {
 bool _looksLikePlaceholder(String url) {
   final value = url.toLowerCase();
   return value.contains('none.gif') ||
+      value.contains('none.png') ||
       value.contains('loading.gif') ||
+      value.contains('lazyload') ||
       value.contains('placeholder') ||
       value.endsWith('/spacer.gif');
 }
