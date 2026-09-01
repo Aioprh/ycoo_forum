@@ -260,7 +260,7 @@ class _CommentCard extends StatelessWidget {
           Container(
             padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
             decoration: BoxDecoration(color: s.surfaceContainerHighest, borderRadius: BorderRadius.circular(9)),
-            child: Text(comment.floor.isEmpty ? '${index + 2}楼' : comment.floor, style: TextStyle(fontSize: 10, fontWeight: FontWeight.w700, color: s.onSurfaceVariant)),
+            child: Text('${index + 1}楼', style: TextStyle(fontSize: 10, fontWeight: FontWeight.w700, color: s.onSurfaceVariant)),
           ),
         ]),
         const SizedBox(height: 11),
@@ -296,12 +296,13 @@ class _HtmlNodes extends StatelessWidget {
     if (node is! dom.Element) return const SizedBox.shrink();
     final tag = node.localName?.toLowerCase() ?? '';
     if (tag == 'img') {
-      var src = node.attributes['src'] ?? node.attributes['data-src'] ?? '';
+      var src = node.attributes['comiis_loadimages'] ?? node.attributes['data-src'] ?? node.attributes['src'] ?? '';
       if (src.startsWith('//')) src = 'https:$src';
       else if (src.startsWith('/')) src = SiteConfig.base + src.substring(1);
       else if (!src.startsWith('http://') && !src.startsWith('https://')) src = SiteConfig.resolve(src);
-      if (src.isEmpty) return const SizedBox.shrink();
-      return Padding(padding: const EdgeInsets.symmetric(vertical: 6), child: ClipRRect(borderRadius: BorderRadius.circular(12), child: Image.network(src, width: double.infinity, fit: BoxFit.contain, errorBuilder: (_, __, ___) => const SizedBox.shrink())));
+      final lower = src.toLowerCase();
+      if (src.isEmpty || lower.contains('none.gif') || lower.contains('none.png') || lower.contains('loading.gif') || lower.contains('placeholder')) return const SizedBox.shrink();
+      return Padding(padding: const EdgeInsets.symmetric(vertical: 6), child: ClipRRect(borderRadius: BorderRadius.circular(12), child: Image.network(src, width: double.infinity, fit: BoxFit.contain, headers: {'Referer': SiteConfig.base, if (AuthService.instance.authCookie?.isNotEmpty == true) 'Cookie': AuthService.instance.authCookie!}, errorBuilder: (_, __, ___) => const SizedBox.shrink())));
     }
     if (tag == 'br') return const SizedBox(height: 5);
     if (tag == 'blockquote') return Container(margin: const EdgeInsets.symmetric(vertical: 6), padding: const EdgeInsets.fromLTRB(12, 8, 10, 8), decoration: BoxDecoration(color: s.primaryContainer.withValues(alpha: .42), borderRadius: BorderRadius.circular(10), border: Border(left: BorderSide(color: s.primary, width: 3))), child: _HtmlNodes(element: node));
