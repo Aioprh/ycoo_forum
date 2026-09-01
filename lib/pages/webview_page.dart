@@ -25,6 +25,34 @@ class _WebViewPageState extends State<WebViewPage> {
       widget.url.startsWith('ycoo-native-purchase://') ||
       (widget.title == '购买主题' && widget.url.contains('ycoo.net/thread-'));
 
+  Uri? _normalizedUri() {
+    if (widget.url.startsWith('ycoo-native-purchase://')) return null;
+    final raw = widget.url.trim();
+    if (raw.isEmpty) return null;
+    final base = Uri.parse(SiteConfig.base);
+    Uri? uri;
+    try {
+      uri = base.resolve(raw);
+    } catch (_) {
+      uri = Uri.tryParse(raw);
+    }
+    if (uri == null) return null;
+    if (uri.hasScheme && uri.scheme != 'http' && uri.scheme != 'https') return null;
+
+    // Discuz 旧版个人空间入口：space.php -> home.php?mod=space。
+    if (uri.path.toLowerCase().endsWith('/space.php')) {
+      uri = uri.replace(path: '/home.php', queryParameters: {
+        'mod': uri.queryParameters['mod'] ?? 'space',
+        ...uri.queryParameters,
+      });
+    }
+    // 兼容通知里仅带 ?mod=space... 的相对链接。
+    if ((uri.path.isEmpty || uri.path == '/') && uri.queryParameters.containsKey('mod')) {
+      uri = uri.replace(path: '/home.php');
+    }
+    return uri;
+  }
+
   @override
   void initState() {
     super.initState();
@@ -61,6 +89,11 @@ class _WebViewPageState extends State<WebViewPage> {
     try {
       await AuthService.instance.init();
       await _syncCookies();
+      final target = _normalizedUri();
+      if (target == null) {
+        if (mounted) setState(() { _loading = false; _error = true; _nativeMessage = '无效的页面地址'; });
+        return;
+      }
       final controller = WebViewController()
         ..setJavaScriptMode(JavaScriptMode.unrestricted)
         ..setBackgroundColor(const Color(0xFFFFFFFF))
@@ -72,7 +105,7 @@ class _WebViewPageState extends State<WebViewPage> {
           onPageFinished: (url) { if (mounted) setState(() => _loading = false); },
           onWebResourceError: (error) { if (mounted) setState(() => _error = true); },
         ));
-      await controller.loadRequest(Uri.parse(widget.url));
+      await controller.loadRequest(target);
       if (mounted) setState(() => _controller = controller);
     } catch (e) {
       if (mounted) setState(() { _loading = false; _error = true; _nativeMessage = '页面加载失败: $e'; });
@@ -109,7 +142,12 @@ class _WebViewPageState extends State<WebViewPage> {
     }
     setState(() { _error = false; _loading = true; });
     await _syncCookies();
-    await _controller?.reload();
+    final target = _normalizedUri();
+    if (target != null) {
+      await _controller?.loadRequest(target);
+    } else {
+      await _controller?.reload();
+    }
   }
 
   @override
