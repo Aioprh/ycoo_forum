@@ -109,21 +109,31 @@ jobs:
         env:
           GITHUB_TOKEN: ${{ github.token }}
         run: |
+          set -o pipefail
           git config user.name "github-actions[bot]"
           git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
-          # 先同步远端，避免版本号提交冲突
-          git pull --rebase --no-edit \
-            "https://x-access-token:${GITHUB_TOKEN}@github.com/${GITHUB_REPOSITORY}" \
-            "${GITHUB_REF_NAME}" || true
-          git add pubspec.yaml
-          if git diff --cached --quiet; then
-            echo "版本号无变化，跳过提交"
-          else
+          REMOTE="https://x-access-token:${GITHUB_TOKEN}@github.com/${GITHUB_REPOSITORY}"
+          # sed 之后的 pubspec 是未暂存改动, rebase 会因此拒绝;
+          # 开启 autostash 由 git 自动保存/还原未暂存改动, 避免构建失败。
+          # 反复 pull --rebase + push, 兼容并发的其它 CI 运行(版本号回写)。
+          for attempt in 1 2 3; do
+            git -c rebase.autostash=true pull --rebase --no-edit "$REMOTE" "${GITHUB_REF_NAME}" || true
+            git add pubspec.yaml
+            if git diff --cached --quiet; then
+              echo "版本号无变化，跳过提交"
+              exit 0
+            fi
             git commit -m "chore: bump version to ${{ steps.bump.outputs.new_version }} [skip ci]"
-            git push \
-              "https://x-access-token:${GITHUB_TOKEN}@github.com/${GITHUB_REPOSITORY}" \
-              "HEAD:${GITHUB_REF_NAME}"
-          fi
+            if git push "$REMOTE" "HEAD:${GITHUB_REF_NAME}"; then
+              echo "已推送版本号提交"
+              exit 0
+            fi
+            echo "push 被拒绝(可能并发), 尝试第 ${attempt} 次"
+            git reset --soft HEAD~1 || true
+            sleep 2
+          done
+          echo "版本号提交在重试后仍失败"
+          exit 1
 
       - name: 拉取依赖
         run: flutter pub get
