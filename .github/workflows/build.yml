@@ -43,8 +43,38 @@ jobs:
           flutter-version: '3.47.2'
           cache: true
 
-      - name: 检查环境
-        run: flutter --version && dart --version
+      - name: 检查签名 Secrets
+        shell: bash
+        env:
+          KEYSTORE_BASE64: ${{ secrets.KEYSTORE_BASE64 }}
+          KEYSTORE_PASSWORD: ${{ secrets.KEYSTORE_PASSWORD }}
+          KEY_ALIAS: ${{ secrets.KEY_ALIAS }}
+          KEY_PASSWORD: ${{ secrets.KEY_PASSWORD }}
+        run: |
+          test -n "$KEYSTORE_BASE64" || { echo "缺少 GitHub Secret: KEYSTORE_BASE64"; exit 1; }
+          test -n "$KEYSTORE_PASSWORD" || { echo "缺少 GitHub Secret: KEYSTORE_PASSWORD"; exit 1; }
+          test -n "$KEY_ALIAS" || { echo "缺少 GitHub Secret: KEY_ALIAS"; exit 1; }
+          test -n "$KEY_PASSWORD" || { echo "缺少 GitHub Secret: KEY_PASSWORD"; exit 1; }
+
+      - name: 恢复固定 Release Keystore
+        shell: bash
+        env:
+          KEYSTORE_BASE64: ${{ secrets.KEYSTORE_BASE64 }}
+          KEYSTORE_PASSWORD: ${{ secrets.KEYSTORE_PASSWORD }}
+          KEY_ALIAS: ${{ secrets.KEY_ALIAS }}
+          KEY_PASSWORD: ${{ secrets.KEY_PASSWORD }}
+        run: |
+          mkdir -p android/keystore
+          printf '%s' "$KEYSTORE_BASE64" | base64 --decode > android/keystore/ycoo_forum_release.jks
+          cat > android/key.properties <<EOF
+          keystore_file=${GITHUB_WORKSPACE}/android/keystore/ycoo_forum_release.jks
+          keystore_password=${KEYSTORE_PASSWORD}
+          key_alias=${KEY_ALIAS}
+          key_password=${KEY_PASSWORD}
+          EOF
+          chmod 600 android/keystore/ycoo_forum_release.jks android/key.properties
+          keytool -list -keystore android/keystore/ycoo_forum_release.jks -storepass "$KEYSTORE_PASSWORD" -alias "$KEY_ALIAS" >/dev/null
+          echo "固定 Release 签名验证通过"
 
       - name: 自动计算构建版本号
         shell: bash
@@ -83,6 +113,17 @@ jobs:
 
       - name: 构建 ABI 分包 Release APK
         run: flutter build apk --split-per-abi --release --dart-define=cronetHttpNoPlay=true
+
+      - name: 验证 APK 签名
+        shell: bash
+        env:
+          KEYSTORE_PASSWORD: ${{ secrets.KEYSTORE_PASSWORD }}
+          KEY_ALIAS: ${{ secrets.KEY_ALIAS }}
+        run: |
+          for apk in build/app/outputs/flutter-apk/app-*-release.apk; do
+            echo "验证: $apk"
+            apksigner verify --verbose --print-certs "$apk" | grep -E 'Signer #1 certificate (DN|SHA-256)' || true
+          done
 
       - name: 读取应用版本
         id: meta
