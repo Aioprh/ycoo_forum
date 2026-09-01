@@ -8,6 +8,12 @@ import 'package:http/http.dart' as http;
 import 'package:http/io_client.dart';
 
 /// 统一网络客户端工厂。
+///
+/// 除了提供 Cronet/IO 客户端外，这里还对所有显式携带 formhash/hash 的
+/// URL-encoded 写请求做一次透明的令牌恢复：服务器明确返回令牌失效时，
+/// 使用请求的 Referer 重新读取页面，提取最新 token 后只重放一次原请求。
+/// 这样私信、关注、点赞、收藏、打赏、发帖等服务即使各自实现不同，
+/// 也不会因为缓存/过期 formhash 而直接失败。
 class NetClient {
   NetClient._();
   static final NetClient instance = NetClient._();
@@ -17,7 +23,13 @@ class NetClient {
 
   http.Client? _client;
 
-  Future<http.Client> get client async => _client ??= await _build();
+  Future<http.Client> get client async {
+    final raw = _client ??= await _build();
+    if (raw is _FormHashAwareClient) return raw;
+    final wrapped = _FormHashAwareClient(raw);
+    _client = wrapped;
+    return wrapped;
+  }
 
   Future<http.Client> _build() async {
     if (!Platform.isAndroid) {
@@ -51,7 +63,6 @@ class NetClient {
     try {
       return const Utf8Decoder(allowMalformed: false).convert(bytes);
     } on FormatException {
-      // charset 包的 GBK 编码器可以直接处理非 UTF-8 的中文页面。
       try {
         return gbk.decode(bytes);
       } catch (_) {
@@ -65,17 +76,216 @@ class NetClient {
     final ascii = String.fromCharCodes(
       bytes.take(length).map((b) => b < 128 ? b : 32),
     );
-
-    // 使用三引号 raw string，避免 Dart 字符串与正则中的引号互相转义。
     final match = RegExp(
       r'''charset\s*=\s*["']?\s*([A-Za-z0-9._-]+)''',
       caseSensitive: false,
     ).firstMatch(ascii);
-
     return match?.group(1)?.trim().toLowerCase();
   }
 
   static String? first(RegExp re, String s) => re.firstMatch(s)?.group(1);
+
+  /// 从 Discuz/Comiis HTML 中尽可能稳健地取得 formhash。
+  /// 支持 hidden input、属性顺序变化、data-formhash、JS/JSON 和 URL 参数。
+  static String? extractFormHash(String html) {
+    if (html.isEmpty) return null;
+
+    final inputTags = RegExp(r'<input\b[^>]*>', caseSensitive: false).allMatches(html);
+    for (final match in inputTags) {
+      final tag = match.group(0) ?? '';
+      final name = _attribute(tag, 'name');
+      if (name?.toLowerCase() == 'formhash') {
+        final value = _attribute(tag, 'value');
+        if (_validFormHash(value)) return value;
+      }
+    }
+
+    for (final tagMatch in RegExp(r'<[^>]*\bdata-formhash\s*=\s*["\']([^"\']+)["\'][^>]*>', caseSensitive: false).allMatches(html)) {
+      final value = tagMatch.group(1)?.trim();
+      if (_validFormHash(value)) return value;
+    }
+
+    final patterns = <RegExp>[
+      RegExp(r'''(?:^|[?&])formhash=([A-Za-z0-9_-]{6,128})(?:&|$)''', caseSensitive: false),
+      RegExp(r'''["']formhash["']\s*:\s*["']([A-Za-z0-9_-]{6,128})["']''', caseSensitive: false),
+      RegExp(r'''\bformhash\s*[=:]\s*["']([A-Za-z0-9_-]{6,128})["']''', caseSensitive: false),
+      RegExp(r'''\bformhash\s*=\s*([A-Za-z0-9_-]{6,128})''', caseSensitive: false),
+    ];
+    for (final pattern in patterns) {
+      final value = pattern.firstMatch(html)?.group(1)?.trim();
+      if (_validFormHash(value)) return value;
+    }
+    return null;
+  }
+
+  static String? _attribute(String tag, String name) {
+    final re = RegExp('\\b${RegExp.escape(name)}\\s*=\\s*["\\\']([^"\\\']*)["\\\']', caseSensitive: false);
+    return re.firstMatch(tag)?.group(1)?.trim();
+  }
+
+  static bool _validFormHash(String? value) {
+    if (value == null || value.isEmpty) return false;
+    return RegExp(r'^[A-Za-z0-9_-]{6,128}$').hasMatch(value);
+  }
+
+  static bool _tokenFailure(String body) {
+    final lower = body.toLowerCase();
+    final explicit = lower.contains('操作令牌') ||
+        lower.contains('令牌已失效') ||
+        lower.contains('token expired') ||
+        lower.contains('invalid token') ||
+        lower.contains('非法操作') ||
+        lower.contains('来路不正确');
+    final formHashError = lower.contains('formhash') &&
+        (lower.contains('错误') ||
+            lower.contains('非法') ||
+            lower.contains('失效') ||
+            lower.contains('无效') ||
+            lower.contains('invalid') ||
+            lower.contains('error') ||
+            lower.contains('expired'));
+    return explicit || formHashError;
+  }
+
+  static String _replaceToken(String body, String token) {
+    var result = body;
+    result = result.replaceFirst(
+      RegExp(r'((?:^|&)formhash=)[^&]*', caseSensitive: false),
+      (m) => '${m.group(1)}${Uri.encodeQueryComponent(token)}',
+    );
+    result = result.replaceFirst(
+      RegExp(r'((?:^|&)hash=)[^&]*', caseSensitive: false),
+      (m) => '${m.group(1)}${Uri.encodeQueryComponent(token)}',
+    );
+    return result;
+  }
+
+  static Uri _replaceQueryToken(Uri uri, String token) {
+    final qp = <String, String>{...uri.queryParameters};
+    if (qp.containsKey('formhash')) qp['formhash'] = token;
+    if (qp.containsKey('hash')) qp['hash'] = token;
+    return uri.replace(queryParameters: qp);
+  }
+
+  static Future<http.StreamedResponse?> _freshResponse(
+    http.Client inner,
+    http.BaseRequest request,
+  ) async {
+    final referer = request.headers['Referer'] ?? request.headers['referer'];
+    if (referer == null || referer.trim().isEmpty) return null;
+    try {
+      final uri = Uri.parse(referer);
+      final headers = <String, String>{
+        'User-Agent': ua,
+        'Accept': 'text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8',
+        'Cache-Control': 'no-cache, no-store',
+        'Pragma': 'no-cache',
+      };
+      final cookie = request.headers['Cookie'] ?? request.headers['cookie'];
+      if (cookie != null && cookie.isNotEmpty) headers['Cookie'] = cookie;
+      return await inner.send(http.Request('GET', uri)..headers.addAll(headers));
+    } catch (_) {
+      return null;
+    }
+  }
+
+  static Future<http.BaseRequest?> _cloneWithToken(
+    http.BaseRequest request,
+    String token,
+  ) async {
+    if (request is! http.Request) return null;
+    final contentType = request.headers['Content-Type'] ?? request.headers['content-type'] ?? '';
+    final lowerType = contentType.toLowerCase();
+    if (!lowerType.contains('application/x-www-form-urlencoded')) return null;
+
+    final clone = http.Request(request.method, _replaceQueryToken(request.url, token));
+    clone.headers.addAll(request.headers);
+    clone.body = _replaceToken(request.body, token);
+    return clone;
+  }
+
+  static Future<http.StreamedResponse> _sendWithRefresh(
+    http.Client inner,
+    http.BaseRequest request,
+  ) async {
+    final response = await inner.send(request);
+    if (response.statusCode < 200 || response.statusCode >= 500) return response;
+
+    final hasToken = request.url.queryParameters.containsKey('formhash') ||
+        request.url.queryParameters.containsKey('hash') ||
+        (request is http.Request &&
+            (request.headers['Content-Type'] ?? request.headers['content-type'] ?? '')
+                .toLowerCase()
+                .contains('application/x-www-form-urlencoded') &&
+            RegExp(r'(?:^|&)formhash=', caseSensitive: false).hasMatch(request.body));
+    if (!hasToken) return response;
+
+    final bodyBytes = await response.stream.toBytes();
+    final bodyText = decode(bodyBytes);
+    if (!_tokenFailure(bodyText)) {
+      return http.StreamedResponse(
+        Stream<List<int>>.value(bodyBytes),
+        response.statusCode,
+        contentLength: bodyBytes.length,
+        request: response.request,
+        headers: response.headers,
+        isRedirect: response.isRedirect,
+        persistentConnection: response.persistentConnection,
+        reasonPhrase: response.reasonPhrase,
+      );
+    }
+
+    final fresh = await _freshResponse(inner, request);
+    if (fresh == null) {
+      return http.StreamedResponse(
+        Stream<List<int>>.value(bodyBytes),
+        response.statusCode,
+        contentLength: bodyBytes.length,
+        request: response.request,
+        headers: response.headers,
+        isRedirect: response.isRedirect,
+        persistentConnection: response.persistentConnection,
+        reasonPhrase: response.reasonPhrase,
+      );
+    }
+    final freshBytes = await fresh.stream.toBytes();
+    final token = extractFormHash(decode(freshBytes));
+    if (token == null || token.isEmpty) {
+      return http.StreamedResponse(
+        Stream<List<int>>.value(bodyBytes),
+        response.statusCode,
+        contentLength: bodyBytes.length,
+        request: response.request,
+        headers: response.headers,
+        isRedirect: response.isRedirect,
+        persistentConnection: response.persistentConnection,
+        reasonPhrase: response.reasonPhrase,
+      );
+    }
+
+    final retryRequest = await _cloneWithToken(request, token);
+    if (retryRequest == null) {
+      if (request.url.queryParameters.containsKey('formhash') || request.url.queryParameters.containsKey('hash')) {
+        final retryUrl = _replaceQueryToken(request.url, token);
+        final replacement = http.Request(request.method, retryUrl);
+        replacement.headers.addAll(request.headers);
+        final retry = await inner.send(replacement);
+        return retry;
+      }
+      return http.StreamedResponse(
+        Stream<List<int>>.value(bodyBytes),
+        response.statusCode,
+        contentLength: bodyBytes.length,
+        request: response.request,
+        headers: response.headers,
+        isRedirect: response.isRedirect,
+        persistentConnection: response.persistentConnection,
+        reasonPhrase: response.reasonPhrase,
+      );
+    }
+    // 明确只重试一次：不会因为服务器返回同类错误而无限发送。
+    return inner.send(retryRequest);
+  }
 
   static Future<T> retry<T>(
     Future<T> Function() fn, {
@@ -95,4 +305,18 @@ class NetClient {
     }
     Error.throwWithStackTrace(last!, StackTrace.current);
   }
+}
+
+/// http.Client 包装器。
+/// 只在服务端明确报告 token/formhash 失效时恢复一次，不改变普通请求语义。
+class _FormHashAwareClient extends http.BaseClient {
+  final http.Client _inner;
+  _FormHashAwareClient(this._inner);
+
+  @override
+  Future<http.StreamedResponse> send(http.BaseRequest request) =>
+      NetClient._sendWithRefresh(_inner, request);
+
+  @override
+  void close() => _inner.close();
 }
