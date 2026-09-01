@@ -342,15 +342,43 @@ class AuthService {
     if (text.isEmpty) return '回帖内容不能为空';
     final client = await _http();
     try {
-      final pageResp = await client.get(Uri.parse('${base}thread-$tid-1-1.html'), headers: _headers()).timeout(const Duration(seconds: 15));
+      final isNested = replyPid != null && replyPid > 0;
+      // 楼中楼回复必须从带 repquote 的回复页取回引用相关的隐藏字段(reppid/noticeauthormsg/posttime等),
+      // 否则服务端无法确定要回哪一层, 会退化为普通顶层回帖。
+      final getUrl = isNested
+          ? '${base}forum.php?mod=post&action=reply&fid=$fid&tid=$tid&extra=page%3D1&${firstPost ? 'reppost' : 'repquote'}=$replyPid&page=1&mobile=2'
+          : '${base}thread-$tid-1-1.html';
+      final pageResp = await client.get(Uri.parse(getUrl), headers: _headers()).timeout(const Duration(seconds: 15));
       final page = NetClient.decode(pageResp.bodyBytes);
       final formhash = _hiddenValue(page, 'formhash') ?? '';
-      final noticeauthor = _hiddenValue(page, 'noticeauthor') ?? '';
       if (formhash.isEmpty) return '未取得回帖令牌(formhash)';
       final extra = 'page%3D1';
-      final replyParam = replyPid != null && replyPid > 0 ? (firstPost ? 'reppost=$replyPid' : 'repquote=$replyPid') : '';
-      final url = '${base}forum.php?mod=post&action=reply&fid=$fid&tid=$tid&extra=$extra&$replyParam&replysubmit=yes&mobile=2';
-      final resp = await client.post(Uri.parse(url), headers: {..._headers(referer: '${base}thread-$tid-1-1.html'), 'Content-Type': 'application/x-www-form-urlencoded; charset=UTF-8', 'Origin': base, 'X-Requested-With': 'XMLHttpRequest'}, body: <String, String>{'formhash': formhash, 'noticeauthor': noticeauthor, 'message': text, 'replysubmit': '回复', 'listextra': extra, if (replyPid != null && replyPid > 0) 'repquote': '$replyPid'}).timeout(NetClient.timeout);
+      final postBody = <String, String>{
+        'formhash': formhash,
+        'message': text,
+        'replysubmit': '回复',
+        'listextra': extra,
+        'htmlon': _hiddenValue(page, 'htmlon') ?? '0',
+        'posttime': _hiddenValue(page, 'posttime') ?? '',
+      };
+      if (isNested) {
+        // 楼中楼: reppid 为要回复的楼层 pid, 引用块字段从带 repquote 的回复页原样取回。
+        final reppid = int.tryParse(_hiddenValue(page, 'reppid') ?? '') ?? 0;
+        postBody['reppid'] = '${reppid > 0 ? reppid : replyPid}';
+        final repquoteH = _hiddenValue(page, 'repquote');
+        if (repquoteH != null && repquoteH.isNotEmpty) postBody['repquote'] = repquoteH;
+        final noticeauthor = _hiddenValue(page, 'noticeauthor');
+        if (noticeauthor != null && noticeauthor.isNotEmpty) postBody['noticeauthor'] = noticeauthor;
+        final noticeauthormsg = _hiddenValue(page, 'noticeauthormsg');
+        if (noticeauthormsg != null && noticeauthormsg.isNotEmpty) postBody['noticeauthormsg'] = noticeauthormsg;
+        final noticetrimstr = _hiddenValue(page, 'noticetrimstr');
+        if (noticetrimstr != null && noticetrimstr.isNotEmpty) postBody['noticetrimstr'] = noticetrimstr;
+      } else {
+        final noticeauthor = _hiddenValue(page, 'noticeauthor');
+        if (noticeauthor != null && noticeauthor.isNotEmpty) postBody['noticeauthor'] = noticeauthor;
+      }
+      final url = '${base}forum.php?mod=post&action=reply&fid=$fid&tid=$tid&extra=$extra&replysubmit=yes&mobile=2';
+      final resp = await client.post(Uri.parse(url), headers: {..._headers(referer: getUrl), 'Content-Type': 'application/x-www-form-urlencoded; charset=UTF-8', 'Origin': base, 'X-Requested-With': 'XMLHttpRequest'}, body: postBody).timeout(NetClient.timeout);
       final body = NetClient.decode(resp.bodyBytes);
       // 先精确命中 Discuz 成功标识 (inajax 响应的 succeedhandle_* / redirect 跳转)
       final success = body.contains('succeedhandle_') ||
