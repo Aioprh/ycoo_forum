@@ -9,7 +9,10 @@ class NativeNotice {
   final String title;
   final String subtitle;
   final String href;
-  const NativeNotice({required this.title, required this.subtitle, this.href = ''});
+  final String body;
+  final int uid; // 关联作者 uid（可能为 0）
+  final int tid; // 关联帖子 tid（可能为 0）
+  const NativeNotice({required this.title, required this.subtitle, this.href = '', this.body = '', this.uid = 0, this.tid = 0});
 }
 
 class NativeMessage {
@@ -95,20 +98,45 @@ class MemberServiceV2 {
 
   Future<List<NativeNotice>> fetchNotices({String view = 'all'}) async {
     final path = 'home.php?mod=space&do=notice&view=$view';
-    final doc = _doc(await _first(['$path&mobile=2', path]));
+    final doc = _doc(await _first(["$path&mobile=2", path]));
     final result = <NativeNotice>[];
     final seen = <String>{};
-    for (final li in doc.querySelectorAll('li,tr,article,.nts,.notice_li,.comiis_notice,.ntc_list')) {
-      final dd = li.querySelector('dd');
-      final text = _cleanNodeText(dd ?? li);
-      if (text.length < 2 || text.length > 500 || !seen.add(text)) continue;
-      if (_looksLikeNavigation(text) || !RegExp(r'(回复|评论|提到|通知|系统|赞了|收藏|提醒|关注|好友|主题|购买|充值|任务|注册|订单|经验|积分|星币)').hasMatch(text)) continue;
-      final time = _cleanNodeText(li.querySelector('dt,time,[class*="time"],[class*="date"]'));
-      final subtitle = time.isNotEmpty ? '$time $text' : text;
-      result.add(NativeNotice(title: text.length > 60 ? text.substring(0, 60) : text, subtitle: subtitle, href: _noticeHref(li)));
+
+    // Comiis 移动模板：.comiis_notices_box > .comiis_notice_list ul li.b_b
+    for (final li in doc.querySelectorAll('.comiis_notice_list li,li.b_b.bg_f.cl,.ntc_list li,.comiis_nts li,.pmlist li,li')) {
+      final bodyNode = li.querySelector('.ntc_body') ?? li.querySelector('dd,dt,.nts_body');
+      final body = _cleanNodeText(bodyNode ?? li);
+      if (body.length < 2 || body.length > 800 || !seen.add(body)) continue;
+      if (_looksLikeNavigation(body)) continue;
+
+      final time = _cleanNodeText(li.querySelector('h2 em,#pt h2 em,h2,.xg1,.xg2,[class*="time"],[class*="date"]'));
+      final hasKeyword = RegExp(r'(回复|评论|提到|通知|系统|赞了|收藏|提醒|关注|好友|主题|购买|充值|任务|注册|订单|经验|积分|星币|升级|留言|打招呼)').hasMatch(body);
+      if (view != 'all' && !hasKeyword) continue;
+
+      // 帖子链接（thread / 提醒指向的主题）
+      int tid = 0;
+      for (final a in li.querySelectorAll('a[href]')) {
+        final h = a.attributes['href'] ?? '';
+        final m = RegExp(r'(?:thread-|[?&]tid=)(\d+)', caseSensitive: false).firstMatch(h);
+        if (m != null) { final v = int.tryParse(m.group(1)!); if (v != null && v > 0) { tid = v; break; } }
+      }
+      // 作者 uid（notice_imgs / notice_img 头像、作者链接）
+      int uid = 0;
+      for (final a in li.querySelectorAll('a[href*="mod=space&uid="],a[href*="mod=space%26uid="],a[href*="?uid="],a[href*="&uid="]')) {
+        final m = RegExp(r'(?:[?&]|%3F|%26)uid=(\d+)', caseSensitive: false).firstMatch(a.attributes['href'] ?? '');
+        final v = int.tryParse(m?.group(1) ?? '');
+        if (v != null && v > 0) { uid = v; break; }
+      }
+
+      final title = body.length > 60 ? body.substring(0, 60) : body;
+      final subtitle = time.isNotEmpty && !body.contains(time) ? '$time $body' : body;
+      final href = tid > 0 ? 'thread-$tid-1-1.html' : '';
+      result.add(NativeNotice(title: title, subtitle: subtitle, href: href, body: body, uid: uid, tid: tid));
       if (result.length >= 100) break;
     }
-    if (view == 'all' || view == 'interactive') {
+
+    if (result.isEmpty) {
+      // 通用回退：站内私信入口
       for (final a in doc.querySelectorAll('a[href]')) {
         final href = (a.attributes['href'] ?? '').trim();
         if (!_isPmHref(href)) continue;
@@ -117,23 +145,11 @@ class MemberServiceV2 {
         if (label.isEmpty && uid <= 0) continue;
         final key = 'pm:$href:$label';
         if (!seen.add(key)) continue;
-        result.add(NativeNotice(title: label.isEmpty ? '站内私信' : label, subtitle: '站内私信', href: href));
+        result.add(NativeNotice(title: label.isEmpty ? '站内私信' : label, subtitle: '站内私信', href: href, uid: uid));
         if (result.length >= 100) break;
       }
     }
     return result;
-  }
-
-  static String _noticeHref(dynamic li) {
-    final anchors = li.querySelectorAll('a[href]');
-    if (anchors.isEmpty) return '';
-    for (final a in anchors) {
-      final h = (a.attributes['href'] ?? '').trim();
-      if (h.isEmpty) continue;
-      if (RegExp(r'logging|register|friend|notice|logout|spacecp|doing|album|blog').hasMatch(h)) continue;
-      if (RegExp(r'thread-|uid=|mod=viewthread|mod=space&view').hasMatch(h)) return h;
-    }
-    return (anchors.first.attributes['href'] ?? '').trim();
   }
 
   Future<List<NativeMessage>> fetchMessages() async {

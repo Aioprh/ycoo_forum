@@ -3,12 +3,11 @@ import 'package:flutter/material.dart';
 import '../models/thread_item.dart';
 import '../services/member_service.dart';
 import '../services/member_service_v2.dart';
-import '../services/site_config.dart';
 import '../utils/forum_text.dart';
 import '../widgets/native_icon_style.dart';
 import 'detail_page.dart';
 import 'native_message_list_page.dart';
-import 'webview_page.dart';
+import 'native_profile_page.dart';
 
 class MemberFeaturePage extends StatefulWidget {
   final String title;
@@ -74,23 +73,52 @@ class _NoticeList extends StatelessWidget {
     if (text.contains('注册') || text.contains('欢迎')) return Icons.verified_user_rounded;
     return Icons.notifications_none_rounded;
   }
-  static int? _extractTid(String href) {
-    for (final m in RegExp(r'(?:thread-|tid=)(\d+)', caseSensitive: false).allMatches(href)) { final v = int.tryParse(m.group(1)!); if (v != null && v > 0) return v; }
-    final vm = RegExp(r'mod=viewthread\D+(\d+)', caseSensitive: false).firstMatch(href); final vv = int.tryParse(vm?.group(1) ?? '');
-    return vv != null && vv > 0 ? vv : null;
-  }
+
   void _open(BuildContext context, NativeNotice item) {
-    final href = item.href; if (href.isEmpty) return; final tid = _extractTid(href);
-    if (tid != null) { Navigator.of(context).push(MaterialPageRoute(builder: (_) => DetailPage(tid: tid, title: forumText(item.title)))); return; }
-    final url = SiteConfig.resolve(href); if (url.isEmpty) return;
-    Navigator.of(context).push(MaterialPageRoute(builder: (_) => WebViewPage(url: url, title: forumText(item.title))));
+    if (item.tid > 0) {
+      Navigator.of(context).push(MaterialPageRoute(builder: (_) => DetailPage(tid: item.tid, title: forumText(item.title))));
+      return;
+    }
+    if (item.uid > 0) {
+      Navigator.of(context).push(MaterialPageRoute(builder: (_) => NativeProfilePage(uid: item.uid, username: '')));
+      return;
+    }
+    _showDetail(context, item);
+  }
+
+  void _showDetail(BuildContext context, NativeNotice item) {
+    final scheme = Theme.of(context).colorScheme;
+    showModalBottomSheet(
+      context: context,
+      isScrollControlled: true,
+      backgroundColor: scheme.surfaceContainerLowest,
+      shape: const RoundedRectangleBorder(borderRadius: BorderRadius.vertical(top: Radius.circular(20))),
+      builder: (sheetContext) {
+        final display = forumText(item.body.isNotEmpty ? item.body : item.subtitle);
+        return SafeArea(
+          child: Padding(
+            padding: EdgeInsets.fromLTRB(20, 16, 20, 12 + MediaQuery.of(context).viewInsets.bottom),
+            child: SingleChildScrollView(
+              child: Column(mainAxisSize: MainAxisSize.min, crossAxisAlignment: CrossAxisAlignment.start, children: [
+                Row(children: [const Icon(Icons.notifications_active_outlined, size: 20), const SizedBox(width: 8), Expanded(child: Text('通知详情', style: TextStyle(fontSize: 15, fontWeight: FontWeight.w800, color: scheme.onSurface))), IconButton(onPressed: () => Navigator.of(sheetContext).pop(), icon: const Icon(Icons.close))]),
+                const SizedBox(height: 12),
+                Container(width: double.infinity, padding: const EdgeInsets.all(16), decoration: BoxDecoration(color: scheme.surface, borderRadius: BorderRadius.circular(14)), child: Text(display, style: TextStyle(fontSize: 15, height: 1.5, color: scheme.onSurface))),
+                const SizedBox(height: 8),
+                if (item.uid > 0) FilledButton.icon(onPressed: () { Navigator.of(sheetContext).pop(); Navigator.of(context).push(MaterialPageRoute(builder: (_) => NativeProfilePage(uid: item.uid, username: ''))); }, icon: const Icon(Icons.person_outline), label: const Text('查看作者主页')),
+              ]),
+            ),
+          ),
+        );
+      },
+    );
   }
   @override
   Widget build(BuildContext context) {
     if (items.isEmpty) return const _EmptyState(title: '暂时没有提醒内容', subtitle: '新的回复、评论、系统消息等提醒会显示在这里');
     return ListView.separated(padding: const EdgeInsets.fromLTRB(14, 12, 14, 28), itemCount: items.length, separatorBuilder: (_, __) => const SizedBox(height: 9), itemBuilder: (context, i) {
       final item = items[i]; final title = forumText(item.title); final subtitle = forumText(item.subtitle);
-      return Card(clipBehavior: Clip.antiAlias, child: ListTile(leading: NativeIconStyle.badge(context, _iconFor(title, subtitle)), title: Text(title, maxLines: 2, overflow: TextOverflow.ellipsis, style: const TextStyle(fontWeight: FontWeight.w700)), subtitle: subtitle != title ? Text(subtitle, maxLines: 2, overflow: TextOverflow.ellipsis) : null, trailing: item.href.isEmpty ? null : const Icon(Icons.chevron_right_rounded), onTap: item.href.isEmpty ? null : () => _open(context, item)));
+      final actionable = item.tid > 0 || item.uid > 0 || item.body.isNotEmpty || item.subtitle.isNotEmpty;
+      return Card(clipBehavior: Clip.antiAlias, child: ListTile(leading: NativeIconStyle.badge(context, _iconFor(title, subtitle)), title: Text(title, maxLines: 2, overflow: TextOverflow.ellipsis, style: const TextStyle(fontWeight: FontWeight.w700)), subtitle: subtitle != title ? Text(subtitle, maxLines: 2, overflow: TextOverflow.ellipsis) : null, trailing: actionable ? const Icon(Icons.chevron_right_rounded) : null, onTap: actionable ? () => _open(context, item) : null));
     });
   }
 }
