@@ -1,3 +1,4 @@
+import 'package:html/dom.dart';
 import 'package:html/parser.dart' as parser;
 
 import 'auth_service.dart';
@@ -37,19 +38,23 @@ class ActionableNoticeService {
     return html;
   }
 
+  static String _attr(Element element, String name) {
+    return element.attributes[name]?.toString() ?? '';
+  }
+
   static bool _isLoginPage(String html) {
     final doc = parser.parse(html);
     final hasLogout = doc.querySelectorAll('a[href],form[action]').any((element) {
-      final hrefText = (element.attributes['href'] ?? '').toString().toLowerCase();
-      final actionText = (element.attributes['action'] ?? '').toString().toLowerCase();
+      final hrefText = _attr(element, 'href').toLowerCase();
+      final actionText = _attr(element, 'action').toLowerCase();
       return hrefText.contains('action=logout') || actionText.contains('action=logout');
     }) || doc.text.contains('退出登录');
     if (hasLogout) return false;
 
     final hasLoginForm = doc.querySelectorAll('form').any((form) {
-      final actionText = (form.attributes['action'] ?? '').toString().toLowerCase();
-      final idText = (form.attributes['id'] ?? '').toString().toLowerCase();
-      final classText = (form.attributes['class'] ?? '').toString().toLowerCase();
+      final actionText = _attr(form, 'action').toLowerCase();
+      final idText = _attr(form, 'id').toLowerCase();
+      final classText = _attr(form, 'class').toLowerCase();
       return actionText.contains('logging') ||
           actionText.contains('login') ||
           idText == 'login' ||
@@ -58,7 +63,7 @@ class ActionableNoticeService {
     });
 
     final hasLoginInput = doc.querySelectorAll('input[name]').any((input) {
-      final normalized = (input.attributes['name'] ?? '').toString().toLowerCase();
+      final normalized = _attr(input, 'name').toLowerCase();
       return normalized == 'username' ||
           normalized == 'password' ||
           normalized == 'loginfield';
@@ -115,15 +120,15 @@ class ActionableNoticeService {
     return result;
   }
 
-  static String _clean(dynamic node) {
+  static String _clean(Element? node) {
     if (node == null) return '';
     return node.text.replaceAll(RegExp(r'\s+'), ' ').trim();
   }
 
-  static String _bestHref(dynamic node) {
+  static String _bestHref(Element node) {
     final candidates = <String>[];
     for (final a in node.querySelectorAll('a[href]')) {
-      final href = (a.attributes['href'] ?? '').trim();
+      final href = _attr(a, 'href').trim();
       if (href.isEmpty || href.startsWith('#') || href.startsWith('javascript:')) continue;
       if (_tid(href) > 0) return href;
       if (_uid(href) > 0) candidates.add(href);
@@ -132,7 +137,7 @@ class ActionableNoticeService {
     return candidates.isEmpty ? '' : candidates.first;
   }
 
-  static String _allHref(dynamic node) => node.querySelector('a[href]')?.attributes['href'] ?? '';
+  static String _allHref(Element node) => _attr(node.querySelector('a[href]') ?? Element.tag('a'), 'href');
 
   static int _tid(String href) {
     final m = RegExp(r'(?:thread-|[?&]tid=|[?&]topicid=)(\d+)', caseSensitive: false).firstMatch(href);
