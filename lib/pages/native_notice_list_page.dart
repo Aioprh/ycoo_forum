@@ -2,9 +2,11 @@ import 'package:flutter/material.dart';
 
 import '../services/actionable_notice_service.dart';
 import '../services/member_service_v2.dart';
+import '../services/site_config.dart';
 import '../utils/forum_text.dart';
 import 'detail_page.dart';
 import 'native_profile_page.dart';
+import 'webview_page.dart';
 
 class NativeNoticeListPage extends StatefulWidget {
   final String title;
@@ -28,6 +30,19 @@ class _NativeNoticeListPageState extends State<NativeNoticeListPage> {
     await _future;
   }
 
+  String? _actionUrl(String href) {
+    final raw = href.trim();
+    if (raw.isEmpty || raw.startsWith('#') || raw.toLowerCase().startsWith('javascript:')) return null;
+    final uri = Uri.tryParse(raw);
+    if (uri == null) return null;
+    if (uri.hasScheme && uri.scheme != 'http' && uri.scheme != 'https') return null;
+    if (uri.hasScheme) return uri.toString();
+    final base = Uri.parse(SiteConfig.base);
+    if (raw.startsWith('/')) return base.replace(path: raw).toString();
+    final basePath = base.path.endsWith('/') ? base.path : '${base.path}/';
+    return base.replace(path: '$basePath$raw').toString();
+  }
+
   Future<void> _open(NativeNotice item) async {
     if (!mounted) return;
     if (item.tid > 0) {
@@ -36,6 +51,11 @@ class _NativeNoticeListPageState extends State<NativeNoticeListPage> {
     }
     if (item.uid > 0) {
       await Navigator.push(context, MaterialPageRoute(builder: (_) => NativeProfilePage(uid: item.uid, username: '')));
+      return;
+    }
+    final url = _actionUrl(item.href);
+    if (url != null) {
+      await Navigator.push(context, MaterialPageRoute(builder: (_) => WebViewPage(url: url, title: forumText(item.title))));
       return;
     }
     _details(item);
@@ -58,10 +78,6 @@ class _NativeNoticeListPageState extends State<NativeNoticeListPage> {
               Text(forumText(item.title), style: const TextStyle(fontSize: 18, fontWeight: FontWeight.w800)),
               const SizedBox(height: 12),
               Text(forumText(item.body.isNotEmpty ? item.body : item.subtitle), style: const TextStyle(fontSize: 15, height: 1.5)),
-              if (item.href.isNotEmpty) ...[
-                const SizedBox(height: 12),
-                Text('已识别操作地址，可继续进入论坛原操作页面。', style: TextStyle(fontSize: 12, color: scheme.onSurfaceVariant)),
-              ],
               const SizedBox(height: 16),
               SizedBox(width: double.infinity, child: OutlinedButton(onPressed: () => Navigator.pop(sheet), child: const Text('关闭'))),
             ],
@@ -86,7 +102,7 @@ class _NativeNoticeListPageState extends State<NativeNoticeListPage> {
     final text = forumText('${item.title} ${item.body}');
     if (item.tid > 0) return text.contains('回复') || text.contains('评论') ? '查看并回复' : '打开帖子';
     if (item.uid > 0) return text.contains('关注') ? '查看并互动' : '查看坛友';
-    return item.href.isNotEmpty ? '查看提醒' : '查看详情';
+    return item.href.isNotEmpty ? '继续处理提醒' : '查看详情';
   }
 
   @override
