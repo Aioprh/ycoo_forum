@@ -157,10 +157,16 @@ class ApiService {
 
   static String detailUrl(int tid) => '$_base' 'thread-$tid-1-1.html';
 
-  static String commentListUrl(int tid, int page) => '$_base' 'thread-$tid-$page-1.html';
+  static String commentListUrl(int tid, int page, {int? authorId}) {
+    // “只看楼主” 时原站的过滤链接是 viewthread 查询形式, 带 authorid。
+    if (authorId != null && authorId > 0) {
+      return '$_base' 'forum.php?mod=viewthread&tid=$tid&page=$page&authorid=$authorId';
+    }
+    return '$_base' 'thread-$tid-$page-1.html';
+  }
 
-  Future<ThreadDetail> fetchThreadDetail(int tid, {int page = 1}) async {
-    final html = await _get(commentListUrl(tid, page), query: {'mobile': '2'});
+  Future<ThreadDetail> fetchThreadDetail(int tid, {int page = 1, int? authorId}) async {
+    final html = await _get(commentListUrl(tid, page, authorId: authorId), query: {'mobile': '2'});
     final doc = parser.parse(html);
     final boardLink = doc.querySelector('.comiis_bankuai .bankuai_tit a, .comiis_bankuai a[href*="forum-"], a[href*="forum-"]');
     final boardName = _normSpace(boardLink?.text ?? '');
@@ -202,6 +208,7 @@ class ApiService {
       commentsHtml: comments,
       commentPage: pageInfo.$1,
       commentTotalPages: pageInfo.$2,
+      authorUid: _parseAuthorUid(html),
       isPaid: paid.isPaid,
       price: paid.price,
       currency: paid.currency,
@@ -393,6 +400,12 @@ class ApiService {
       return (current, maxPage);
     }
     return (current, current);
+  }
+
+  /// 从详情页脚本 `var replyreload, ... authorid = '1', ...` 提取楼主 uid。
+  static int _parseAuthorUid(String html) {
+    final m = RegExp(r"authorid\s*=\s*'(\d+)'").firstMatch(html);
+    return int.tryParse(m?.group(1) ?? '') ?? 0;
   }
 
   static List<String> _collectPosts(dom.Document doc) {

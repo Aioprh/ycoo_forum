@@ -36,6 +36,7 @@ class _DetailPageState extends State<DetailPage> {
   bool _commentsExpanded = true;
   int _commentPage = 1;
   bool _commentChanging = false;
+  bool _authorOnly = false;
   String? _error;
   int _likeCount = 0;
 
@@ -67,7 +68,11 @@ class _DetailPageState extends State<DetailPage> {
         _error = null;
       });
     try {
-      final d = await ApiService.instance.fetchThreadDetail(widget.tid, page: _commentPage);
+      final d = await ApiService.instance.fetchThreadDetail(
+        widget.tid,
+        page: _commentPage,
+        authorId: _authorOnly ? _detail?.authorUid : null,
+      );
       if (!mounted) return;
       setState(() {
         _detail = d;
@@ -828,7 +833,11 @@ class _DetailPageState extends State<DetailPage> {
     if (page == _commentPage) return;
     setState(() => _commentChanging = true);
     try {
-      final nd = await ApiService.instance.fetchThreadDetail(widget.tid, page: page);
+      final nd = await ApiService.instance.fetchThreadDetail(
+        widget.tid,
+        page: page,
+        authorId: _authorOnly ? _detail?.authorUid : null,
+      );
       if (mounted) {
         setState(() {
           _detail = nd;
@@ -844,6 +853,19 @@ class _DetailPageState extends State<DetailPage> {
     } finally {
       if (mounted) setState(() => _commentChanging = false);
     }
+  }
+
+  Future<void> _toggleAuthorOnly() async {
+    final d = _detail;
+    if (d == null || _commentChanging) return;
+    if (d.authorUid <= 0) return;
+    final target = !_authorOnly;
+    if (_authorOnly == target) return;
+    setState(() {
+      _authorOnly = target;
+      _commentPage = 1;
+    });
+    await _fetch();
   }
 
   Widget _commentsSection(BuildContext context, ThreadDetail d) {
@@ -872,6 +894,17 @@ class _DetailPageState extends State<DetailPage> {
                       ),
                     ),
                   ),
+                  if (d.authorUid > 0)
+                    Padding(
+                      padding: const EdgeInsets.only(right: 4),
+                      child: FilterChip(
+                        label: const Text('只看楼主'),
+                        selected: _authorOnly,
+                        visualDensity: VisualDensity.compact,
+                        materialTapTargetSize: MaterialTapTargetSize.shrinkWrap,
+                        onSelected: (_) => _toggleAuthorOnly(),
+                      ),
+                    ),
                   Icon(
                     _commentsExpanded
                         ? Icons.keyboard_arrow_up_rounded
