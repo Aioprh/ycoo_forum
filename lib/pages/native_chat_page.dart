@@ -28,15 +28,25 @@ class _ChatMessage {
 class _NativeChatPageState extends State<NativeChatPage> {
   final _controller = TextEditingController();
   final _scroll = ScrollController();
+  final _inputFocus = FocusNode();
   List<_ChatMessage> _messages = const [];
   bool _loading = true;
   bool _sending = false;
+  bool _emojiOpen = false;
   String? _error;
+
+  /// 常用 emoji，Unicode 明文传输，网页端同样可显示。
+  static const List<String> _emoji = [
+    '😀','😄','😁','😂','🤣','😊','😉','😍','😘','🥰','😎','🤗','🤩','😇',
+    '🙂','😋','😛','😜','🤪','🤔','😴','🥱','😭','😢','🥺','😳','😬','🙃',
+    '😤','😡','🤯','😱','🥶','🤢','👍','👎','👏','🙏','🤝','💪','🤞','✌️',
+    '👌','❤️','💯','🔥','⭐','✨','🎉','🎊','👋','🤚','🥳','😄',
+  ];
 
   @override
   void initState() { super.initState(); _load(); }
   @override
-  void dispose() { _controller.dispose(); _scroll.dispose(); super.dispose(); }
+  void dispose() { _controller.dispose(); _scroll.dispose(); _inputFocus.dispose(); super.dispose(); }
 
   String _clean(String value) => forumText(value.replaceAll(RegExp(r'\s+'), ' ').trim());
 
@@ -232,6 +242,21 @@ class _NativeChatPageState extends State<NativeChatPage> {
 
   void _jumpBottom() { WidgetsBinding.instance.addPostFrameCallback((_) { if (_scroll.hasClients) _scroll.jumpTo(_scroll.position.maxScrollExtent); }); }
 
+  /// 在光标处插入选中的 emoji。
+  void _insertEmoji(String emoji) {
+    final text = _controller.text;
+    final sel = _controller.selection;
+    final start = sel.isValid ? sel.start : text.length;
+    final end = sel.isValid ? sel.end : text.length;
+    _controller.text = text.replaceRange(start, end, emoji);
+    _controller.selection = TextSelection.collapsed(offset: start + emoji.length);
+  }
+
+  void _toggleEmoji() {
+    setState(() => _emojiOpen = !_emojiOpen);
+    if (_emojiOpen) _inputFocus.unfocus();
+  }
+
   bool _isMine(_ChatMessage message) {
     if (message.mine) return true;
     final currentUid = AuthService.instance.uid;
@@ -270,10 +295,21 @@ class _NativeChatPageState extends State<NativeChatPage> {
                         if (mine) ...[const SizedBox(width: 8), _avatar(currentUid)],
                       ]));
                     })),
-              SafeArea(top: false, child: Container(padding: const EdgeInsets.fromLTRB(12, 8, 12, 10), color: Colors.white, child: Row(children: [
-                Expanded(child: TextField(controller: _controller, minLines: 1, maxLines: 5, textInputAction: TextInputAction.newline, decoration: InputDecoration(hintText: '发送给 $name', filled: true, fillColor: const Color(0xFFF0F0F4), border: OutlineInputBorder(borderRadius: BorderRadius.circular(22), borderSide: BorderSide.none)))),
-                const SizedBox(width: 8),
-                IconButton.filled(onPressed: _sending ? null : _send, icon: _sending ? const SizedBox(width: 18, height: 18, child: CircularProgressIndicator(strokeWidth: 2)) : const Icon(Icons.send_rounded)),
+              SafeArea(top: false, child: Container(padding: const EdgeInsets.fromLTRB(12, 8, 12, 10), color: Colors.white, child: Column(mainAxisSize: MainAxisSize.min, children: [
+                if (_emojiOpen) ...[
+                  Wrap(spacing: 4, runSpacing: 4, alignment: WrapAlignment.start, children: [
+                    for (final e in _emoji)
+                      InkWell(borderRadius: BorderRadius.circular(8), onTap: () => _insertEmoji(e), child: Padding(padding: const EdgeInsets.all(3), child: Text(e, style: const TextStyle(fontSize: 26)))),
+                  ]),
+                  const SizedBox(height: 8),
+                ],
+                Row(children: [
+                  IconButton(onPressed: _toggleEmoji, icon: Icon(_emojiOpen ? Icons.keyboard_rounded : Icons.emoji_emotions_outlined), color: scheme.onSurfaceVariant, tooltip: '表情'),
+                  const SizedBox(width: 2),
+                  Expanded(child: TextField(controller: _controller, focusNode: _inputFocus, minLines: 1, maxLines: 5, textInputAction: TextInputAction.newline, decoration: InputDecoration(hintText: '发送给 $name', filled: true, fillColor: const Color(0xFFF0F0F4), border: OutlineInputBorder(borderRadius: BorderRadius.circular(22), borderSide: BorderSide.none)))),
+                  const SizedBox(width: 8),
+                  IconButton.filled(onPressed: _sending ? null : _send, icon: _sending ? const SizedBox(width: 18, height: 18, child: CircularProgressIndicator(strokeWidth: 2)) : const Icon(Icons.send_rounded)),
+                ]),
               ]))),
             ]),
     );
