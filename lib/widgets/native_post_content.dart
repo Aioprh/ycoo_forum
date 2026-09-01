@@ -4,13 +4,14 @@ import 'package:html/parser.dart' as html_parser;
 import 'package:html/dom.dart' as dom;
 
 import '../services/site_config.dart';
+import '../services/auth_service.dart';
 
 /// Native Flutter renderer for forum post HTML.
 ///
 /// Discuz/Comiis 帖子里的图片并不一定把真实地址放在 src：
 /// 常见情况包括 lazy-src / data-src / file / original / srcset，
 /// 或者 src 只是站点的占位图。这里统一提取真实资源地址并解析相对 URL，
-/// 避免正文文字正常而图片全部空白。
+/// 同时携带论坛 Cookie/Referer，以兼容需要登录权限的附件图片。
 class NativePostContent extends StatelessWidget {
   final String html;
   final ValueChanged<String>? onLinkTap;
@@ -181,11 +182,15 @@ class _InlineContent extends StatelessWidget {
     for (final node in nodes) {
       if (node is dom.Element && node.localName?.toLowerCase() == 'img') {
         if (spans.isNotEmpty) {
-          children.add(Text.rich(TextSpan(style: DefaultTextStyle.of(context).style, children: spans)));
+          children.add(Text.rich(
+            TextSpan(style: DefaultTextStyle.of(context).style, children: spans),
+          ));
           spans.clear();
         }
         final src = _imageUrl(node);
-        if (src.isNotEmpty) children.add(_ImageBlock(src: src, alt: node.attributes['alt']));
+        if (src.isNotEmpty) {
+          children.add(_ImageBlock(src: src, alt: node.attributes['alt']));
+        }
         continue;
       }
       _appendSpan(
@@ -247,17 +252,17 @@ String _imageUrl(dom.Element e) {
     'data-url',
     'lazy-src',
     'original',
-    'file',
     'zoomfile',
+    'file',
     'src',
   ];
 
   String normalize(String value) {
     var v = value.trim();
-    if (v.isEmpty) return '';
-    if (v.startsWith('data:')) return '';
-    // srcset 中取第一张有效图片。
-    if (v.contains(',')) v = v.split(',').first.trim().split(RegExp(r'\s+')).first;
+    if (v.isEmpty || v.startsWith('data:')) return '';
+    if (v.contains(',')) {
+      v = v.split(',').first.trim().split(RegExp(r'\s+')).first;
+    }
     if (v.startsWith('//')) return 'https:$v';
     return SiteConfig.resolveCdn(v);
   }
@@ -292,34 +297,41 @@ class _ImageBlock extends StatelessWidget {
   const _ImageBlock({required this.src, this.alt});
 
   @override
-  Widget build(BuildContext context) => Padding(
-    padding: const EdgeInsets.only(bottom: 14),
-    child: ClipRRect(
-      borderRadius: BorderRadius.circular(14),
-      child: Image.network(
-        src,
-        width: double.infinity,
-        fit: BoxFit.contain,
-        headers: const {
-          'Accept': 'image/avif,image/webp,image/apng,image/svg+xml,image/*,*/*;q=0.8',
-        },
-        errorBuilder: (_, __, ___) => Container(
+  Widget build(BuildContext context) {
+    final cookie = AuthService.instance.authCookie;
+    final headers = <String, String>{
+      'Accept': 'image/avif,image/webp,image/apng,image/svg+xml,image/*,*/*;q=0.8',
+      'Referer': SiteConfig.base,
+    };
+    if (cookie != null && cookie.isNotEmpty) headers['Cookie'] = cookie;
+
+    return Padding(
+      padding: const EdgeInsets.only(bottom: 14),
+      child: ClipRRect(
+        borderRadius: BorderRadius.circular(14),
+        child: Image.network(
+          src,
           width: double.infinity,
-          constraints: const BoxConstraints(minHeight: 48),
-          alignment: Alignment.centerLeft,
-          padding: const EdgeInsets.all(14),
-          color: Theme.of(context).colorScheme.surfaceContainerHighest,
-          child: Text(alt?.isNotEmpty == true ? alt! : '图片加载失败\n$src'),
+          fit: BoxFit.contain,
+          headers: headers,
+          errorBuilder: (_, __, ___) => Container(
+            width: double.infinity,
+            constraints: const BoxConstraints(minHeight: 48),
+            alignment: Alignment.centerLeft,
+            padding: const EdgeInsets.all(14),
+            color: Theme.of(context).colorScheme.surfaceContainerHighest,
+            child: Text(alt?.isNotEmpty == true ? alt! : '图片加载失败\n$src'),
+          ),
+          loadingBuilder: (context, child, progress) => progress == null
+              ? child
+              : const Padding(
+                  padding: EdgeInsets.all(24),
+                  child: Center(child: CircularProgressIndicator(strokeWidth: 2)),
+                ),
         ),
-        loadingBuilder: (context, child, progress) => progress == null
-            ? child
-            : const Padding(
-                padding: EdgeInsets.all(24),
-                child: Center(child: CircularProgressIndicator(strokeWidth: 2)),
-              ),
       ),
-    ),
-  );
+    );
+  }
 }
 
 class _Quote extends StatelessWidget {
