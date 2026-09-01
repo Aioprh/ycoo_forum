@@ -116,7 +116,7 @@ class ActionableNoticeService {
       if (!seen.add(key)) continue;
       final keyword = RegExp(r'(回复|评论|提到|通知|系统|赞了|收藏|提醒|关注|好友|主题|购买|充值|任务|注册|订单|经验|积分|星币|升级|留言|打招呼)').hasMatch(text);
       if (view != 'all' && !keyword) continue;
-      result.add(NativeNotice(title: displayTitle, subtitle: subtitle, href: href, body: body, uid: uid, tid: tid));
+      result.add(NativeNotice(title: displayTitle, subtitle: subtitle, href: fallbackHref, body: body, uid: uid, tid: tid));
       if (result.length >= 100) break;
     }
 
@@ -146,13 +146,37 @@ class ActionableNoticeService {
   static String _allHref(Element node) => _attr(node.querySelector('a[href]') ?? Element.tag('a'), 'href');
 
   static int _tid(String href) {
-    final m = RegExp(r'(?:thread-|[?&]tid=|[?&]topicid=)(\d+)', caseSensitive: false).firstMatch(href);
+    final raw = href.trim();
+    if (raw.isEmpty) return 0;
+    final uri = Uri.tryParse(raw);
+    final queryTid = uri?.queryParameters['tid'] ?? uri?.queryParameters['topicid'];
+    final queryValue = int.tryParse(queryTid ?? '');
+    if (queryValue != null && queryValue > 0) return queryValue;
+    final decoded = Uri.decodeFull(raw);
+    final m = RegExp(r'(?:thread-|[?&]tid=|[?&]topicid=)(\d+)', caseSensitive: false).firstMatch(decoded);
     return int.tryParse(m?.group(1) ?? '') ?? 0;
   }
 
   static int _uid(String href) {
-    final m = RegExp(r'(?:[?&]|%3F|%26)uid=(\d+)', caseSensitive: false).firstMatch(href);
-    return int.tryParse(m?.group(1) ?? '') ?? 0;
+    final raw = href.trim();
+    if (raw.isEmpty) return 0;
+    final candidates = <String>[raw];
+    try {
+      candidates.add(Uri.decodeFull(raw));
+    } catch (_) {}
+    for (final candidate in candidates) {
+      final uri = Uri.tryParse(candidate);
+      final queryUid = uri?.queryParameters['uid'];
+      final parsed = int.tryParse(queryUid ?? '');
+      if (parsed != null && parsed > 0) return parsed;
+      final m = RegExp(r'(?:[?&]|%3F|%26)uid(?:=|%3D)(\d+)', caseSensitive: false).firstMatch(candidate);
+      final value = int.tryParse(m?.group(1) ?? '');
+      if (value != null && value > 0) return value;
+      final space = RegExp(r'(?:space|user)[-_](\d+)', caseSensitive: false).firstMatch(candidate);
+      final spaceUid = int.tryParse(space?.group(1) ?? '');
+      if (spaceUid != null && spaceUid > 0) return spaceUid;
+    }
+    return 0;
   }
 
   static bool _navigation(String text) => RegExp(r'^(首页|登录|注册|退出|下一页|上一页|更多|设置|通知|好友|关注|粉丝)$').hasMatch(text);
