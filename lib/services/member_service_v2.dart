@@ -413,6 +413,11 @@ class MemberServiceV2 {
       final value = pattern.firstMatch(html)?.group(1)?.trim();
       if (value != null && _validFormhash(value)) return value;
     }
+
+    // 部分模板(如 Comiis)只在链接/JS 里以普通 URL 参数形式渲染 formhash, 没有 hidden input。
+    // 复用 NetClient 的 URL/JSON 提取逻辑作为最终兜底。
+    final fromNetClient = NetClient.extractFormHash(html);
+    if (fromNetClient != null && _validFormhash(fromNetClient)) return fromNetClient;
     return '';
   }
 
