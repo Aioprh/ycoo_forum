@@ -26,6 +26,7 @@ class _NativeMessageListPageState extends State<NativeMessageListPage> {
   List<_Pm> items = const [];
   bool loading = true;
   String? error;
+  String _filter = 'privatepm';
 
   @override
   void initState() { super.initState(); load(); }
@@ -39,7 +40,7 @@ class _NativeMessageListPageState extends State<NativeMessageListPage> {
       final client = await NetClient.instance.client;
       final cookie = AuthService.instance.authCookie ?? '';
       final uri = Uri.parse('${SiteConfig.base}home.php').replace(queryParameters: {
-        'mod': 'space', 'do': 'pm', 'mobile': '2', '_ycoo_ts': '${DateTime.now().millisecondsSinceEpoch}',
+        'mod': 'space', 'do': 'pm', 'filter': _filter, 'mobile': '2', '_ycoo_ts': '${DateTime.now().millisecondsSinceEpoch}',
       });
       final response = await client.get(uri, headers: {
         'User-Agent': NetClient.ua,
@@ -55,41 +56,82 @@ class _NativeMessageListPageState extends State<NativeMessageListPage> {
       final result = <_Pm>[];
       final seen = <int>{};
 
-      for (final link in doc.querySelectorAll('a[href]')) {
+      void add(_Pm? pm) {
+        if (pm == null || pm.uid <= 0 || pm.name.isEmpty || isGeneric(pm.name)) return;
+        if (seen.add(pm.uid)) result.add(pm);
+      }
+
+      // Comiis 移动模板：.comiis_pmlist li > a[href*="touid="] > (img + h2(span.f_d 时间 + 名字) + p 预览)
+      for (final li in doc.querySelectorAll('.comiis_pmlist li,.pms_list li,.pmlist li')) {
+        final link = li.querySelector('a[href*="subop=view"],a[href*="touid="],a[href*="pmid="]');
+        if (link == null) continue;
         final href = (link.attributes['href'] ?? '').trim();
         if (!isConversation(href)) continue;
         final uid = getUid(href);
-        if (uid <= 0 || seen.contains(uid)) continue;
+        if (uid <= 0) continue;
 
-        dynamic container = link;
-        for (var depth = 0; depth < 7; depth++) {
-          final parent = container.parent;
-          if (parent == null) break;
-          final parentText = text(parent);
-          if (parentText.length <= 700) container = parent; else break;
+        final heading = link.querySelector('h2,h3') ?? li.querySelector('h2,h3');
+        var name = '';
+        var time = '';
+        if (heading != null) {
+          time = text(heading.querySelector('span.f_d,span,time,.xg1,.xg2'));
+          final clone = heading.clone(true);
+          for (final child in clone.querySelectorAll('span,time,i,svg')) { child.remove(); }
+          name = clean(clone.text ?? '');
         }
-
-        var name = clean(link.text);
         if (name.isEmpty || isGeneric(name)) {
-          for (final userLink in container.querySelectorAll('a[href*="uid="],a[href*="username="]')) {
+          for (final userLink in li.querySelectorAll('a[href*="uid="],a[href*="username="]')) {
             final candidate = clean(userLink.text);
             if (candidate.isNotEmpty && !isGeneric(candidate)) { name = candidate; break; }
           }
         }
         if (name.isEmpty || isGeneric(name)) continue;
 
-        var preview = text(container);
-        preview = removeFirst(preview, name);
-        final timeNode = container.querySelector('time,.xg1,.xg2,[class*="time"],[class*="date"]');
-        final time = text(timeNode);
-        if (time.isNotEmpty) preview = removeFirst(preview, time);
-        preview = preview.replaceFirst(RegExp(r'^(私人消息|站内私信|私信|消息)\s*'), '').trim();
-        if (preview.isEmpty || isGeneric(preview)) continue;
-
-        final image = container.querySelector('img[src],img[data-src],img[data-original]');
+        final preview = text(link.querySelector('p') ?? li.querySelector('p.f_c,p'));
+        final image = li.querySelector('img[src],img[data-src],img[data-original]');
         final avatar = (image?.attributes['src'] ?? image?.attributes['data-src'] ?? image?.attributes['data-original'] ?? '').trim();
-        result.add(_Pm(uid, name, preview, time, avatar));
-        seen.add(uid);
+        add(_Pm(uid, name, preview, time, avatar));
+      }
+
+      // 通用回退：遍历会话链接，容器向上爬升时限制在 li 边界内，避免抓到整页文本。
+      if (result.isEmpty) {
+        for (final link in doc.querySelectorAll('a[href]')) {
+          final href = (link.attributes['href'] ?? '').trim();
+          if (!isConversation(href)) continue;
+          final uid = getUid(href);
+          if (uid <= 0 || seen.contains(uid)) continue;
+
+          dynamic container = link;
+          for (var depth = 0; depth < 7; depth++) {
+            final parent = container.parent;
+            if (parent == null) break;
+            final parentText = text(parent);
+            if (parentText.length > 300) break;
+            container = parent;
+            if (parent.localName == 'li') break;
+          }
+
+          var name = clean(link.text);
+          if (name.isEmpty || isGeneric(name)) {
+            for (final userLink in container.querySelectorAll('a[href*="uid="],a[href*="username="]')) {
+              final candidate = clean(userLink.text);
+              if (candidate.isNotEmpty && !isGeneric(candidate)) { name = candidate; break; }
+            }
+          }
+          if (name.isEmpty || isGeneric(name)) continue;
+
+          var preview = text(container);
+          preview = removeFirst(preview, name);
+          final timeNode = container.querySelector('time,.xg1,.xg2,[class*="time"],[class*="date"]');
+          final time = text(timeNode);
+          if (time.isNotEmpty) preview = removeFirst(preview, time);
+          preview = preview.replaceFirst(RegExp(r'^(私人消息|站内私信|私信|消息)\s*'), '').trim();
+          if (preview.isEmpty || isGeneric(preview)) continue;
+
+          final image = container.querySelector('img[src],img[data-src],img[data-original]');
+          final avatar = (image?.attributes['src'] ?? image?.attributes['data-src'] ?? image?.attributes['data-original'] ?? '').trim();
+          add(_Pm(uid, name, preview, time, avatar));
+        }
       }
 
       if (mounted) setState(() { items = result; loading = false; error = null; });
@@ -120,26 +162,34 @@ class _NativeMessageListPageState extends State<NativeMessageListPage> {
   static String text(dynamic node) {
     if (node == null) return '';
     try {
-      final clone = node.clone();
+      final clone = node.clone(true);
       for (final element in clone.querySelectorAll('i.iconfont,i.comiis-icon,i.comiis_icon,.iconfont,.comiis-icon,svg,[class*="iconfont"],[class*="comiis-icon"]')) { element.remove(); }
       return forumText((clone.text ?? '').replaceAll(RegExp(r'\s+'), ' ').trim());
     } catch (_) { return forumText((node.text ?? '').replaceAll(RegExp(r'\s+'), ' ').trim()); }
   }
 
+  Widget _tab(String label, String filter) {
+    final scheme = Theme.of(context).colorScheme;
+    final selected = _filter == filter;
+    return Expanded(child: InkWell(onTap: selected ? null : () { setState(() => _filter = filter); load(); }, child: Center(child: Column(mainAxisAlignment: MainAxisAlignment.end, children: [
+      Text(label, style: TextStyle(fontSize: 16, fontWeight: selected ? FontWeight.w600 : FontWeight.w400, color: selected ? scheme.onSurface : scheme.onSurfaceVariant)),
+      const SizedBox(height: 8),
+      Container(width: 30, height: 3, color: selected ? scheme.primary : Colors.transparent),
+    ]))));
+  }
+
   @override
   Widget build(BuildContext context) {
     final scheme = Theme.of(context).colorScheme;
+    final isPrivate = _filter == 'privatepm';
     return Scaffold(
       backgroundColor: const Color(0xFFF4F4F4),
       appBar: AppBar(title: const Text('消息'), actions: [IconButton(onPressed: load, icon: const Icon(Icons.refresh)), IconButton(onPressed: () {}, icon: const Icon(Icons.edit))]),
       body: Column(children: [
-        Container(height: 48, color: Colors.white, child: Row(children: [
-          Expanded(child: Center(child: Column(mainAxisAlignment: MainAxisAlignment.end, children: [const Text('私人消息', style: TextStyle(fontSize: 16, fontWeight: FontWeight.w600)), const SizedBox(height: 8), Container(width: 30, height: 3, color: scheme.primary)]))),
-          Expanded(child: Center(child: Text('公共消息', style: TextStyle(color: scheme.onSurfaceVariant, fontSize: 16)))),
-        ])),
+        Container(height: 48, color: Colors.white, child: Row(children: [_tab('私人消息', 'privatepm'), _tab('公共消息', 'announcepm')])),
         Expanded(child: loading ? const Center(child: CircularProgressIndicator()) : error != null
             ? Center(child: Column(mainAxisSize: MainAxisSize.min, children: [Text(error!, textAlign: TextAlign.center), const SizedBox(height: 12), FilledButton(onPressed: load, child: const Text('重试'))]))
-            : items.isEmpty ? const Center(child: Text('暂无私人消息'))
+            : items.isEmpty ? Center(child: Text(isPrivate ? '暂无私人消息' : '暂无公共消息'))
             : RefreshIndicator(onRefresh: load, child: ListView.separated(itemCount: items.length, separatorBuilder: (_, __) => const Divider(height: 1, indent: 92), itemBuilder: (context, index) {
                 final item = items[index];
                 final avatar = item.avatar.isNotEmpty ? SiteConfig.resolve(item.avatar) : '${SiteConfig.base}uc_server/avatar.php?uid=${item.uid}&size=small';

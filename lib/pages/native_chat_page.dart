@@ -20,7 +20,9 @@ class _ChatMessage {
   final String sender;
   final String body;
   final String time;
-  const _ChatMessage({required this.uid, required this.sender, required this.body, required this.time});
+  final bool mine;
+  final bool isDate;
+  const _ChatMessage({required this.uid, required this.sender, required this.body, required this.time, this.mine = false, this.isDate = false});
 }
 
 class _NativeChatPageState extends State<NativeChatPage> {
@@ -66,8 +68,31 @@ class _NativeChatPageState extends State<NativeChatPage> {
       final result = <_ChatMessage>[];
       final seen = <String>{};
 
-      for (final node in doc.querySelectorAll('dl[id^="pmlist_"]')) {
-        _add(result, seen, _parseMessage(node), node.attributes['id']);
+      // Comiis 移动模板：#comiis_pm_list > div.comiis_msg_date(日期分隔) / div.comiis_self_msg(我) / div.comiis_friend_msg(对方)
+      final list = doc.querySelector('#comiis_pm_list');
+      if (list != null) {
+        for (final node in list.children) {
+          final cls = node.attributes['class'] ?? '';
+          if (cls.contains('comiis_msg_date')) {
+            final day = _clean(node.text ?? '');
+            if (day.isNotEmpty) _add(result, seen, _ChatMessage(uid: 0, sender: '', body: day, time: '', isDate: true));
+            continue;
+          }
+          final self = cls.contains('comiis_self_msg');
+          if (!self && !cls.contains('comiis_friend_msg')) continue;
+          final body = _cleanText(node.querySelector('.msg_mes'));
+          if (body.isEmpty || _isUiOnly(body)) continue;
+          final time = _cleanText(node.querySelector('.msg_time'));
+          final uid = _extractUid(node);
+          final sender = self ? _clean(AuthService.instance.username ?? '') : _clean(widget.username);
+          _add(result, seen, _ChatMessage(uid: uid, sender: sender, body: body, time: time, mine: self));
+        }
+      }
+
+      if (result.isEmpty) {
+        for (final node in doc.querySelectorAll('dl[id^="pmlist_"]')) {
+          _add(result, seen, _parseMessage(node), node.attributes['id']);
+        }
       }
 
       if (result.isEmpty) {
@@ -149,7 +174,7 @@ class _NativeChatPageState extends State<NativeChatPage> {
   static String _cleanText(dynamic node) {
     if (node == null) return '';
     try {
-      final clone = node.clone();
+      final clone = node.clone(true);
       for (final element in clone.querySelectorAll('i.iconfont,i.comiis-icon,i.comiis_icon,.iconfont,.comiis-icon,svg,[class*="iconfont"],[class*="comiis-icon"]')) { element.remove(); }
       return forumText((clone.text ?? '').replaceAll(RegExp(r'\s+'), ' ').trim());
     } catch (_) { return forumText((node.text ?? '').replaceAll(RegExp(r'\s+'), ' ').trim()); }
@@ -185,6 +210,7 @@ class _NativeChatPageState extends State<NativeChatPage> {
   void _jumpBottom() { WidgetsBinding.instance.addPostFrameCallback((_) { if (_scroll.hasClients) _scroll.jumpTo(_scroll.position.maxScrollExtent); }); }
 
   bool _isMine(_ChatMessage message) {
+    if (message.mine) return true;
     final currentUid = AuthService.instance.uid;
     if (currentUid != null && currentUid > 0 && message.uid > 0) return currentUid == message.uid;
     final currentName = _clean(AuthService.instance.username ?? '');
@@ -210,7 +236,11 @@ class _NativeChatPageState extends State<NativeChatPage> {
               Expanded(child: _messages.isEmpty
                   ? ListView(children: const [SizedBox(height: 180), Center(child: Text('暂无聊天记录'))])
                   : ListView.builder(controller: _scroll, padding: const EdgeInsets.fromLTRB(12, 14, 12, 18), itemCount: _messages.length, itemBuilder: (context, index) {
-                      final message = _messages[index]; final mine = _isMine(message);
+                      final message = _messages[index];
+                      if (message.isDate) {
+                        return Padding(padding: const EdgeInsets.only(bottom: 10), child: Center(child: Container(padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 4), decoration: BoxDecoration(color: const Color(0x14000000), borderRadius: BorderRadius.circular(10)), child: Text(message.body, style: TextStyle(fontSize: 11, color: scheme.onSurfaceVariant)))));
+                      }
+                      final mine = _isMine(message);
                       return Padding(padding: const EdgeInsets.only(bottom: 10), child: Row(crossAxisAlignment: CrossAxisAlignment.end, mainAxisAlignment: mine ? MainAxisAlignment.end : MainAxisAlignment.start, children: [
                         if (!mine) ...[_avatar(message.uid > 0 ? message.uid : widget.uid), const SizedBox(width: 8)],
                         Flexible(child: Container(constraints: const BoxConstraints(maxWidth: 320), padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 10), decoration: BoxDecoration(color: mine ? scheme.primaryContainer : Colors.white, borderRadius: BorderRadius.only(topLeft: const Radius.circular(16), topRight: const Radius.circular(16), bottomLeft: Radius.circular(mine ? 16 : 4), bottomRight: Radius.circular(mine ? 4 : 16))), child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [Text(message.body, style: const TextStyle(fontSize: 15, height: 1.45)), if (message.time.isNotEmpty) ...[const SizedBox(height: 4), Align(alignment: Alignment.centerRight, child: Text(message.time, style: TextStyle(fontSize: 10, color: scheme.onSurfaceVariant)))]]))),
