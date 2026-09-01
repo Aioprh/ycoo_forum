@@ -428,25 +428,54 @@ class _ListBlock extends StatelessWidget {
     return Padding(
       padding: const EdgeInsets.only(bottom: 10),
       child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
         children: [
           for (var i = 0; i < items.length; i++)
-            Row(
-              crossAxisAlignment: CrossAxisAlignment.start,
-              children: [
-                SizedBox(
-                  width: 25,
-                  child: Text(
-                    ordered ? '${i + 1}.' : '•',
-                    style: const TextStyle(fontSize: 16, height: 1.62),
-                  ),
-                ),
-                Expanded(
-                  child: _InlineContent(items[i].nodes, onLinkTap: onLinkTap),
-                ),
-              ],
-            ),
+            _ListItem(item: items[i], ordered: ordered, index: i, onLinkTap: onLinkTap),
         ],
       ),
+    );
+  }
+}
+
+class _ListItem extends StatelessWidget {
+  final dom.Element item;
+  final bool ordered;
+  final int index;
+  final ValueChanged<String>? onLinkTap;
+
+  const _ListItem({
+    required this.item,
+    required this.ordered,
+    required this.index,
+    this.onLinkTap,
+  });
+
+  @override
+  Widget build(BuildContext context) {
+    // 该 li 里是否直接包含图片（可能被 span/a 等包裹），
+    // 若包含则整行渲染为图片，避免 _InlineContent 把 wrapped img 丢弃。
+    final img = item.querySelector('img');
+    if (img != null) {
+      final src = _imageUrl(img);
+      if (src.isNotEmpty) {
+        return _ImageBlock(src: src, alt: img.attributes['alt']);
+      }
+    }
+    return Row(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        SizedBox(
+          width: 25,
+          child: Text(
+            ordered ? '${index + 1}.' : '•',
+            style: const TextStyle(fontSize: 16, height: 1.62),
+          ),
+        ),
+        Expanded(
+          child: _InlineContent(item.nodes, onLinkTap: onLinkTap),
+        ),
+      ],
     );
   }
 }
