@@ -63,6 +63,13 @@ android {
             }
             signingConfig = signingConfigs.getByName("release")
         }
+        debug {
+            // 统一签名：配置存在时，debug 构建也使用固定的 release 密钥，
+            // 使所有构建产物签名一致，避免各机器默认 debug.keystore 造成的签名不一致。
+            if (hasReleaseSigning) {
+                signingConfig = signingConfigs.getByName("release")
+            }
+        }
     }
 }
 
