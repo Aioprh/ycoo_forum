@@ -39,27 +39,33 @@ class ActionableNoticeService {
   }
 
   static String _attr(Element element, String name) {
-    return element.attributes[name]?.toString() ?? '';
+    final value = element.attributes[name];
+    return value == null ? '' : value;
+  }
+
+  static bool _has(String value, String part) {
+    final text = value.toLowerCase();
+    return text.indexOf(part.toLowerCase()) >= 0;
   }
 
   static bool _isLoginPage(String html) {
     final doc = parser.parse(html);
     final hasLogout = doc.querySelectorAll('a[href],form[action]').any((element) {
-      final hrefText = _attr(element, 'href').toLowerCase();
-      final actionText = _attr(element, 'action').toLowerCase();
-      return hrefText.contains('action=logout') || actionText.contains('action=logout');
-    }) || doc.text.contains('退出登录');
+      final hrefText = _attr(element, 'href');
+      final actionText = _attr(element, 'action');
+      return _has(hrefText, 'action=logout') || _has(actionText, 'action=logout');
+    }) || _has(doc.text, '退出登录');
     if (hasLogout) return false;
 
     final hasLoginForm = doc.querySelectorAll('form').any((form) {
-      final actionText = _attr(form, 'action').toLowerCase();
-      final idText = _attr(form, 'id').toLowerCase();
-      final classText = _attr(form, 'class').toLowerCase();
-      return actionText.contains('logging') ||
-          actionText.contains('login') ||
-          idText == 'login' ||
-          idText.contains('loginform') ||
-          classText.contains('login');
+      final actionText = _attr(form, 'action');
+      final idText = _attr(form, 'id');
+      final classText = _attr(form, 'class');
+      return _has(actionText, 'logging') ||
+          _has(actionText, 'login') ||
+          idText.toLowerCase() == 'login' ||
+          _has(idText, 'loginform') ||
+          _has(classText, 'login');
     });
 
     final hasLoginInput = doc.querySelectorAll('input[name]').any((input) {
@@ -132,7 +138,7 @@ class ActionableNoticeService {
       if (href.isEmpty || href.startsWith('#') || href.startsWith('javascript:')) continue;
       if (_tid(href) > 0) return href;
       if (_uid(href) > 0) candidates.add(href);
-      if (href.contains('notice') || href.contains('space') || href.contains('thread') || href.contains('mod=')) candidates.add(href);
+      if (_has(href, 'notice') || _has(href, 'space') || _has(href, 'thread') || _has(href, 'mod=')) candidates.add(href);
     }
     return candidates.isEmpty ? '' : candidates.first;
   }
