@@ -418,12 +418,15 @@ class ApiService {
       if (content == null) continue;
       final html = content.innerHtml.trim();
       if (html.isEmpty) continue;
+      // 提取真实楼层 pid(取自容器 id="post_<pid>"/"postmessage_<pid>"),写入卡片供楼中楼回复使用。
+      final pid = _postPid(post);
+      final pidAttr = pid > 0 ? ' data-pid="$pid"' : '';
       final author = _normSpace(post.querySelector('.top_user, .authi .xw1, .authi a')?.text ?? '');
       final level = _normSpace(post.querySelector('.top_lev, .p_pop')?.text ?? '');
       final floor = _normSpace(post.querySelector('.f_d.y, .pi .authi em, .pls .authi em')?.text ?? '').replaceAll(RegExp(r'[^0-9A-Za-z一二三四五六七八九十楼主]'), '');
       final time = _normSpace(post.querySelector('.kmtime, .comiis_tm, .authi em')?.text ?? '');
       final displayFloor = floor.isEmpty ? (out.isEmpty ? '楼主' : '${out.length + 1}楼') : floor;
-      out.add('<div class="post-card"><div class="post-hd"><span class="p-floor">$displayFloor</span>${author.isEmpty ? '' : '<b class="p-author">$author</b>'}${level.isEmpty ? '' : '<span class="p-level">$level</span>'}</div>${time.isEmpty ? '' : '<div class="p-time">$time</div>'}<div class="p-body">${_cleanPostHtml(html)}</div></div>');
+      out.add('<div class="post-card"$pidAttr><div class="post-hd"><span class="p-floor">$displayFloor</span>${author.isEmpty ? '' : '<b class="p-author">$author</b>'}${level.isEmpty ? '' : '<span class="p-level">$level</span>'}</div>${time.isEmpty ? '' : '<div class="p-time">$time</div>'}<div class="p-body">${_cleanPostHtml(html)}</div></div>');
     }
     if (out.isNotEmpty) return out;
     for (final selector in ['.comiis_aimg_show', '.comiis_message_table', '.t_f', '.pcb', '.postmessage', '[id^="postmessage_"]']) {
@@ -446,6 +449,16 @@ class ApiService {
   static String? _firstInputValue(dom.Document doc, String name) => doc.querySelector('input[name="$name"]')?.attributes['value']?.trim();
   static String _normSpace(String s) => s.replaceAll(RegExp(r'[\uE000-\uF8FF\uFFFD□]'), '').replaceAll(RegExp(r'[ \t\u00A0\u3000]+'), ' ').replaceAll(RegExp(r'\n{2,}'), '\n').trim();
   static int? _firstInt(RegExp re, String s) { final m = re.firstMatch(s); return m == null ? null : int.tryParse(m.group(1)!); }
+  /// 从帖子容器提取真实 pid。容器 id 形如 `post_2634962` / `postmessage_2634962`。
+  static int _postPid(dom.Element post) {
+    final id = post.id ?? '';
+    final idMatch = RegExp(r'(?:post_|postmessage_)(\d+)').firstMatch(id);
+    if (idMatch != null) return int.tryParse(idMatch.group(1)!) ?? 0;
+    final attrPid = int.tryParse(post.attributes['data-pid'] ?? '');
+    if (attrPid != null && attrPid > 0) return attrPid;
+    final any = RegExp(r'(?:post_|postmessage_|pid)(\d+)', caseSensitive: false).firstMatch(post.outerHtml);
+    return any == null ? 0 : int.tryParse(any.group(1)!) ?? 0;
+  }
   static int? _numberAfter(String text, List<String> keys) { for (final key in keys) { final match = RegExp('$key\\s*[:：]?\\s*(\\d+)').firstMatch(text); if (match != null) return int.tryParse(match.group(1)!); } return null; }
   static String? _firstMeta(dom.Document doc, String property) { for (final e in doc.querySelectorAll('meta')) { final key = e.attributes['property'] ?? e.attributes['name'] ?? ''; if (key == property) return e.attributes['content']; } return null; }
   static String _stripTags(String value) => parser.parseFragment(value).text ?? '';
