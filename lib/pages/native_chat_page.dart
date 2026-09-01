@@ -84,9 +84,9 @@ class _NativeChatPageState extends State<NativeChatPage> {
       }
 
       // 某些 Discuz/Comiis 模板 HTML 不规范，DOM 解析可能丢失 dd.ptm。
-      // 使用双引号 raw string，避免 Dart 字符串中的引号/反斜杠转义导致构建失败。
+      // 三引号 raw string 同时容纳单/双引号，并保持正则中的反斜杠原样。
       if (result.isEmpty) {
-        final raw = RegExp(r"<dd[^>]*class=['\"][^'\"]*\bptm\b[^'\"]*['\"][^>]*>([\s\S]*?)</dd>", caseSensitive: false).allMatches(html);
+        final raw = RegExp(r'''<dd[^>]*class=['"][^'"]*\bptm\b[^'"]*['"][^>]*>([\s\S]*?)</dd>''', caseSensitive: false).allMatches(html);
         for (final match in raw) {
           final fragment = match.group(0) ?? '';
           final node = parser.parseFragment(fragment);
