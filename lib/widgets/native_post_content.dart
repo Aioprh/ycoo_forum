@@ -91,7 +91,7 @@ class _NodeWidget extends StatelessWidget {
         final src = _imageUrl(e);
         return src.isEmpty
             ? _missingImage(context, e.attributes['alt'])
-            : _ImageBlock(src: src, alt: e.attributes['alt'], onTap: (onLinkTap != null && src.isNotEmpty) ? () => onLinkTap(src) : null);
+            : _ImageBlock(src: src, alt: e.attributes['alt'], onTap: (onLinkTap != null && src.isNotEmpty) ? () => onLinkTap!(src) : null);
       case 'hr':
         return const Padding(
           padding: EdgeInsets.symmetric(vertical: 12),
@@ -217,7 +217,7 @@ class _InlineContent extends StatelessWidget {
         children.add(_AttachmentCard(
           href: (node.attributes['href'] ?? '').trim(),
           title: node.text.trim(),
-          onTap: (onLinkTap != null) ? () => onLinkTap((node.attributes['href'] ?? '').trim()) : null,
+          onTap: (onLinkTap != null) ? () => onLinkTap!((node.attributes['href'] ?? '').trim()) : null,
         ));
         continue;
       }
@@ -229,7 +229,7 @@ class _InlineContent extends StatelessWidget {
             src: src,
             alt: node.attributes['alt'],
             onTap:
-                (onLinkTap != null) ? () => onLinkTap(src) : null,
+                (onLinkTap != null) ? () => onLinkTap!(src) : null,
           ));
         }
         continue;
@@ -522,7 +522,7 @@ class _ListItem extends StatelessWidget {
         return _ImageBlock(
           src: src,
           alt: img.attributes['alt'],
-          onTap: (onLinkTap != null) ? () => onLinkTap(src) : null,
+          onTap: (onLinkTap != null) ? () => onLinkTap!(src) : null,
         );
       }
     }
