@@ -54,7 +54,7 @@ class ActionableNoticeService {
       final hrefText = _attr(element, 'href');
       final actionText = _attr(element, 'action');
       return _has(hrefText, 'action=logout') || _has(actionText, 'action=logout');
-    }) || _has(doc.text, '退出登录');
+    }) || _has(doc.text.toString(), '退出登录');
     if (hasLogout) return false;
 
     final hasLoginForm = doc.querySelectorAll('form').any((form) {
