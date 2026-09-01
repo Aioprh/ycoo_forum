@@ -38,27 +38,30 @@ class ActionableNoticeService {
   }
 
   static bool _isLoginPage(String html) {
-    final lower = html.toLowerCase();
-    final hasLogout = lower.contains('action=logout') || html.contains('退出登录');
+    final doc = parser.parse(html);
+    final hasLogout = doc.querySelectorAll('a[href],form[action]').any((element) {
+      final href = element.attributes['href'] ?? '';
+      final action = element.attributes['action'] ?? '';
+      return href.toLowerCase().contains('action=logout') ||
+          action.toLowerCase().contains('action=logout');
+    }) || doc.text.contains('退出登录');
     if (hasLogout) return false;
 
-    // 分开检测 form 和 input，避免复杂引号正则在 Dart 字符串中造成解析问题。
-    // Discuz/Comiis 的登录表单通常会出现 logging 页面动作或 login/loginform ID。
-    final forms = RegExp(r'<form\b[^>]*>', caseSensitive: false).allMatches(html);
-    var hasLoginForm = false;
-    for (final match in forms) {
-      final tag = match.group(0) ?? '';
-      final action = RegExp(r'\baction\s*=\s*["\']?[^\s>]*', caseSensitive: false).firstMatch(tag)?.group(0) ?? '';
-      final id = RegExp(r'\bid\s*=\s*["\']?[^\s>"\']+', caseSensitive: false).firstMatch(tag)?.group(0) ?? '';
-      if (action.toLowerCase().contains('logging') || id.toLowerCase().contains('login')) {
-        hasLoginForm = true;
-        break;
-      }
-    }
-    final hasLoginInput = RegExp(
-      r'<input\b[^>]*\bname\s*=\s*["\']?(?:username|password|loginfield)\b',
-      caseSensitive: false,
-    ).hasMatch(html);
+    // 用 HTML DOM 判断登录表单，避免复杂正则因模板引号/属性顺序导致误判。
+    final hasLoginForm = doc.querySelectorAll('form').any((form) {
+      final action = (form.attributes['action'] ?? '').toLowerCase();
+      final id = (form.attributes['id'] ?? '').toLowerCase();
+      final cls = (form.attributes['class'] ?? '').toLowerCase();
+      return action.contains('logging') ||
+          action.contains('login') ||
+          id == 'login' ||
+          id.contains('loginform') ||
+          cls.contains('login');
+    });
+    final hasLoginInput = doc.querySelectorAll('input[name]').any((input) {
+      final name = (input.attributes['name'] ?? '').toLowerCase();
+      return name == 'username' || name == 'password' || name == 'loginfield';
+    });
     return hasLoginForm && hasLoginInput;
   }
 
