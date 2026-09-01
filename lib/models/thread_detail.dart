@@ -39,6 +39,8 @@ class ThreadDetail {
   final int firstPid;
   final int likeCount;
   final bool likedByMe;
+  final int commentPage;
+  final int commentTotalPages;
 
   ThreadDetail({
     required this.tid,
@@ -58,6 +60,8 @@ class ThreadDetail {
     this.firstPid = 0,
     this.likeCount = 0,
     this.likedByMe = false,
+    this.commentPage = 1,
+    this.commentTotalPages = 1,
   })  : _bodyHtml = bodyHtml,
         _commentsHtml = commentsHtml,
         _paid = isPaid;

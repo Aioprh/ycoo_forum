@@ -34,6 +34,8 @@ class _DetailPageState extends State<DetailPage> {
       _liked = false,
       _interacting = false;
   bool _commentsExpanded = true;
+  int _commentPage = 1;
+  bool _commentChanging = false;
   String? _error;
   int _likeCount = 0;
 
@@ -65,7 +67,7 @@ class _DetailPageState extends State<DetailPage> {
         _error = null;
       });
     try {
-      final d = await ApiService.instance.fetchThreadDetail(widget.tid);
+      final d = await ApiService.instance.fetchThreadDetail(widget.tid, page: _commentPage);
       if (!mounted) return;
       setState(() {
         _detail = d;
@@ -818,6 +820,32 @@ class _DetailPageState extends State<DetailPage> {
     );
   }
 
+  Future<void> _changeCommentPage(int page) async {
+    final d = _detail;
+    if (d == null || _commentChanging) return;
+    final total = d.commentTotalPages > 0 ? d.commentTotalPages : 1;
+    if (page < 1 || page > total) return;
+    if (page == _commentPage) return;
+    setState(() => _commentChanging = true);
+    try {
+      final nd = await ApiService.instance.fetchThreadDetail(widget.tid, page: page);
+      if (mounted) {
+        setState(() {
+          _detail = nd;
+          _commentPage = page;
+          _likeCount = nd.likeCount;
+          _liked = nd.likedByMe;
+        });
+      }
+    } catch (e) {
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text('评论切换失败：$e')));
+      }
+    } finally {
+      if (mounted) setState(() => _commentChanging = false);
+    }
+  }
+
   Widget _commentsSection(BuildContext context, ThreadDetail d) {
     final c = Theme.of(context).colorScheme;
     return Container(
@@ -856,7 +884,47 @@ class _DetailPageState extends State<DetailPage> {
           if (_commentsExpanded) ...[
             Divider(height: 1, color: c.outlineVariant.withValues(alpha: .35)),
             NativeCommentList(html: d.commentsHtml),
+            _commentPager(context, d),
           ],
+        ],
+      ),
+    );
+  }
+
+  Widget _commentPager(BuildContext context, ThreadDetail d) {
+    final total = d.commentTotalPages > 0 ? d.commentTotalPages : 1;
+    if (total <= 1) return const SizedBox.shrink();
+    final cur = (_commentPage < 1 || _commentPage > total) ? 1 : _commentPage;
+    final pages = <int>[];
+    // 简单页码集: 始终包含 1..total (评论页通常不多)
+    for (var p = 1; p <= total; p++) {
+      pages.add(p);
+    }
+    return Padding(
+      padding: const EdgeInsets.fromLTRB(12, 4, 12, 12),
+      child: Row(
+        mainAxisAlignment: MainAxisAlignment.center,
+        children: [
+          IconButton(
+            onPressed: _commentChanging || cur <= 1 ? null : () => _changeCommentPage(cur - 1),
+            icon: const Icon(Icons.chevron_left_rounded),
+            tooltip: '上一页',
+          ),
+          Flexible(
+            child: DropdownButton<int>(
+              value: cur,
+              isDense: true,
+              underline: const SizedBox.shrink(),
+              items: pages.map((p) => DropdownMenuItem<int>(value: p, child: Text('第 $p 页'))).toList(),
+              onChanged: _commentChanging ? null : (v) { if (v != null) _changeCommentPage(v); },
+            ),
+          ),
+          IconButton(
+            onPressed: _commentChanging || cur >= total ? null : () => _changeCommentPage(cur + 1),
+            icon: const Icon(Icons.chevron_right_rounded),
+            tooltip: '下一页',
+          ),
+          if (_commentChanging) const Padding(padding: EdgeInsets.only(left: 8), child: SizedBox(width: 16, height: 16, child: CircularProgressIndicator(strokeWidth: 2))),
         ],
       ),
     );

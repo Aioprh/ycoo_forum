@@ -157,8 +157,10 @@ class ApiService {
 
   static String detailUrl(int tid) => '$_base' 'thread-$tid-1-1.html';
 
-  Future<ThreadDetail> fetchThreadDetail(int tid) async {
-    final html = await _get(detailUrl(tid), query: {'mobile': '2'});
+  static String commentListUrl(int tid, int page) => '$_base' 'thread-$tid-$page-1.html';
+
+  Future<ThreadDetail> fetchThreadDetail(int tid, {int page = 1}) async {
+    final html = await _get(commentListUrl(tid, page), query: {'mobile': '2'});
     final doc = parser.parse(html);
     final boardLink = doc.querySelector('.comiis_bankuai .bankuai_tit a, .comiis_bankuai a[href*="forum-"], a[href*="forum-"]');
     final boardName = _normSpace(boardLink?.text ?? '');
@@ -170,10 +172,17 @@ class ApiService {
 
     final paid = _parsePaidState(doc);
     final posts = _collectPosts(doc);
-    final body = posts.isEmpty ? '' : '<div class="content-section">${posts.first}</div>';
-    final comments = posts.length <= 1
+    // 第 1 页 posts[0] 是楼主正文; 翻页(>1)的页面里没有楼主, 全部是回帖, 不能再次 skip。
+    final hasAuthor = page <= 1;
+    final body = posts.isEmpty || page > 1 ? '' : '<div class="content-section">${posts.first}</div>';
+    final commentFloors = posts.isEmpty
+        ? const <String>[]
+        : (hasAuthor ? posts.skip(1) : posts).toList();
+    final comments = commentFloors.isEmpty
         ? ''
-        : '<div class="comments-section"><div class="comments-title">评论 / 回复</div>${posts.skip(1).join()}</div>';
+        : '<div class="comments-section"><div class="comments-title">评论 / 回复</div>${commentFloors.join()}</div>';
+    // 解析评论分页信息
+    final pageInfo = _parseCommentPage(doc, page);
     final firstPost = _firstPostNode(doc);
     final myUid = AuthService.instance.uid ?? 0;
     final firstPid = _firstInt(RegExp(r'id="pid(\d+)"'), html) ?? 0;
@@ -191,6 +200,8 @@ class ApiService {
       boardName: boardName,
       bodyHtml: body,
       commentsHtml: comments,
+      commentPage: pageInfo.$1,
+      commentTotalPages: pageInfo.$2,
       isPaid: paid.isPaid,
       price: paid.price,
       currency: paid.currency,
@@ -355,6 +366,33 @@ class ApiService {
     const keys = <String>['星币不足','余额不足','积分不足','没有足够','无权购买','购买失败','请先登录','formhash','验证失败','非法请求'];
     for (final key in keys) if (text.contains(key)) return key;
     return null;
+  }
+
+  /// 从分页控件 `.pg` 解析当前评论页与总页数。
+  ///
+  /// 结构: `<div class="pg"><strong>1</strong><a href="thread-190-2-1.html">2</a>...
+  /// <a href="thread-190-10-1.html" class="last">.. 10</a></div>`。
+  /// 当前页取自 `<strong>` 或传入的 page; 总页数优先用 `a.last` 的数字, 否则取页码最大值。
+  static (int, int) _parseCommentPage(dom.Document doc, int page) {
+    int current = page <= 0 ? 1 : page;
+    final pg = doc.querySelector('.pg');
+    if (pg != null) {
+      final strong = pg.querySelector('strong');
+      final strongNum = int.tryParse(strong?.text.trim() ?? '');
+      if (strongNum != null && strongNum > 0) current = strongNum;
+      final last = pg.querySelector('a.last');
+      final lastNum = int.tryParse(last?.text.replaceAll(RegExp(r'[^0-9]'), '') ?? '');
+      int maxPage = lastNum ?? 0;
+      for (final a in pg.querySelectorAll('a')) {
+        final href = a.attributes['href'] ?? '';
+        final m = RegExp(r'thread-\d+-(\d+)-1\.html').firstMatch(href);
+        final n = int.tryParse(m?.group(1) ?? '');
+        if (n != null && n > maxPage) maxPage = n;
+      }
+      if (maxPage < current) maxPage = current;
+      return (current, maxPage);
+    }
+    return (current, current);
   }
 
   static List<String> _collectPosts(dom.Document doc) {
