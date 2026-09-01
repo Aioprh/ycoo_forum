@@ -47,7 +47,6 @@ class ActionableNoticeService {
     }) || doc.text.contains('退出登录');
     if (hasLogout) return false;
 
-    // 用 HTML DOM 判断登录表单，避免复杂正则因模板引号/属性顺序导致误判。
     final hasLoginForm = doc.querySelectorAll('form').any((form) {
       final action = (form.attributes['action'] ?? '').toLowerCase();
       final id = (form.attributes['id'] ?? '').toLowerCase();
@@ -58,9 +57,14 @@ class ActionableNoticeService {
           id.contains('loginform') ||
           cls.contains('login');
     });
+
     final hasLoginInput = doc.querySelectorAll('input[name]').any((input) {
-      final name = (input.attributes['name'] ?? '').toLowerCase();
-      return name == 'username' || name == 'password' || name == 'loginfield';
+      final String? name = input.attributes['name'];
+      if (name == null) return false;
+      final normalized = name.toLowerCase();
+      return normalized == 'username' ||
+          normalized == 'password' ||
+          normalized == 'loginfield';
     });
     return hasLoginForm && hasLoginInput;
   }
@@ -81,7 +85,9 @@ class ActionableNoticeService {
     }
 
     final doc = parser.parse(html);
-    for (final node in doc.querySelectorAll('script,style,noscript,template')) node.remove();
+    for (final node in doc.querySelectorAll('script,style,noscript,template')) {
+      node.remove();
+    }
     final result = <NativeNotice>[];
     final seen = <String>{};
 
@@ -105,7 +111,9 @@ class ActionableNoticeService {
       if (result.length >= 100) break;
     }
 
-    if (result.isEmpty && firstError != null) throw Exception(firstError.toString().replaceFirst('Exception: ', ''));
+    if (result.isEmpty && firstError != null) {
+      throw Exception(firstError.toString().replaceFirst('Exception: ', ''));
+    }
     return result;
   }
 
