@@ -161,12 +161,12 @@ jobs:
       - name: 发布到 GitHub Releases
         uses: softprops/action-gh-release@v2
         with:
-          tag_name: v${{ steps.meta.outputs.version }}
+          tag_name: v${{ steps.meta.outputs.name }}
           target_commitish: ${{ steps.meta.outputs.sha }}
-          name: 源论坛 YcooForum v${{ steps.meta.outputs.version }} (build ${{ steps.meta.outputs.build }})
+          name: 源论坛 YcooForum v${{ steps.meta.outputs.name }}
           generate_release_notes: true
           body: |
-            ## 源论坛 YcooForum v${{ steps.meta.outputs.name }} (build ${{ steps.meta.outputs.build }})
+            ## 源论坛 YcooForum v${{ steps.meta.outputs.name }}
 
             Android 正式版 APK（按 ABI 拆分）：
 
