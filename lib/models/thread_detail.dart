@@ -108,7 +108,26 @@ String _sanitizeForumHtml(String html) {
   final text = root.text.replaceAll(RegExp(r'\s+'), '').trim();
   final hasMedia = root.querySelector('img,video,iframe,audio,table,pre') != null;
   if (text.isEmpty && !hasMedia) return '';
-  // 兜底: 直接出现在文本节点里的私有区(PUA)字形也一并剔除, 避免渲染成方块乱码。
-  final cleaned = String.fromCharCodes(root.innerHtml.codeUnits.where((u) => !(u >= 0xE000 && u <= 0xF8FF)));
-  return cleaned.trim();
+  // 兜底: 剔除仍残留在输出里的“豆腐块”字形(图标 PUA、替换符、控制字符、补充区 PUA)。
+  return _stripTofu(root.innerHtml).trim();
+}
+
+bool _isTofuCodePoint(int cp) {
+  // Discuz 图标字体私有区 + 替换符 U+FFFD + BOM U+FEFF + 控制字符。
+  if (cp == 0xFFFD) return true;
+  if (cp == 0xFEFF) return true;
+  if (cp >= 0xE000 && cp <= 0xF8FF) return true;
+  if (cp >= 0xF0000 && cp <= 0xFFFFD) return true;
+  if (cp >= 0x100000 && cp <= 0x10FFFD) return true;
+  if (cp <= 0x8 || cp == 0xB || cp == 0xC || (cp >= 0xE && cp <= 0x1F)) return true;
+  return false;
+}
+
+/// 移除 Discuz 网页图标字体及其他会在无配套字体时渲染成“方块/”的字形。
+String _stripTofu(String value) {
+  final out = StringBuffer();
+  for (final codePoint in value.runes) {
+    if (!_isTofuCodePoint(codePoint)) out.writeCharCode(codePoint);
+  }
+  return out.toString();
 }
