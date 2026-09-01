@@ -27,7 +27,9 @@ class ActionableNoticeService {
       'Referer': '${SiteConfig.base}forum.php?mobile=2',
       if (cookie != null && cookie.isNotEmpty) 'Cookie': cookie,
     }).timeout(const Duration(seconds: 20)));
-    if (response.statusCode != 200) throw Exception('请求失败 HTTP ${response.statusCode}');
+    if (response.statusCode != 200) {
+      throw Exception('请求失败 HTTP ${response.statusCode}');
+    }
     final html = NetClient.decode(response.bodyBytes);
 
     // 只有页面确实是登录表单时才判定登录失效，不能仅凭“登录”文字判断。
@@ -40,26 +42,30 @@ class ActionableNoticeService {
   static bool _isLoginPage(String html) {
     final doc = parser.parse(html);
     final hasLogout = doc.querySelectorAll('a[href],form[action]').any((element) {
-      final href = element.attributes['href'] ?? '';
-      final action = element.attributes['action'] ?? '';
-      return href.toLowerCase().contains('action=logout') ||
-          action.toLowerCase().contains('action=logout');
+      final href = element.attributes['href'];
+      final action = element.attributes['action'];
+      final hrefText = href == null ? '' : href.toLowerCase();
+      final actionText = action == null ? '' : action.toLowerCase();
+      return hrefText.contains('action=logout') || actionText.contains('action=logout');
     }) || doc.text.contains('退出登录');
     if (hasLogout) return false;
 
     final hasLoginForm = doc.querySelectorAll('form').any((form) {
-      final action = (form.attributes['action'] ?? '').toLowerCase();
-      final id = (form.attributes['id'] ?? '').toLowerCase();
-      final cls = (form.attributes['class'] ?? '').toLowerCase();
-      return action.contains('logging') ||
-          action.contains('login') ||
-          id == 'login' ||
-          id.contains('loginform') ||
-          cls.contains('login');
+      final action = form.attributes['action'];
+      final id = form.attributes['id'];
+      final cls = form.attributes['class'];
+      final actionText = action == null ? '' : action.toLowerCase();
+      final idText = id == null ? '' : id.toLowerCase();
+      final classText = cls == null ? '' : cls.toLowerCase();
+      return actionText.contains('logging') ||
+          actionText.contains('login') ||
+          idText == 'login' ||
+          idText.contains('loginform') ||
+          classText.contains('login');
     });
 
     final hasLoginInput = doc.querySelectorAll('input[name]').any((input) {
-      final String? name = input.attributes['name'];
+      final name = input.attributes['name'];
       if (name == null) return false;
       final normalized = name.toLowerCase();
       return normalized == 'username' ||
@@ -96,8 +102,9 @@ class ActionableNoticeService {
       final text = _clean(node);
       if (text.length < 2 || text.length > 800 || _navigation(text)) continue;
       final href = _bestHref(node);
-      final tid = _tid(href.isNotEmpty ? href : _allHref(node));
-      final uid = _uid(href.isNotEmpty ? href : _allHref(node));
+      final fallbackHref = href.isNotEmpty ? href : _allHref(node);
+      final tid = _tid(fallbackHref);
+      final uid = _uid(fallbackHref);
       final title = _clean(node.querySelector('h2,.ntc_title,.nts_title,dt,strong'));
       final body = _clean(node.querySelector('.ntc_body,.nts_body,dd') ?? node);
       final time = _clean(node.querySelector('em,time,.xg1,.xg2,[class*="time"],[class*="date"]'));
