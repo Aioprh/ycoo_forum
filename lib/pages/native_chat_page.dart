@@ -40,8 +40,10 @@ class _NativeChatPageState extends State<NativeChatPage> {
 
   String _clean(String value) => forumText(value.replaceAll(RegExp(r'\s+'), ' ').trim());
 
-  Future<void> _load() async {
-    if (mounted) setState(() { _loading = true; _error = null; });
+  /// 拉取会话消息。传入 [awaitText] 时，若本次结果未包含该消息则短暂延迟后重试，
+  /// 直至出现或重试耗尽，避免"发送后必须手动刷新才能看到新消息"。
+  Future<void> _load({String? awaitText, int retries = 3}) async {
+    if (awaitText == null && mounted) setState(() { _loading = true; _error = null; });
     try {
       await AuthService.instance.init();
       if (!AuthService.instance.isLoggedIn) throw Exception('请先登录论坛');
@@ -134,10 +136,29 @@ class _NativeChatPageState extends State<NativeChatPage> {
       }
 
       if (mounted) setState(() { _messages = result; _loading = false; });
+      if (awaitText != null &&
+          awaitText.isNotEmpty &&
+          retries > 0 &&
+          _isLatestMessage(result, awaitText) == false) {
+        // 发送成功后服务器通常需要极短暂时间才会把新消息渲染进会话页，
+        // 立即拉取会拿不到刚发的那条，故短暂延迟后重试一次。
+        await Future<void>.delayed(const Duration(milliseconds: 800));
+        return _load(awaitText: awaitText, retries: retries - 1);
+      }
       _jumpBottom();
     } catch (e) {
       if (mounted) setState(() { _error = _clean(e.toString().replaceFirst('Exception: ', '')); _loading = false; });
     }
+  }
+
+  /// 判断结果中是否已出现刚发送的这条消息。
+  static bool _isLatestMessage(List<_ChatMessage> messages, String text) {
+    final target = text.trim();
+    if (target.isEmpty) return true;
+    for (final m in messages) {
+      if (m.body.trim() == target && !m.isDate) return true;
+    }
+    return false;
   }
 
   void _add(List<_ChatMessage> result, Set<String> seen, _ChatMessage? message, [String? id]) {
@@ -204,7 +225,9 @@ class _NativeChatPageState extends State<NativeChatPage> {
     setState(() => _sending = false);
     if (error != null) { ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text(forumText(error)))); return; }
     _controller.clear();
-    await _load();
+    // 传入刚发送的内容，_load 会等待它出现在会话里再结束，
+    // 避免"发完消息必须手动刷新才显示新记录"。
+    await _load(awaitText: text, retries: 3);
   }
 
   void _jumpBottom() { WidgetsBinding.instance.addPostFrameCallback((_) { if (_scroll.hasClients) _scroll.jumpTo(_scroll.position.maxScrollExtent); }); }
