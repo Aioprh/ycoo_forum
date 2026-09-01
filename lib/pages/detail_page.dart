@@ -422,7 +422,10 @@ class _DetailPageState extends State<DetailPage> {
       _snack('链接格式无效');
       return;
     }
-    if (AttachmentDownloadService.instance.isAttachmentUrl(uri.toString())) {
+    final attachment = AttachmentDownloadService.instance
+            .isAttachmentUrl(uri.toString()) ||
+        _isImageFileUrl(uri);
+    if (attachment) {
       if (!_loggedIn) {
         if (mounted) await _login();
         return;
@@ -440,6 +443,12 @@ class _DetailPageState extends State<DetailPage> {
       return;
     }
     _snack('链接：${uri.toString()}');
+  }
+
+  /// 正文图片类附件(常走 CDN, 不含 attachment 特征), 也归入可下载附件。
+  static bool _isImageFileUrl(Uri uri) {
+    final path = uri.path.toLowerCase();
+    return RegExp(r'\.(jpe?g|png|gif|webp|bmp|svg|heic|heif)$').hasMatch(path);
   }
 
   Widget _errorView(BuildContext context) {

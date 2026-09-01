@@ -91,7 +91,7 @@ class _NodeWidget extends StatelessWidget {
         final src = _imageUrl(e);
         return src.isEmpty
             ? _missingImage(context, e.attributes['alt'])
-            : _ImageBlock(src: src, alt: e.attributes['alt']);
+            : _ImageBlock(src: src, alt: e.attributes['alt'], onTap: (onLinkTap != null && src.isNotEmpty) ? () => onLinkTap(src) : null);
       case 'hr':
         return const Padding(
           padding: EdgeInsets.symmetric(vertical: 12),
@@ -210,11 +210,27 @@ class _InlineContent extends StatelessWidget {
     }
 
     for (final node in nodes) {
+      if (node is dom.Element &&
+          node.localName?.toLowerCase() == 'a' &&
+          _isAttachmentLink(node.attributes['href'])) {
+        flushText();
+        children.add(_AttachmentCard(
+          href: (node.attributes['href'] ?? '').trim(),
+          title: node.text.trim(),
+          onTap: (onLinkTap != null) ? () => onLinkTap((node.attributes['href'] ?? '').trim()) : null,
+        ));
+        continue;
+      }
       if (node is dom.Element && node.localName?.toLowerCase() == 'img') {
         flushText();
         final src = _imageUrl(node);
         if (src.isNotEmpty) {
-          children.add(_ImageBlock(src: src, alt: node.attributes['alt']));
+          children.add(_ImageBlock(
+            src: src,
+            alt: node.attributes['alt'],
+            onTap:
+                (onLinkTap != null) ? () => onLinkTap(src) : null,
+          ));
         }
         continue;
       }
@@ -338,11 +354,24 @@ bool _looksLikePlaceholder(String url) {
       value.endsWith('/spacer.gif');
 }
 
+/// 是否为 Discuz 附件链接(下载、图片附件等)。
+bool _isAttachmentLink(String? href) {
+  if (href == null || href.isEmpty) return false;
+  final u = href.toLowerCase();
+  return u.contains('attachment.php') ||
+      u.contains('mod=attachment') ||
+      u.contains('aid=') ||
+      u.contains('noupdate=yes') ||
+      u.contains('/attachment/') ||
+      u.contains('/download/');
+}
+
 class _ImageBlock extends StatelessWidget {
   final String src;
   final String? alt;
+  final VoidCallback? onTap;
 
-  const _ImageBlock({required this.src, this.alt});
+  const _ImageBlock({required this.src, this.alt, this.onTap});
 
   @override
   Widget build(BuildContext context) {
@@ -355,30 +384,61 @@ class _ImageBlock extends StatelessWidget {
       headers['Cookie'] = cookie;
     }
 
+    final image = ClipRRect(
+      borderRadius: BorderRadius.circular(14),
+      child: Image.network(
+        src,
+        width: double.infinity,
+        fit: BoxFit.contain,
+        headers: headers,
+        errorBuilder: (_, __, ___) => Container(
+          width: double.infinity,
+          constraints: const BoxConstraints(minHeight: 48),
+          padding: const EdgeInsets.all(14),
+          color: Theme.of(context).colorScheme.surfaceContainerHighest,
+          child: Text(alt?.isNotEmpty == true ? alt! : '图片加载失败\n$src'),
+        ),
+        loadingBuilder: (context, child, progress) => progress == null
+            ? child
+            : const Padding(
+                padding: EdgeInsets.all(24),
+                child: Center(child: CircularProgressIndicator(strokeWidth: 2)),
+              ),
+      ),
+    );
+
     return Padding(
       padding: const EdgeInsets.only(bottom: 14),
-      child: ClipRRect(
-        borderRadius: BorderRadius.circular(14),
-        child: Image.network(
-          src,
-          width: double.infinity,
-          fit: BoxFit.contain,
-          headers: headers,
-          errorBuilder: (_, __, ___) => Container(
-            width: double.infinity,
-            constraints: const BoxConstraints(minHeight: 48),
-            padding: const EdgeInsets.all(14),
-            color: Theme.of(context).colorScheme.surfaceContainerHighest,
-            child: Text(alt?.isNotEmpty == true ? alt! : '图片加载失败\n$src'),
-          ),
-          loadingBuilder: (context, child, progress) => progress == null
-              ? child
-              : const Padding(
-                  padding: EdgeInsets.all(24),
-                  child: Center(child: CircularProgressIndicator(strokeWidth: 2)),
-                ),
-        ),
-      ),
+      child: onTap == null
+          ? image
+          : GestureDetector(
+              onTap: onTap,
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  image,
+                  const SizedBox(height: 6),
+                  Row(
+                    mainAxisSize: MainAxisSize.min,
+                    children: [
+                      Icon(
+                        Icons.download_rounded,
+                        size: 15,
+                        color: Theme.of(context).colorScheme.primary,
+                      ),
+                      const SizedBox(width: 4),
+                      Text(
+                        '点击下载图片',
+                        style: TextStyle(
+                          fontSize: 12.5,
+                          color: Theme.of(context).colorScheme.primary,
+                        ),
+                      ),
+                    ],
+                  ),
+                ],
+              ),
+            ),
     );
   }
 }
@@ -459,7 +519,11 @@ class _ListItem extends StatelessWidget {
     if (img != null) {
       final src = _imageUrl(img);
       if (src.isNotEmpty) {
-        return _ImageBlock(src: src, alt: img.attributes['alt']);
+        return _ImageBlock(
+          src: src,
+          alt: img.attributes['alt'],
+          onTap: (onLinkTap != null) ? () => onLinkTap(src) : null,
+        );
       }
     }
     return Row(
@@ -558,6 +622,55 @@ class _TableBlock extends StatelessWidget {
                 ],
               ),
           ],
+        ),
+      ),
+    );
+  }
+}
+
+/// 正文里的附件链接: 以清晰可点的卡片展示, 点击触发下载。
+class _AttachmentCard extends StatelessWidget {
+  final String href;
+  final String title;
+  final VoidCallback? onTap;
+
+  const _AttachmentCard({
+    required this.href,
+    required this.title,
+    this.onTap,
+  });
+
+  @override
+  Widget build(BuildContext context) {
+    final c = Theme.of(context).colorScheme;
+    final label = title.isNotEmpty ? title : '下载附件';
+    return Padding(
+      padding: const EdgeInsets.only(bottom: 13),
+      child: Material(
+        color: c.secondaryContainer.withValues(alpha: .45),
+        borderRadius: BorderRadius.circular(12),
+        child: InkWell(
+          borderRadius: BorderRadius.circular(12),
+          onTap: onTap,
+          child: Padding(
+            padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 12),
+            child: Row(
+              children: [
+                Icon(Icons.attach_file_rounded, color: c.primary, size: 24),
+                const SizedBox(width: 12),
+                Expanded(
+                  child: Text(
+                    label,
+                    maxLines: 2,
+                    overflow: TextOverflow.ellipsis,
+                    style: const TextStyle(fontSize: 14.5, height: 1.3),
+                  ),
+                ),
+                const SizedBox(width: 8),
+                Icon(Icons.download_rounded, color: c.primary, size: 20),
+              ],
+            ),
+          ),
         ),
       ),
     );
