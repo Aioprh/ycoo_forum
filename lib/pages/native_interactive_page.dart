@@ -1,7 +1,6 @@
 import 'package:flutter/material.dart';
 
 import '../services/actionable_notice_service.dart';
-import '../services/member_service_v2.dart';
 import '../services/site_config.dart';
 import '../utils/forum_text.dart';
 import 'detail_page.dart';
@@ -39,25 +38,21 @@ class NativeInteractivePage extends StatelessWidget {
               onTap: () => Navigator.of(context).push(MaterialPageRoute(builder: (_) => NativeInteractiveTypePage(type: item))),
               child: Padding(
                 padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 15),
-                child: Row(
-                  children: [
-                    Container(
-                      width: 52,
-                      height: 52,
-                      decoration: BoxDecoration(color: scheme.primaryContainer, shape: BoxShape.circle),
-                      child: Icon(item.icon, color: scheme.primary, size: 27),
-                    ),
-                    const SizedBox(width: 14),
-                    Expanded(
-                      child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
-                        Text(item.title, style: const TextStyle(fontSize: 17, fontWeight: FontWeight.w800)),
-                        const SizedBox(height: 4),
-                        Text(item.subtitle, style: TextStyle(fontSize: 13, color: scheme.onSurfaceVariant)),
-                      ]),
-                    ),
-                    Icon(Icons.chevron_right_rounded, color: scheme.outline, size: 28),
-                  ],
-                ),
+                child: Row(children: [
+                  Container(
+                    width: 52,
+                    height: 52,
+                    decoration: BoxDecoration(color: scheme.primaryContainer, shape: BoxShape.circle),
+                    child: Icon(item.icon, color: scheme.primary, size: 27),
+                  ),
+                  const SizedBox(width: 14),
+                  Expanded(child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
+                    Text(item.title, style: const TextStyle(fontSize: 17, fontWeight: FontWeight.w800)),
+                    const SizedBox(height: 4),
+                    Text(item.subtitle, style: TextStyle(fontSize: 13, color: scheme.onSurfaceVariant)),
+                  ])),
+                  Icon(Icons.chevron_right_rounded, color: scheme.outline, size: 28),
+                ]),
               ),
             ),
           );
@@ -84,19 +79,49 @@ class NativeInteractiveTypePage extends StatefulWidget {
 }
 
 class _NativeInteractiveTypePageState extends State<NativeInteractiveTypePage> {
-  late Future<List<NativeNotice>> _future;
+  late Future<InteractiveNoticePage> _future;
+  int _page = 1;
+  final List<InteractiveNotice> _items = [];
+  bool _hasNext = false;
+  bool _loadingMore = false;
 
   @override
   void initState() {
     super.initState();
-    _future = _load();
+    _future = _loadFirst();
   }
 
-  Future<List<NativeNotice>> _load() => ActionableNoticeService.instance.fetch(view: 'interactive', type: widget.type.type);
+  Future<InteractiveNoticePage> _loadFirst() async {
+    final page = await ActionableNoticeService.instance.fetchInteractivePage(type: widget.type.type, page: 1);
+    _items
+      ..clear()
+      ..addAll(page.items);
+    _page = 1;
+    _hasNext = page.hasNext;
+    return page;
+  }
 
   Future<void> _refresh() async {
-    setState(() => _future = _load());
+    setState(() => _future = _loadFirst());
     await _future;
+  }
+
+  Future<void> _loadMore() async {
+    if (_loadingMore || !_hasNext) return;
+    setState(() => _loadingMore = true);
+    try {
+      final next = await ActionableNoticeService.instance.fetchInteractivePage(type: widget.type.type, page: _page + 1);
+      if (!mounted) return;
+      setState(() {
+        _page = next.page;
+        _hasNext = next.hasNext;
+        _items.addAll(next.items);
+      });
+    } catch (e) {
+      if (mounted) ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text(forumText(e.toString().replaceFirst('Exception: ', '')))));
+    } finally {
+      if (mounted) setState(() => _loadingMore = false);
+    }
   }
 
   Uri? _uri(String href) {
@@ -105,40 +130,11 @@ class _NativeInteractiveTypePageState extends State<NativeInteractiveTypePage> {
     final base = Uri.parse(SiteConfig.base);
     try {
       var uri = base.resolve(raw);
-      if (uri.path.toLowerCase().endsWith('/space.php')) {
-        uri = uri.replace(path: '/home.php');
-      }
-      if ((uri.path.isEmpty || uri.path == '/') && uri.queryParameters.containsKey('mod')) {
-        uri = uri.replace(path: '/home.php');
-      }
+      if (uri.path.toLowerCase().endsWith('/space.php')) uri = uri.replace(path: '/home.php');
+      if ((uri.path.isEmpty || uri.path == '/') && uri.queryParameters.containsKey('mod')) uri = uri.replace(path: '/home.php');
       return uri;
     } catch (_) {
       return Uri.tryParse(raw);
-    }
-  }
-
-  Future<void> _open(NativeNotice item) async {
-    if (!mounted) return;
-    if (item.tid > 0) {
-      await Navigator.push(context, MaterialPageRoute(builder: (_) => DetailPage(tid: item.tid, title: forumText(item.title))));
-      return;
-    }
-    final uri = _uri(item.href);
-    final uid = item.uid > 0 ? item.uid : _uid(uri);
-    if (uid > 0) {
-      await Navigator.push(context, MaterialPageRoute(builder: (_) => NativeProfilePage(uid: uid, username: '')));
-      return;
-    }
-    if (uri != null) {
-      await Navigator.push(context, MaterialPageRoute(builder: (_) => WebViewPage(url: uri.toString(), title: forumText(item.title))));
-      return;
-    }
-    if (mounted) {
-      showModalBottomSheet<void>(
-        context: context,
-        showDragHandle: true,
-        builder: (_) => SafeArea(child: Padding(padding: const EdgeInsets.all(20), child: Text(forumText(item.body.isNotEmpty ? item.body : item.subtitle), style: const TextStyle(fontSize: 16, height: 1.5)))),
-      );
     }
   }
 
@@ -151,21 +147,61 @@ class _NativeInteractiveTypePageState extends State<NativeInteractiveTypePage> {
     return int.tryParse(match?.group(1) ?? '') ?? 0;
   }
 
-  IconData _noticeIcon() => widget.type.icon;
+  int _tid(Uri? uri) {
+    if (uri == null) return 0;
+    final value = int.tryParse(uri.queryParameters['tid'] ?? uri.queryParameters['topicid'] ?? '');
+    if (value != null && value > 0) return value;
+    final match = RegExp(r'thread-(\d+)', caseSensitive: false).firstMatch(uri.toString());
+    return int.tryParse(match?.group(1) ?? '') ?? 0;
+  }
 
-  String _action(NativeNotice item) {
-    if (item.tid > 0) return '打开帖子并继续互动';
-    if (item.uid > 0) {
-      switch (widget.type.type) {
-        case 'post': return '查看坛友并处理打招呼';
-        case 'friend': return '查看坛友并处理好友';
-        case 'wall': return '查看坛友并处理留言';
-        case 'comment': return '查看评论来源';
-        case 'click': return '查看坛友';
-        case 'sharenotice': return '查看分享来源';
-      }
+  Future<void> _open(InteractiveNotice item, {String? overrideHref}) async {
+    final href = (overrideHref ?? item.notice.href).trim();
+    final uri = _uri(href);
+    final tid = item.notice.tid > 0 ? item.notice.tid : _tid(uri);
+    final uid = item.notice.uid > 0 ? item.notice.uid : _uid(uri);
+    if (!mounted) return;
+    if (tid > 0) {
+      await Navigator.push(context, MaterialPageRoute(builder: (_) => DetailPage(tid: tid, title: forumText(item.notice.title))));
+      return;
     }
-    return '查看提醒';
+    if (uid > 0) {
+      await Navigator.push(context, MaterialPageRoute(builder: (_) => NativeProfilePage(uid: uid, username: item.actor)));
+      return;
+    }
+    if (uri != null) {
+      await Navigator.push(context, MaterialPageRoute(builder: (_) => WebViewPage(url: uri.toString(), title: forumText(item.notice.title))));
+      return;
+    }
+    _showBody(item);
+  }
+
+  void _showBody(InteractiveNotice item) {
+    showModalBottomSheet<void>(
+      context: context,
+      showDragHandle: true,
+      builder: (_) => SafeArea(child: Padding(
+        padding: const EdgeInsets.fromLTRB(20, 8, 20, 24),
+        child: Column(mainAxisSize: MainAxisSize.min, crossAxisAlignment: CrossAxisAlignment.start, children: [
+          Text(forumText(item.notice.title), style: const TextStyle(fontSize: 19, fontWeight: FontWeight.w800)),
+          if (item.time.isNotEmpty) ...[const SizedBox(height: 6), Text(item.time)],
+          const SizedBox(height: 12),
+          Text(forumText(item.notice.body.isNotEmpty ? item.notice.body : item.notice.subtitle), style: const TextStyle(fontSize: 16, height: 1.5)),
+        ]),
+      )),
+    );
+  }
+
+  String _actionHint() {
+    switch (widget.type.type) {
+      case 'post': return '查看坛友并处理打招呼';
+      case 'friend': return '查看坛友并处理好友关系';
+      case 'wall': return '查看留言来源';
+      case 'comment': return '打开评论来源';
+      case 'click': return '查看获赞内容';
+      case 'sharenotice': return '查看被分享内容';
+      default: return '查看提醒';
+    }
   }
 
   @override
@@ -173,49 +209,94 @@ class _NativeInteractiveTypePageState extends State<NativeInteractiveTypePage> {
     final scheme = Theme.of(context).colorScheme;
     return Scaffold(
       backgroundColor: scheme.surfaceContainerLowest,
-      appBar: AppBar(title: Text(widget.type.title), actions: [IconButton(onPressed: _refresh, icon: const Icon(Icons.refresh_rounded))]),
-      body: FutureBuilder<List<NativeNotice>>(
+      appBar: AppBar(title: Text(widget.type.title), actions: [IconButton(onPressed: _refresh, tooltip: '刷新', icon: const Icon(Icons.refresh_rounded))]),
+      body: FutureBuilder<InteractiveNoticePage>(
         future: _future,
         builder: (context, snapshot) {
           if (snapshot.connectionState == ConnectionState.waiting) return const Center(child: CircularProgressIndicator());
-          if (snapshot.hasError) return Center(child: Padding(padding: const EdgeInsets.all(28), child: Column(mainAxisSize: MainAxisSize.min, children: [const Icon(Icons.cloud_off_rounded, size: 48), const SizedBox(height: 12), Text(forumText(snapshot.error.toString().replaceFirst('Exception: ', '')), textAlign: TextAlign.center), const SizedBox(height: 12), FilledButton.icon(onPressed: _refresh, icon: const Icon(Icons.refresh), label: const Text('重试'))])));
-          final items = snapshot.data ?? const <NativeNotice>[];
-          if (items.isEmpty) return RefreshIndicator(onRefresh: _refresh, child: ListView(children: const [SizedBox(height: 260), Center(child: Text('暂无互动提醒'))]));
+          if (snapshot.hasError) {
+            return Center(child: Padding(
+              padding: const EdgeInsets.all(28),
+              child: Column(mainAxisSize: MainAxisSize.min, children: [
+                const Icon(Icons.cloud_off_rounded, size: 48),
+                const SizedBox(height: 12),
+                Text(forumText(snapshot.error.toString().replaceFirst('Exception: ', '')), textAlign: TextAlign.center),
+                const SizedBox(height: 12),
+                FilledButton.icon(onPressed: _refresh, icon: const Icon(Icons.refresh), label: const Text('重试')),
+              ]),
+            ));
+          }
+          if (_items.isEmpty) return RefreshIndicator(onRefresh: _refresh, child: ListView(children: const [SizedBox(height: 260), Center(child: Text('暂无互动提醒'))]));
           return RefreshIndicator(
             onRefresh: _refresh,
-            child: ListView.separated(
-              physics: const AlwaysScrollableScrollPhysics(),
-              padding: const EdgeInsets.all(14),
-              itemCount: items.length,
-              separatorBuilder: (_, __) => const SizedBox(height: 9),
-              itemBuilder: (context, index) {
-                final item = items[index];
-                return Card(
-                  margin: EdgeInsets.zero,
-                  clipBehavior: Clip.antiAlias,
-                  child: InkWell(
-                    onTap: () => _open(item),
-                    child: Padding(
-                      padding: const EdgeInsets.all(14),
-                      child: Row(crossAxisAlignment: CrossAxisAlignment.start, children: [
-                        CircleAvatar(backgroundColor: scheme.primaryContainer, foregroundColor: scheme.primary, child: Icon(_noticeIcon())),
-                        const SizedBox(width: 12),
-                        Expanded(child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
-                          Text(forumText(item.title), maxLines: 2, overflow: TextOverflow.ellipsis, style: const TextStyle(fontWeight: FontWeight.w800, fontSize: 16)),
-                          const SizedBox(height: 5),
-                          Text(forumText(item.subtitle), maxLines: 4, overflow: TextOverflow.ellipsis, style: TextStyle(color: scheme.onSurfaceVariant, height: 1.35)),
-                          const SizedBox(height: 8),
-                          Text(_action(item), style: TextStyle(fontSize: 12, fontWeight: FontWeight.w700, color: scheme.primary)),
-                        ])),
-                        const Icon(Icons.chevron_right_rounded),
-                      ]),
-                    ),
-                  ),
-                );
+            child: NotificationListener<ScrollNotification>(
+              onNotification: (notification) {
+                if (notification.metrics.pixels >= notification.metrics.maxScrollExtent - 320) _loadMore();
+                return false;
               },
+              child: ListView.separated(
+                physics: const AlwaysScrollableScrollPhysics(),
+                padding: const EdgeInsets.fromLTRB(14, 14, 14, 20),
+                itemCount: _items.length + (_hasNext || _loadingMore ? 1 : 0),
+                separatorBuilder: (_, __) => const SizedBox(height: 9),
+                itemBuilder: (context, index) {
+                  if (index >= _items.length) {
+                    return Padding(
+                      padding: const EdgeInsets.symmetric(vertical: 16),
+                      child: Center(child: _loadingMore ? const CircularProgressIndicator() : OutlinedButton.icon(onPressed: _loadMore, icon: const Icon(Icons.expand_more), label: Text('加载第 ${_page + 1} 页'))),
+                    );
+                  }
+                  return _buildCard(context, _items[index], scheme);
+                },
+              ),
             ),
           );
         },
+      ),
+    );
+  }
+
+  Widget _buildCard(BuildContext context, InteractiveNotice item, ColorScheme scheme) {
+    final title = forumText(item.notice.title);
+    final subtitle = forumText(item.notice.subtitle);
+    return Card(
+      margin: EdgeInsets.zero,
+      clipBehavior: Clip.antiAlias,
+      elevation: item.unread ? 1.5 : 0.5,
+      child: InkWell(
+        onTap: () => _open(item),
+        child: Padding(
+          padding: const EdgeInsets.fromLTRB(14, 14, 10, 12),
+          child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
+            Row(crossAxisAlignment: CrossAxisAlignment.start, children: [
+              Stack(children: [
+                CircleAvatar(backgroundColor: scheme.primaryContainer, foregroundColor: scheme.primary, child: Icon(widget.type.icon)),
+                if (item.unread) Positioned(right: 0, top: 0, child: Container(width: 9, height: 9, decoration: BoxDecoration(color: scheme.error, shape: BoxShape.circle))),
+              ]),
+              const SizedBox(width: 12),
+              Expanded(child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
+                Row(children: [
+                  Expanded(child: Text(title, maxLines: 2, overflow: TextOverflow.ellipsis, style: const TextStyle(fontWeight: FontWeight.w800, fontSize: 16))),
+                  if (item.unread) Container(padding: const EdgeInsets.symmetric(horizontal: 7, vertical: 3), decoration: BoxDecoration(color: scheme.errorContainer, borderRadius: BorderRadius.circular(20)), child: Text('未读', style: TextStyle(color: scheme.onErrorContainer, fontSize: 11, fontWeight: FontWeight.w700))),
+                ]),
+                if (item.actor.isNotEmpty) ...[const SizedBox(height: 3), Text(item.actor, style: TextStyle(color: scheme.primary, fontWeight: FontWeight.w600))],
+                if (subtitle.isNotEmpty) ...[const SizedBox(height: 5), Text(subtitle, maxLines: 5, overflow: TextOverflow.ellipsis, style: TextStyle(color: scheme.onSurfaceVariant, height: 1.35))],
+              ])),
+              const Icon(Icons.chevron_right_rounded),
+            ]),
+            const SizedBox(height: 10),
+            Row(children: [
+              Expanded(child: Text(_actionHint(), style: TextStyle(fontSize: 12, color: scheme.primary, fontWeight: FontWeight.w700))),
+              if (item.actions.isNotEmpty)
+                PopupMenuButton<InteractiveNoticeAction>(
+                  tooltip: '操作',
+                  onSelected: (action) => _open(item, overrideHref: action.href),
+                  itemBuilder: (_) => item.actions.map((action) => PopupMenuItem(value: action, child: Text(forumText(action.label)))).toList(),
+                  icon: const Icon(Icons.more_horiz_rounded),
+                ),
+            ]),
+          ]),
+        ),
       ),
     );
   }
