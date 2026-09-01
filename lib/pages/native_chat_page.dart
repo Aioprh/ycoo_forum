@@ -66,13 +66,10 @@ class _NativeChatPageState extends State<NativeChatPage> {
       final result = <_ChatMessage>[];
       final seen = <String>{};
 
-      // Discuz 标准模板使用 dl#pmlist_<pmid> + dd.ptm。
       for (final node in doc.querySelectorAll('dl[id^="pmlist_"]')) {
         _add(result, seen, _parseMessage(node), node.attributes['id']);
       }
 
-      // Comiis/二次开发模板可能保留 dd.ptm，但改变了外层容器。
-      // 直接从每一个 dd.ptm 向上找最近的消息容器，避免因为模板结构变化而丢失记录。
       if (result.isEmpty) {
         for (final content in doc.querySelectorAll('dd.ptm')) {
           dynamic container = content;
@@ -86,10 +83,10 @@ class _NativeChatPageState extends State<NativeChatPage> {
         }
       }
 
-      // 最后使用原始 HTML 匹配 dd.ptm。某些 Discuz 模板 HTML 不规范，
-      // html parser 会自动修正 DOM，导致标准选择器反而找不到完整的 dd。
+      // 某些 Discuz/Comiis 模板 HTML 不规范，DOM 解析可能丢失 dd.ptm。
+      // 使用双引号 raw string，避免 Dart 字符串中的引号/反斜杠转义导致构建失败。
       if (result.isEmpty) {
-        final raw = RegExp(r'<dd[^>]*class=["\'][^"\']*\\bptm\\b[^"\']*["\'][^>]*>([\\s\\S]*?)</dd>', caseSensitive: false).allMatches(html);
+        final raw = RegExp(r"<dd[^>]*class=['\"][^'\"]*\bptm\b[^'\"]*['\"][^>]*>([\s\S]*?)</dd>", caseSensitive: false).allMatches(html);
         for (final match in raw) {
           final fragment = match.group(0) ?? '';
           final node = parser.parseFragment(fragment);
@@ -97,7 +94,6 @@ class _NativeChatPageState extends State<NativeChatPage> {
         }
       }
 
-      // 手机版/Comiis 有些版本会去掉 pmlist_* id，但仍保留 dd.ptm 或自定义消息容器。
       if (result.isEmpty) {
         for (final node in doc.querySelectorAll('dl.bbda.cl,dl.bbda,dl.cl,dl')) {
           if (node.querySelector('dd.ptm') == null) continue;
@@ -133,7 +129,9 @@ class _NativeChatPageState extends State<NativeChatPage> {
     final author = content.querySelector('a[href*="mod=space&uid="],a[href*="mod=space%26uid="],a[href*="uid="]') ??
         node.querySelector('a[href*="mod=space&uid="],a[href*="mod=space%26uid="],a[href*="uid="]');
     final sender = _cleanText(author);
-    final uid = _extractUid(content) > 0 ? _extractUid(content) : _extractUid(node);
+    final contentUid = _extractUid(content);
+    final nodeUid = _extractUid(node);
+    final uid = contentUid > 0 ? contentUid : nodeUid;
 
     var body = _cleanText(content);
     if (sender.isNotEmpty) body = _removeFirst(body, sender);
