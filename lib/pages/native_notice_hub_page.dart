@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 
 import 'member_feature_page.dart';
 import 'native_message_list_page.dart';
+import 'native_notice_list_page.dart';
 import 'native_social_page.dart';
 
 class NativeNoticeHubPage extends StatelessWidget {
@@ -97,7 +98,7 @@ class NativeNoticeHubPage extends StatelessWidget {
             color: Colors.amber,
             title: '坛友互动',
             subtitle: '回复、评论、点赞和关注',
-            onTap: () => _open(context, const MemberFeaturePage(title: '坛友互动', path: 'home.php?mod=space&do=notice&view=interactive&mobile=2', type: MemberFeatureType.notices)),
+            onTap: () => _open(context, const NativeNoticeListPage(title: '坛友互动', view: 'interactive')),
           ),
           const Divider(height: 1),
           _item(
@@ -106,7 +107,7 @@ class NativeNoticeHubPage extends StatelessWidget {
             color: Colors.redAccent,
             title: '系统提醒',
             subtitle: '系统消息和账号提醒',
-            onTap: () => _open(context, const MemberFeaturePage(title: '系统提醒', path: 'home.php?mod=space&do=notice&view=system&mobile=2', type: MemberFeatureType.notices)),
+            onTap: () => _open(context, const NativeNoticeListPage(title: '系统提醒', view: 'system')),
           ),
           const Divider(height: 1),
           _item(
@@ -115,7 +116,7 @@ class NativeNoticeHubPage extends StatelessWidget {
             color: Colors.blueAccent,
             title: '应用提醒',
             subtitle: '应用和社区服务提醒',
-            onTap: () => _open(context, const MemberFeaturePage(title: '应用提醒', path: 'home.php?mod=space&do=notice&view=app&mobile=2', type: MemberFeatureType.notices)),
+            onTap: () => _open(context, const NativeNoticeListPage(title: '应用提醒', view: 'app')),
           ),
           const Divider(height: 1),
         ],
