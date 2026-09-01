@@ -74,12 +74,19 @@ String _sanitizeForumHtml(String html) {
   final fragment = parser.parseFragment(html);
 
   bool removable(dom.Element e) {
-    final attrs = '${e.localName ?? ''} ${e.attributes['id'] ?? ''} ${e.attributes['class'] ?? ''}'.toLowerCase();
+    final tag = e.localName ?? '';
+    final attrs = '$tag ${e.attributes['id'] ?? ''} ${e.attributes['class'] ?? ''}'.toLowerCase();
     final style = (e.attributes['style'] ?? '').toLowerCase().replaceAll(' ', '');
     if (style.contains('display:none') || style.contains('visibility:hidden')) return true;
     if (RegExp(r'(^|[-_])(pay|paid|buy|purchase|locked|lock|price)([-_]|$)').hasMatch(attrs)) return true;
     final text = e.text.replaceAll(RegExp(r'\s+'), ' ').trim();
     if (text.contains('本主题需向作者支付') || text.contains('购买后查看完整内容')) return true;
+    // Discuz 网页图标字体(<i class="comiis_font">&#xe679;</i>): 内容只有私有区(PUA)字形,
+    // 无配套字体时会被渲染成方块乱码, 当作装饰图标整体移除。
+    final iconOnly = (tag == 'i' || tag == 'span' || tag == 'em' || tag == 'b' || tag == 'font') &&
+        text.isNotEmpty &&
+        text.replaceAll(RegExp(r'[\uE000-\uF8FF]'), '').isEmpty;
+    if (iconOnly) return true;
     return false;
   }
 
@@ -101,5 +108,7 @@ String _sanitizeForumHtml(String html) {
   final text = root.text.replaceAll(RegExp(r'\s+'), '').trim();
   final hasMedia = root.querySelector('img,video,iframe,audio,table,pre') != null;
   if (text.isEmpty && !hasMedia) return '';
-  return root.innerHtml.trim();
+  // 兜底: 直接出现在文本节点里的私有区(PUA)字形也一并剔除, 避免渲染成方块乱码。
+  final cleaned = String.fromCharCodes(root.innerHtml.codeUnits.where((u) => !(u >= 0xE000 && u <= 0xF8FF)));
+  return cleaned.trim();
 }
