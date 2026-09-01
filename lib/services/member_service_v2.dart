@@ -113,14 +113,12 @@ class MemberServiceV2 {
       final hasKeyword = RegExp(r'(回复|评论|提到|通知|系统|赞了|收藏|提醒|关注|好友|主题|购买|充值|任务|注册|订单|经验|积分|星币|升级|留言|打招呼)').hasMatch(body);
       if (view != 'all' && !hasKeyword) continue;
 
-      // 帖子链接（thread / 提醒指向的主题）
       int tid = 0;
       for (final a in li.querySelectorAll('a[href]')) {
         final h = a.attributes['href'] ?? '';
         final m = RegExp(r'(?:thread-|[?&]tid=)(\d+)', caseSensitive: false).firstMatch(h);
         if (m != null) { final v = int.tryParse(m.group(1)!); if (v != null && v > 0) { tid = v; break; } }
       }
-      // 作者 uid（notice_imgs / notice_img 头像、作者链接）
       int uid = 0;
       for (final a in li.querySelectorAll('a[href*="mod=space&uid="],a[href*="mod=space%26uid="],a[href*="?uid="],a[href*="&uid="]')) {
         final m = RegExp(r'(?:[?&]|%3F|%26)uid=(\d+)', caseSensitive: false).firstMatch(a.attributes['href'] ?? '');
@@ -136,7 +134,6 @@ class MemberServiceV2 {
     }
 
     if (result.isEmpty) {
-      // 通用回退：站内私信入口
       for (final a in doc.querySelectorAll('a[href]')) {
         final href = (a.attributes['href'] ?? '').trim();
         if (!_isPmHref(href)) continue;
@@ -280,42 +277,162 @@ class MemberServiceV2 {
     if (cookie == null || cookie.isEmpty) return '请先登录论坛';
     try {
       final client = await NetClient.instance.client;
-      final headers = <String, String>{'User-Agent': NetClient.ua,'Accept': 'text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8','Accept-Language': 'zh-CN,zh;q=0.9','Cache-Control': 'no-cache, no-store','Pragma': 'no-cache',if (cookie.isNotEmpty) 'Cookie': cookie};
+      final headers = <String, String>{
+        'User-Agent': NetClient.ua,
+        'Accept': 'text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8',
+        'Accept-Language': 'zh-CN,zh;q=0.9',
+        'Cache-Control': 'no-cache, no-store',
+        'Pragma': 'no-cache',
+        if (cookie.isNotEmpty) 'Cookie': cookie,
+      };
+
       String? formhash;
       String? referer;
-      for (final path in ['home.php?mod=spacecp&ac=pm&op=send&mobile=2','home.php?mod=space&do=pm&mobile=2','forum.php?mobile=2']) {
+      final now = DateTime.now().millisecondsSinceEpoch.toString();
+      final paths = <String>[
+        'home.php?mod=spacecp&ac=pm&op=send&username=${Uri.encodeQueryComponent(target)}&mobile=2&_ycoo_ts=$now',
+        'home.php?mod=space&do=pm&mobile=2&_ycoo_ts=$now',
+        'forum.php?mobile=2&_ycoo_ts=$now',
+      ];
+
+      for (final path in paths) {
         try {
-          final uri = Uri.parse('$_base$path').replace(queryParameters: {...Uri.parse('$_base$path').queryParameters,'_ycoo_ts': DateTime.now().millisecondsSinceEpoch.toString()});
-          final response = await client.get(uri, headers: headers).timeout(const Duration(seconds: 20));
+          final uri = Uri.parse('$_base$path');
+          final response = await client.get(uri, headers: {
+            ...headers,
+            'Referer': '${_base}home.php?mod=space&do=pm&mobile=2',
+          }).timeout(const Duration(seconds: 20));
+          if (response.statusCode != 200) continue;
           final html = NetClient.decode(response.bodyBytes);
           if (_looksLikeLogin(html)) return '登录态已失效，请重新登录论坛';
           final candidate = _formhashFromHtml(html);
-          if (candidate.isNotEmpty) { formhash = candidate; referer = uri.toString(); break; }
+          if (candidate.isNotEmpty) {
+            formhash = candidate;
+            referer = uri.toString();
+            break;
+          }
         } catch (_) {}
       }
+
       if (formhash == null || formhash.isEmpty) return '未取得私信令牌(formhash)，请刷新登录状态后重试';
-      final sendUri = Uri.parse('$_base/home.php?mod=spacecp&ac=pm&op=send&mobile=2');
-      final response = await client.post(sendUri, headers: {...headers,'Referer': referer ?? '$_base','Origin': _base,'Content-Type': 'application/x-www-form-urlencoded; charset=UTF-8','X-Requested-With': 'XMLHttpRequest'}, body: {'formhash': formhash,'username': target,'message': text,'pmsubmit': 'yes','sendpm': 'true'}).timeout(const Duration(seconds: 20));
-      final body = NetClient.decode(response.bodyBytes);
-      if (_looksLikeSuccess(body)) return null;
-      if (body.contains('请先登录') || body.contains('登录后才能')) return '登录态已失效，请重新登录论坛';
-      if (body.contains('formhash') || body.contains('操作令牌')) return '私信令牌已失效，请刷新登录状态后重试';
-      return _messageFromResponse(body) ?? '私信发送失败，请稍后重试';
-    } catch (_) { return '私信请求失败，请检查网络后重试'; }
+
+      final sendUri = Uri.parse('$_base/home.php').replace(queryParameters: {
+        'mod': 'spacecp',
+        'ac': 'pm',
+        'op': 'send',
+        'mobile': '2',
+        'inajax': '1',
+      });
+      final bodyParams = <String, String>{
+        'formhash': formhash,
+        'username': target,
+        'message': text,
+        'pmsubmit': 'yes',
+        'sendpm': 'true',
+        'inajax': '1',
+      };
+
+      final response = await client.post(
+        sendUri,
+        headers: {
+          ...headers,
+          'Referer': referer ?? '${_base}home.php?mod=space&do=pm&mobile=2',
+          'Origin': _base,
+          'Content-Type': 'application/x-www-form-urlencoded; charset=UTF-8',
+          'X-Requested-With': 'XMLHttpRequest',
+        },
+        body: bodyParams,
+      ).timeout(const Duration(seconds: 20));
+      final responseBody = NetClient.decode(response.bodyBytes);
+      if (_looksLikeSuccess(responseBody)) return null;
+      if (_looksLikeLogin(responseBody)) return '登录态已失效，请重新登录论坛';
+      if (_looksLikeTokenError(responseBody)) {
+        // 只在服务器明确返回令牌错误时刷新一次，避免重复发送消息。
+        final fresh = await _fetchFreshFormhash(client, headers, target);
+        if (fresh != null && fresh.isNotEmpty && fresh != formhash) {
+          bodyParams['formhash'] = fresh;
+          final retry = await client.post(
+            sendUri,
+            headers: {
+              ...headers,
+              'Referer': referer ?? '${_base}home.php?mod=space&do=pm&mobile=2',
+              'Origin': _base,
+              'Content-Type': 'application/x-www-form-urlencoded; charset=UTF-8',
+              'X-Requested-With': 'XMLHttpRequest',
+            },
+            body: bodyParams,
+          ).timeout(const Duration(seconds: 20));
+          final retryBody = NetClient.decode(retry.bodyBytes);
+          if (_looksLikeSuccess(retryBody)) return null;
+          if (_looksLikeLogin(retryBody)) return '登录态已失效，请重新登录论坛';
+          return _messageFromResponse(retryBody) ?? '私信发送失败，请稍后重试';
+        }
+        return '私信令牌已失效，请刷新登录状态后重试';
+      }
+      return _messageFromResponse(responseBody) ?? '私信发送失败，请稍后重试';
+    } catch (_) {
+      return '私信请求失败，请检查网络后重试';
+    }
+  }
+
+  Future<String?> _fetchFreshFormhash(dynamic client, Map<String, String> headers, String target) async {
+    try {
+      final uri = Uri.parse('$_base/home.php').replace(queryParameters: {
+        'mod': 'spacecp',
+        'ac': 'pm',
+        'op': 'send',
+        'username': target,
+        'mobile': '2',
+        '_ycoo_ts': DateTime.now().millisecondsSinceEpoch.toString(),
+      });
+      final response = await client.get(uri, headers: headers).timeout(const Duration(seconds: 20));
+      if (response.statusCode != 200) return null;
+      return _formhashFromHtml(NetClient.decode(response.bodyBytes));
+    } catch (_) {
+      return null;
+    }
   }
 
   static String _formhashFromHtml(String html) {
-    final doc = parser.parse(html);
-    final input = doc.querySelector('input[name="formhash"]');
-    final v = (input?.attributes['value'] ?? '').trim();
-    if (v.isNotEmpty) return v;
-    final m = RegExp(r'''(?:formhash|formHash)\s*[:=]\s*["']([A-Za-z0-9_-]{6,64})["']''', caseSensitive: false).firstMatch(html);
-    return m?.group(1)?.trim() ?? '';
+    final inputRe = RegExp(r'<input\b[^>]*>', caseSensitive: false);
+    final nameFirst = RegExp(r'''name\s*=\s*["']formhash["'][^>]*value\s*=\s*["']([^"']+)["']''', caseSensitive: false);
+    final valueFirst = RegExp(r'''value\s*=\s*["']([^"']+)["'][^>]*name\s*=\s*["']formhash["']''', caseSensitive: false);
+    for (final match in inputRe.allMatches(html)) {
+      final tag = match.group(0)!;
+      final a = nameFirst.firstMatch(tag)?.group(1)?.trim();
+      if (a != null && _validFormhash(a)) return a;
+      final b = valueFirst.firstMatch(tag)?.group(1)?.trim();
+      if (b != null && _validFormhash(b)) return b;
+    }
+
+    for (final pattern in <RegExp>[
+      RegExp(r'''(?:formhash|formHash)\s*[:=]\s*["']([A-Za-z0-9_-]{6,128})["']''', caseSensitive: false),
+      RegExp(r'''["']formhash["']\s*[,=:]\s*["']([A-Za-z0-9_-]{6,128})["']''', caseSensitive: false),
+      RegExp(r'''(?:data-formhash|data-formHash)\s*=\s*["']([A-Za-z0-9_-]{6,128})["']''', caseSensitive: false),
+    ]) {
+      final value = pattern.firstMatch(html)?.group(1)?.trim();
+      if (value != null && _validFormhash(value)) return value;
+    }
+    return '';
   }
 
+  static bool _validFormhash(String value) => RegExp(r'^[A-Za-z0-9_-]{6,128}$').hasMatch(value);
+
+  static bool _looksLikeTokenError(String body) =>
+      body.contains('formhash') || body.contains('操作令牌') || body.contains('请求令牌') || body.contains('token');
+
   static String? _messageFromResponse(String body) {
-    final match = RegExp(r'''showError\(\s*['"]([^'"]+)['"]''').firstMatch(body);
-    return match?.group(1)?.trim();
+    final cdata = RegExp(r'<!\[CDATA\[(.*?)\]\]>', dotAll: true).firstMatch(body)?.group(1);
+    final source = (cdata ?? body)
+        .replaceAll(RegExp(r'<script\b[^>]*>.*?</script>', caseSensitive: false, dotAll: true), ' ')
+        .replaceAll(RegExp(r'<[^>]+>'), ' ')
+        .replaceAll(RegExp(r'\s+'), ' ')
+        .trim();
+    if (source.isNotEmpty && source.length <= 160 && (source.contains('私信') || source.contains('消息') || source.contains('用户') || source.contains('权限') || source.contains('登录') || source.contains('失败'))) {
+      return source;
+    }
+    final showError = RegExp(r'''showError\(\s*["']([^"']+)["']''').firstMatch(body)?.group(1)?.trim();
+    return showError?.isNotEmpty == true ? showError : null;
   }
 
   static bool _looksLikeSuccess(String body) => body.contains('succeed') || body.contains('do_success') || body.contains('发送成功') || body.contains('操作成功');
