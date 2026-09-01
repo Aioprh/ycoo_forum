@@ -6,8 +6,11 @@ import 'package:html/dom.dart' as dom;
 import '../services/site_config.dart';
 
 /// Native Flutter renderer for forum post HTML.
-/// The widget participates in Flutter's normal layout, so its height follows
-/// the actual content instead of a WebView measurement.
+///
+/// Discuz/Comiis 帖子里的图片并不一定把真实地址放在 src：
+/// 常见情况包括 lazy-src / data-src / file / original / srcset，
+/// 或者 src 只是站点的占位图。这里统一提取真实资源地址并解析相对 URL，
+/// 避免正文文字正常而图片全部空白。
 class NativePostContent extends StatelessWidget {
   final String html;
   final ValueChanged<String>? onLinkTap;
@@ -23,9 +26,6 @@ class NativePostContent extends StatelessWidget {
         .where((node) => node is! dom.Text || _nodeText(node).trim().isNotEmpty)
         .toList();
 
-    // SelectionArea 负责整篇正文的统一选择。
-    // 相比给每个段落单独套 SelectableText，可以连续跨段落拖动选择，
-    // 长按后直接使用系统的复制/全选菜单，体验更接近原生阅读 App。
     return SelectionArea(
       child: _NodeList(nodes: nodes, onLinkTap: onLinkTap),
     );
@@ -89,10 +89,9 @@ class _NodeWidget extends StatelessWidget {
       case 'code':
         return _InlineCode(text: e.text);
       case 'img':
-        final rawSrc = e.attributes['src']?.trim() ?? '';
-        final src = _resolveUrl(rawSrc);
+        final src = _imageUrl(e);
         return src.isEmpty
-            ? const SizedBox.shrink()
+            ? _missingImage(context, e.attributes['alt'])
             : _ImageBlock(src: src, alt: e.attributes['alt']);
       case 'hr':
         return const Padding(
@@ -118,6 +117,15 @@ class _NodeWidget extends StatelessWidget {
         return _Block(child: _InlineContent(e.nodes, onLinkTap: onLinkTap));
     }
   }
+
+  Widget _missingImage(BuildContext context, String? alt) {
+    final text = alt?.trim();
+    if (text == null || text.isEmpty) return const SizedBox.shrink();
+    return Padding(
+      padding: const EdgeInsets.only(bottom: 14),
+      child: Text(text, style: TextStyle(color: Theme.of(context).colorScheme.onSurfaceVariant)),
+    );
+  }
 }
 
 class _Block extends StatelessWidget {
@@ -130,7 +138,7 @@ class _Block extends StatelessWidget {
 
 class _Paragraph extends StatelessWidget {
   final String text;
-  const _Paragraph({required this.text});
+  const _Paragraph(this.text);
   @override
   Widget build(BuildContext context) => Padding(
     padding: const EdgeInsets.only(bottom: 11),
@@ -154,11 +162,7 @@ class _Heading extends StatelessWidget {
     return Padding(
       padding: const EdgeInsets.only(top: 7, bottom: 10),
       child: DefaultTextStyle.merge(
-        style: TextStyle(
-          fontSize: size,
-          height: 1.35,
-          fontWeight: FontWeight.w800,
-        ),
+        style: TextStyle(fontSize: size, height: 1.35, fontWeight: FontWeight.w800),
         child: _InlineContent(children, onLinkTap: onLinkTap),
       ),
     );
@@ -172,24 +176,31 @@ class _InlineContent extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    final children = <Widget>[];
     final spans = <InlineSpan>[];
     for (final node in nodes) {
+      if (node is dom.Element && node.localName?.toLowerCase() == 'img') {
+        if (spans.isNotEmpty) {
+          children.add(Text.rich(TextSpan(style: DefaultTextStyle.of(context).style, children: spans)));
+          spans.clear();
+        }
+        final src = _imageUrl(node);
+        if (src.isNotEmpty) children.add(_ImageBlock(src: src, alt: node.attributes['alt']));
+        continue;
+      }
       _appendSpan(
         spans,
         node,
         DefaultTextStyle.of(context).style.copyWith(fontSize: 16, height: 1.62),
       );
     }
-
-    // 使用 Text.rich 而不是裸 RichText，让 SelectionArea 可以更稳定地
-    // 将富文本纳入统一的文本选择体系，同时保留粗体、斜体、链接等样式。
-    return Text.rich(
-      TextSpan(
-        style: DefaultTextStyle.of(context).style,
-        children: spans,
-      ),
-      selectionColor: Theme.of(context).colorScheme.primary.withValues(alpha: .22),
-    );
+    if (spans.isNotEmpty) {
+      children.add(Text.rich(
+        TextSpan(style: DefaultTextStyle.of(context).style, children: spans),
+        selectionColor: Theme.of(context).colorScheme.primary.withValues(alpha: .22),
+      ));
+    }
+    return Column(crossAxisAlignment: CrossAxisAlignment.start, children: children);
   }
 
   void _appendSpan(List<InlineSpan> spans, dom.Node node, TextStyle style) {
@@ -201,32 +212,22 @@ class _InlineContent extends StatelessWidget {
     if (node is! dom.Element) return;
     final e = node as dom.Element;
     final tag = e.localName?.toLowerCase() ?? '';
+    if (tag == 'img') return;
     var next = style;
-    if (tag == 'strong' || tag == 'b')
-      next = style.copyWith(fontWeight: FontWeight.w800);
-    if (tag == 'em' || tag == 'i')
-      next = style.copyWith(fontStyle: FontStyle.italic);
-    if (tag == 'del' || tag == 's')
-      next = style.copyWith(decoration: TextDecoration.lineThrough);
-    if (tag == 'code')
-      next = style.copyWith(
-        fontFamily: 'monospace',
-        backgroundColor: const Color(0xfff0f2f6),
-      );
+    if (tag == 'strong' || tag == 'b') next = style.copyWith(fontWeight: FontWeight.w800);
+    if (tag == 'em' || tag == 'i') next = style.copyWith(fontStyle: FontStyle.italic);
+    if (tag == 'del' || tag == 's') next = style.copyWith(decoration: TextDecoration.lineThrough);
+    if (tag == 'code') {
+      next = style.copyWith(fontFamily: 'monospace', backgroundColor: const Color(0xfff0f2f6));
+    }
     if (tag == 'a') {
       final href = e.attributes['href']?.trim() ?? '';
-      final recognizer = TapGestureRecognizer()
-        ..onTap = () => onLinkTap?.call(href);
-      spans.add(
-        TextSpan(
-          text: e.text,
-          style: style.copyWith(
-            color: const Color(0xff4d63d8),
-            decoration: TextDecoration.underline,
-          ),
-          recognizer: recognizer,
-        ),
-      );
+      final recognizer = TapGestureRecognizer()..onTap = () => onLinkTap?.call(href);
+      spans.add(TextSpan(
+        text: e.text,
+        style: style.copyWith(color: const Color(0xff4d63d8), decoration: TextDecoration.underline),
+        recognizer: recognizer,
+      ));
       return;
     }
     if (tag == 'br') {
@@ -235,6 +236,90 @@ class _InlineContent extends StatelessWidget {
     }
     for (final child in e.nodes) _appendSpan(spans, child, next);
   }
+}
+
+/// 提取论坛常见的懒加载图片地址。
+/// 优先使用真实地址属性，避免把 placeholder.gif 当成正文图片。
+String _imageUrl(dom.Element e) {
+  const candidates = <String>[
+    'data-src',
+    'data-original',
+    'data-url',
+    'lazy-src',
+    'original',
+    'file',
+    'zoomfile',
+    'src',
+  ];
+
+  String normalize(String value) {
+    var v = value.trim();
+    if (v.isEmpty) return '';
+    if (v.startsWith('data:')) return '';
+    // srcset 中取第一张有效图片。
+    if (v.contains(',')) v = v.split(',').first.trim().split(RegExp(r'\s+')).first;
+    if (v.startsWith('//')) return 'https:$v';
+    return SiteConfig.resolveCdn(v);
+  }
+
+  for (final key in candidates) {
+    final value = e.attributes[key];
+    if (value == null || value.trim().isEmpty) continue;
+    final url = normalize(value);
+    if (url.isNotEmpty && !_looksLikePlaceholder(url)) return url;
+  }
+
+  final srcset = e.attributes['srcset'];
+  if (srcset != null) {
+    final url = normalize(srcset);
+    if (url.isNotEmpty && !_looksLikePlaceholder(url)) return url;
+  }
+  return '';
+}
+
+bool _looksLikePlaceholder(String url) {
+  final s = url.toLowerCase();
+  return s.contains('none.gif') ||
+      s.contains('loading.gif') ||
+      s.contains('lazyload') ||
+      s.contains('placeholder') ||
+      s.endsWith('/spacer.gif');
+}
+
+class _ImageBlock extends StatelessWidget {
+  final String src;
+  final String? alt;
+  const _ImageBlock({required this.src, this.alt});
+
+  @override
+  Widget build(BuildContext context) => Padding(
+    padding: const EdgeInsets.only(bottom: 14),
+    child: ClipRRect(
+      borderRadius: BorderRadius.circular(14),
+      child: Image.network(
+        src,
+        width: double.infinity,
+        fit: BoxFit.contain,
+        headers: const {
+          'Accept': 'image/avif,image/webp,image/apng,image/svg+xml,image/*,*/*;q=0.8',
+        },
+        errorBuilder: (_, __, ___) => Container(
+          width: double.infinity,
+          constraints: const BoxConstraints(minHeight: 48),
+          alignment: Alignment.centerLeft,
+          padding: const EdgeInsets.all(14),
+          color: Theme.of(context).colorScheme.surfaceContainerHighest,
+          child: Text(alt?.isNotEmpty == true ? alt! : '图片加载失败\n$src'),
+        ),
+        loadingBuilder: (context, child, progress) => progress == null
+            ? child
+            : const Padding(
+                padding: EdgeInsets.all(24),
+                child: Center(child: CircularProgressIndicator(strokeWidth: 2)),
+              ),
+      ),
+    ),
+  );
 }
 
 class _Quote extends StatelessWidget {
@@ -250,10 +335,7 @@ class _Quote extends StatelessWidget {
       padding: const EdgeInsets.fromLTRB(14, 11, 14, 2),
       decoration: BoxDecoration(
         color: c.primaryContainer.withValues(alpha: .34),
-        borderRadius: const BorderRadius.only(
-          topRight: Radius.circular(14),
-          bottomRight: Radius.circular(14),
-        ),
+        borderRadius: const BorderRadius.only(topRight: Radius.circular(14), bottomRight: Radius.circular(14)),
         border: Border(left: BorderSide(color: c.primary, width: 3)),
       ),
       child: _NodeList(nodes: children, onLinkTap: onLinkTap),
@@ -265,16 +347,10 @@ class _ListBlock extends StatelessWidget {
   final dom.Element element;
   final bool ordered;
   final ValueChanged<String>? onLinkTap;
-  const _ListBlock({
-    required this.element,
-    required this.ordered,
-    this.onLinkTap,
-  });
+  const _ListBlock({required this.element, required this.ordered, this.onLinkTap});
   @override
   Widget build(BuildContext context) {
-    final items = element.children
-        .where((e) => e.localName?.toLowerCase() == 'li')
-        .toList();
+    final items = element.children.where((e) => e.localName?.toLowerCase() == 'li').toList();
     return Padding(
       padding: const EdgeInsets.only(bottom: 10),
       child: Column(
@@ -283,16 +359,8 @@ class _ListBlock extends StatelessWidget {
             Row(
               crossAxisAlignment: CrossAxisAlignment.start,
               children: [
-                SizedBox(
-                  width: 25,
-                  child: Text(
-                    ordered ? '${i + 1}.' : '•',
-                    style: const TextStyle(fontSize: 16, height: 1.62),
-                  ),
-                ),
-                Expanded(
-                  child: _InlineContent(items[i].nodes, onLinkTap: onLinkTap),
-                ),
+                SizedBox(width: 25, child: Text(ordered ? '${i + 1}.' : '•', style: const TextStyle(fontSize: 16, height: 1.62))),
+                Expanded(child: _InlineContent(items[i].nodes, onLinkTap: onLinkTap)),
               ],
             ),
         ],
@@ -309,20 +377,10 @@ class _CodeBlock extends StatelessWidget {
     width: double.infinity,
     margin: const EdgeInsets.only(bottom: 13),
     padding: const EdgeInsets.all(14),
-    decoration: BoxDecoration(
-      color: Theme.of(context).colorScheme.surfaceContainerHighest,
-      borderRadius: BorderRadius.circular(14),
-    ),
+    decoration: BoxDecoration(color: Theme.of(context).colorScheme.surfaceContainerHighest, borderRadius: BorderRadius.circular(14)),
     child: SingleChildScrollView(
       scrollDirection: Axis.horizontal,
-      child: SelectableText(
-        text,
-        style: const TextStyle(
-          fontFamily: 'monospace',
-          fontSize: 13.5,
-          height: 1.55,
-        ),
-      ),
+      child: SelectableText(text, style: const TextStyle(fontFamily: 'monospace', fontSize: 13.5, height: 1.55)),
     ),
   );
 }
@@ -333,47 +391,8 @@ class _InlineCode extends StatelessWidget {
   @override
   Widget build(BuildContext context) => Container(
     padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 2),
-    decoration: BoxDecoration(
-      color: Theme.of(context).colorScheme.surfaceContainerHighest,
-      borderRadius: BorderRadius.circular(6),
-    ),
-    child: Text(
-      text,
-      style: const TextStyle(fontFamily: 'monospace', fontSize: 14),
-    ),
-  );
-}
-
-String _resolveUrl(String value) {
-  return SiteConfig.resolve(value);
-}
-
-class _ImageBlock extends StatelessWidget {
-  final String src;
-  final String? alt;
-  const _ImageBlock({required this.src, this.alt});
-  @override
-  Widget build(BuildContext context) => Padding(
-    padding: const EdgeInsets.only(bottom: 14),
-    child: ClipRRect(
-      borderRadius: BorderRadius.circular(14),
-      child: Image.network(
-        src,
-        width: double.infinity,
-        fit: BoxFit.contain,
-        errorBuilder: (_, __, ___) => Container(
-          padding: const EdgeInsets.all(14),
-          color: Theme.of(context).colorScheme.surfaceContainerHighest,
-          child: Text(alt?.isNotEmpty == true ? alt! : '图片加载失败'),
-        ),
-        loadingBuilder: (context, child, progress) => progress == null
-            ? child
-            : const Padding(
-                padding: EdgeInsets.all(24),
-                child: Center(child: CircularProgressIndicator(strokeWidth: 2)),
-              ),
-      ),
-    ),
+    decoration: BoxDecoration(color: Theme.of(context).colorScheme.surfaceContainerHighest, borderRadius: BorderRadius.circular(6)),
+    child: Text(text, style: const TextStyle(fontFamily: 'monospace', fontSize: 14)),
   );
 }
 
@@ -391,20 +410,13 @@ class _TableBlock extends StatelessWidget {
         scrollDirection: Axis.horizontal,
         child: Table(
           defaultColumnWidth: const IntrinsicColumnWidth(),
-          border: TableBorder.all(
-            color: Theme.of(context).colorScheme.outlineVariant,
-          ),
+          border: TableBorder.all(color: Theme.of(context).colorScheme.outlineVariant),
           children: [
             for (final row in rows)
               TableRow(
                 children: [
-                  for (final cell in row.children.where(
-                    (e) => e.localName == 'td' || e.localName == 'th',
-                  ))
-                    Padding(
-                      padding: const EdgeInsets.all(8),
-                      child: _InlineContent(cell.nodes, onLinkTap: onLinkTap),
-                    ),
+                  for (final cell in row.children.where((e) => e.localName == 'td' || e.localName == 'th'))
+                    Padding(padding: const EdgeInsets.all(8), child: _InlineContent(cell.nodes, onLinkTap: onLinkTap)),
                 ],
               ),
           ],
