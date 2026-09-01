@@ -278,7 +278,12 @@ class AuthService {
   }
 
   bool _isGuestPage(String body) => body.contains('请登录') && !body.contains('退出') && !body.contains('退出登录');
-  String _cleanText(String value) => value.replaceAll(RegExp(r'\s+'), ' ').trim();
+  String _cleanText(String value) {
+    var t = value.replaceAll(RegExp(r'\s+'), ' ').trim();
+    // 剔除开头独立粘连的图标残留数字(源站图标字体被剥离后残留的等级/角标数字)。
+    t = t.replaceFirst(RegExp(r'^\d+\s+'), '').trim();
+    return t;
+  }
   String _absoluteUrl(String value) {
     if (value.startsWith('//')) return 'https:$value';
     if (value.startsWith('http://') || value.startsWith('https://')) return value;

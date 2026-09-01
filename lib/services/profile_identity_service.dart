@@ -117,6 +117,8 @@ class ProfileIdentityService {
   String? _stripAccountMeta(String? value, {String? level, String? rank, int? points}) {
     if (value == null) return null;
     var text = _clean(value);
+    // 先剔除昵称开头独立粘连的图标残留数字(源站 Comiis 模板图标字体被剥离后残留的等级/角标数字)。
+    text = text.replaceFirst(RegExp(r'^\d+\s*'), '').trim();
     final metaStart = RegExp(r'Lv\.?\s*\d+', caseSensitive: false).firstMatch(text);
     if (metaStart != null) {
       text = text.substring(0, metaStart.start).trim();

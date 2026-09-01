@@ -181,6 +181,8 @@ class _ProfilePageState extends State<ProfilePage> {
     text = text.replaceAll(RegExp(r'Lv\.?\s*\d+', caseSensitive: false), ' ');
     text = text.replaceAll(RegExp(r'(?:管理员|版主|实习|超级版主|童生|秀才|举人|进士|探花|榜眼|状元|九品|八品|七品|六品|五品|四品|三品|二品|一品|新人|元老|新手上路|正式|核心|VIP|会员|用户组)\s*'), ' ');
     text = text.replaceAll(RegExp(r'\s+'), ' ').trim();
+    // 剔除昵称开头独立粘连的图标残留数字(源站 Comiis 模板图标字体被剥离后残留的等级/角标数字, 非昵称本身)
+    text = text.replaceFirst(RegExp(r'^\d+\s+'), '').trim();
     return text.isEmpty ? '用户' : text;
   }
 
