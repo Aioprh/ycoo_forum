@@ -7,7 +7,6 @@ import '../services/site_config.dart';
 import '../utils/forum_text.dart';
 import '../widgets/native_icon_style.dart';
 import 'detail_page.dart';
-import 'native_chat_page.dart';
 import 'native_message_list_page.dart';
 import 'webview_page.dart';
 
@@ -42,27 +41,8 @@ class _MemberFeaturePageState extends State<MemberFeaturePage> {
     }
   }
   Future<void> _refresh() async { setState(() => _future = _load()); await _future; }
-  Future<void> _openSendPm() async {
-    final toCtrl = TextEditingController(); final msgCtrl = TextEditingController();
-    final ok = await showDialog<bool>(context: context, builder: (dialogContext) => AlertDialog(
-      title: const Text('发送私信'),
-      content: Column(mainAxisSize: MainAxisSize.min, children: [
-        TextField(controller: toCtrl, autofocus: true, decoration: const InputDecoration(labelText: '收件人用户名', prefixIcon: Icon(Icons.person_outline_rounded))),
-        const SizedBox(height: 12),
-        TextField(controller: msgCtrl, minLines: 2, maxLines: 5, decoration: const InputDecoration(labelText: '私信内容', prefixIcon: Icon(Icons.chat_bubble_outline_rounded), alignLabelWithHint: true)),
-      ]),
-      actions: [TextButton(onPressed: () => Navigator.pop(dialogContext, false), child: const Text('取消')), FilledButton.icon(onPressed: () => Navigator.pop(dialogContext, true), icon: const Icon(Icons.send_rounded), label: const Text('发送'))],
-    )) ?? false;
-    if (!ok || !mounted) { toCtrl.dispose(); msgCtrl.dispose(); return; }
-    final error = await MemberServiceV2.instance.sendMessage(to: toCtrl.text, message: msgCtrl.text);
-    toCtrl.dispose(); msgCtrl.dispose();
-    if (!mounted) return;
-    ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text(forumText(error ?? '私信已发送')), behavior: SnackBarBehavior.floating));
-    if (error == null) await _refresh();
-  }
   @override
   Widget build(BuildContext context) {
-    // 私信必须进入“联系人会话列表”，不能把 Discuz 的私信入口页面当成消息列表。
     if (widget.type == MemberFeatureType.messages) return const NativeMessageListPage();
     return Scaffold(
       backgroundColor: Theme.of(context).colorScheme.surfaceContainerLowest,
@@ -122,7 +102,7 @@ class _ThreadList extends StatelessWidget {
     if (items.isEmpty) return const _EmptyState(title: '暂无帖子', subtitle: '这里还没有相关主题');
     return ListView.separated(padding: const EdgeInsets.all(14), itemCount: items.length, separatorBuilder: (_, __) => const SizedBox(height: 8), itemBuilder: (context, i) {
       final item = items[i];
-      return Card(clipBehavior: Clip.antiAlias, child: ListTile(title: Text(forumText(item.title), maxLines: 2, overflow: TextOverflow.ellipsis, style: const TextStyle(fontWeight: FontWeight.w700)), subtitle: Text(item.boardName.isEmpty ? '主题 #${item.tid}' : forumText(item.boardName)), trailing: const Icon(Icons.chevron_right_rounded), onTap: () => Navigator.of(context).push(MaterialPageRoute(builder: (_) => DetailPage(tid: item.tid, title: forumText(item.title)))));
+      return Card(clipBehavior: Clip.antiAlias, child: ListTile(title: Text(forumText(item.title), maxLines: 2, overflow: TextOverflow.ellipsis, style: const TextStyle(fontWeight: FontWeight.w700)), subtitle: Text(item.boardName.isEmpty ? '主题 #${item.tid}' : forumText(item.boardName)), trailing: const Icon(Icons.chevron_right_rounded), onTap: () => Navigator.of(context).push(MaterialPageRoute(builder: (_) => DetailPage(tid: item.tid, title: forumText(item.title))))));
     });
   }
 }
