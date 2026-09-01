@@ -30,17 +30,41 @@ class _NativeNoticeListPageState extends State<NativeNoticeListPage> {
     await _future;
   }
 
-  String? _actionUrl(String href) {
+  Uri? _actionUri(String href) {
     final raw = href.trim();
     if (raw.isEmpty || raw.startsWith('#') || raw.toLowerCase().startsWith('javascript:')) return null;
-    final uri = Uri.tryParse(raw);
+    final base = Uri.parse(SiteConfig.base);
+    Uri? uri;
+    try {
+      uri = base.resolve(raw);
+    } catch (_) {
+      uri = Uri.tryParse(raw);
+    }
     if (uri == null) return null;
     if (uri.hasScheme && uri.scheme != 'http' && uri.scheme != 'https') return null;
-    if (uri.hasScheme) return uri.toString();
-    final base = Uri.parse(SiteConfig.base);
-    if (raw.startsWith('/')) return base.replace(path: raw).toString();
-    final basePath = base.path.endsWith('/') ? base.path : '${base.path}/';
-    return base.replace(path: '$basePath$raw').toString();
+
+    // 老 Discuz 的 space.php 个人空间链接在当前站点已经迁移到 home.php。
+    // 保留 query 参数，避免通知中的旧链接直接落到 404。
+    if (uri.path.toLowerCase().endsWith('/space.php')) {
+      uri = uri.replace(path: '/home.php', queryParameters: {
+        'mod': uri.queryParameters['mod'] ?? 'space',
+        ...uri.queryParameters,
+      });
+    }
+    // 某些通知只返回 ?mod=space...，Uri.resolve 会落到站点根路径；
+    // Discuz 个人空间实际入口是 home.php。
+    if ((uri.path.isEmpty || uri.path == '/') && uri.queryParameters.containsKey('mod')) {
+      uri = uri.replace(path: '/home.php');
+    }
+    return uri;
+  }
+
+  int _uidFromUri(Uri uri) {
+    final value = int.tryParse(uri.queryParameters['uid'] ?? '');
+    if (value != null && value > 0) return value;
+    final decoded = Uri.decodeFull(uri.toString());
+    final match = RegExp(r'(?:[?&]|%3F|%26)uid(?:=|%3D)(\d+)', caseSensitive: false).firstMatch(decoded);
+    return int.tryParse(match?.group(1) ?? '') ?? 0;
   }
 
   Future<void> _open(NativeNotice item) async {
@@ -49,13 +73,26 @@ class _NativeNoticeListPageState extends State<NativeNoticeListPage> {
       await Navigator.push(context, MaterialPageRoute(builder: (_) => DetailPage(tid: item.tid, title: forumText(item.title))));
       return;
     }
-    if (item.uid > 0) {
-      await Navigator.push(context, MaterialPageRoute(builder: (_) => NativeProfilePage(uid: item.uid, username: '')));
+
+    final uri = _actionUri(item.href);
+    final uid = item.uid > 0 ? item.uid : (uri == null ? 0 : _uidFromUri(uri));
+    final params = uri?.queryParameters ?? const <String, String>{};
+    final mod = (params['mod'] ?? '').toLowerCase();
+    final action = (params['ac'] ?? '').toLowerCase();
+    final doAction = (params['do'] ?? '').toLowerCase();
+
+    // 个人空间相关通知优先进入原生个人主页，避免旧的 space.php / 特殊移动链接出现 404。
+    if (uid > 0 && (mod == 'space' || mod == 'spacecp' || doAction == 'profile' || doAction == 'thread' || doAction == 'wall' || action == 'poke')) {
+      await Navigator.push(context, MaterialPageRoute(builder: (_) => NativeProfilePage(uid: uid, username: '')));
       return;
     }
-    final url = _actionUrl(item.href);
-    if (url != null) {
-      await Navigator.push(context, MaterialPageRoute(builder: (_) => WebViewPage(url: url, title: forumText(item.title))));
+    if (uid > 0) {
+      await Navigator.push(context, MaterialPageRoute(builder: (_) => NativeProfilePage(uid: uid, username: '')));
+      return;
+    }
+
+    if (uri != null) {
+      await Navigator.push(context, MaterialPageRoute(builder: (_) => WebViewPage(url: uri.toString(), title: forumText(item.title))));
       return;
     }
     _details(item);
