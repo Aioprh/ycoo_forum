@@ -55,8 +55,6 @@ class _NativeMessageListPageState extends State<NativeMessageListPage> {
       final result = <_Pm>[];
       final seen = <int>{};
 
-      // 关键：只把“带 touid/pmid/subop=view 的私信会话链接”作为会话，
-      // 不把“站内私信/查看全部私人消息”等功能入口当成聊天对象。
       for (final link in doc.querySelectorAll('a[href]')) {
         final href = (link.attributes['href'] ?? '').trim();
         if (!isConversation(href)) continue;
@@ -153,7 +151,7 @@ class _NativeMessageListPageState extends State<NativeMessageListPage> {
                   trailing: Text(item.time, style: TextStyle(fontSize: 11, color: scheme.onSurfaceVariant)),
                   onTap: () => Navigator.of(context).push(MaterialPageRoute(builder: (_) => NativeChatPage(uid: item.uid, username: item.name))),
                 );
-              })),
+              }))),
       ]),
     );
   }
