@@ -428,7 +428,7 @@ class _ImageBlock extends StatelessWidget {
                       ),
                       const SizedBox(width: 4),
                       Text(
-                        '点击下载图片',
+                        '点击查看大图',
                         style: TextStyle(
                           fontSize: 12.5,
                           color: Theme.of(context).colorScheme.primary,

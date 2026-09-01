@@ -9,6 +9,7 @@ import '../services/auth_service.dart';
 import '../services/attachment_download_service.dart';
 import '../services/thread_interaction_service.dart';
 import '../widgets/native_comment_list.dart';
+import '../widgets/native_image_viewer.dart';
 import '../widgets/resolved_user_avatar.dart';
 import '../services/comment_profile_resolver.dart';
 import 'native_profile_page.dart';
@@ -422,10 +423,15 @@ class _DetailPageState extends State<DetailPage> {
       _snack('链接格式无效');
       return;
     }
-    final attachment = AttachmentDownloadService.instance
-            .isAttachmentUrl(uri.toString()) ||
-        _isImageFileUrl(uri);
-    if (attachment) {
+    // 正文图片: 打开大图预览页, 支持双指缩放与保存下载。
+    if (_isImageFileUrl(uri) &&
+        !AttachmentDownloadService.instance.isAttachmentUrl(uri.toString())) {
+      if (!mounted) return;
+      await openImageViewer(context, url: uri.toString());
+      return;
+    }
+    // 文件附件(attachment.php、/attachment/ 等): 直接原生下载。
+    if (AttachmentDownloadService.instance.isAttachmentUrl(uri.toString())) {
       if (!_loggedIn) {
         if (mounted) await _login();
         return;
