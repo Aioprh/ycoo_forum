@@ -361,7 +361,7 @@ class ApiService {
     final out = <String>[];
     final postNodes = doc.querySelectorAll('.comiis_postli, #postlist .plhin, #postlist .plc, #postlist > div[id^="post_"], div[id^="postmessage_"]');
     for (final post in postNodes) {
-      dom.Element? content = post.querySelector('.comiis_message_table');
+      dom.Element? content = post.querySelector('.comiis_aimg_show, .comiis_messages, .comiis_message_table');
       content ??= post.querySelector('.t_f, .pcb, .comiis_postcontent, .comiis_message, .message, .postmessage, [id^="postmessage_"]');
       if (content == null && post.localName == 'div' && (post.id.startsWith('postmessage_') || post.id.startsWith('post_'))) content = post;
       if (content == null) continue;
@@ -375,7 +375,7 @@ class ApiService {
       out.add('<div class="post-card"><div class="post-hd"><span class="p-floor">$displayFloor</span>${author.isEmpty ? '' : '<b class="p-author">$author</b>'}${level.isEmpty ? '' : '<span class="p-level">$level</span>'}</div>${time.isEmpty ? '' : '<div class="p-time">$time</div>'}<div class="p-body">${_cleanPostHtml(html)}</div></div>');
     }
     if (out.isNotEmpty) return out;
-    for (final selector in ['.comiis_message_table', '.t_f', '.pcb', '.postmessage', '[id^="postmessage_"]']) {
+    for (final selector in ['.comiis_aimg_show', '.comiis_message_table', '.t_f', '.pcb', '.postmessage', '[id^="postmessage_"]']) {
       for (final t in doc.querySelectorAll(selector)) {
         final html = t.innerHtml.trim();
         if (html.isNotEmpty) out.add('<div class="post-card"><div class="p-body">${_cleanPostHtml(html)}</div></div>');
