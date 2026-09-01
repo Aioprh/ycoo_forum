@@ -107,7 +107,7 @@ class _NativeMessageListPageState extends State<NativeMessageListPage> {
 
   static int getUid(String href) {
     for (final key in const ['touid', 'uid']) {
-      final match = RegExp('[?&]$key=(\\d+)', caseSensitive: false).firstMatch(href);
+      final match = RegExp(r'[?&]' + key + r'=(\d+)', caseSensitive: false).firstMatch(href);
       final value = int.tryParse(match?.group(1) ?? '');
       if (value != null && value > 0) return value;
     }
