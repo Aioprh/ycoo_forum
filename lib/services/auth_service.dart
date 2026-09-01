@@ -347,9 +347,28 @@ class AuthService {
       final url = '${base}forum.php?mod=post&action=reply&fid=$fid&tid=$tid&extra=$extra&$replyParam&replysubmit=yes&mobile=2';
       final resp = await client.post(Uri.parse(url), headers: {..._headers(referer: '${base}thread-$tid-1-1.html'), 'Content-Type': 'application/x-www-form-urlencoded; charset=UTF-8', 'Origin': base, 'X-Requested-With': 'XMLHttpRequest'}, body: <String, String>{'formhash': formhash, 'noticeauthor': noticeauthor, 'message': text, 'replysubmit': '回复', 'listextra': extra, if (replyPid != null && replyPid > 0) 'repquote': '$replyPid'}).timeout(NetClient.timeout);
       final body = NetClient.decode(resp.bodyBytes);
-      if (body.contains(text) || body.contains('succeed') || body.contains('成功')) return null;
-      if (body.contains('登录')) return '请先登录后回帖';
-      if (body.contains('formhash')) return '回帖令牌已失效，请刷新后重试';
+      // 先精确命中 Discuz 成功标识 (inajax 响应的 succeedhandle_* / redirect 跳转)
+      final success = body.contains('succeedhandle_') ||
+          body.contains('do_success') ||
+          body.contains('回复成功') ||
+          body.contains('发表回复完成') ||
+          body.contains('location.href') && (body.contains('tid=$tid') || body.contains('thread-$tid')) ||
+          resp.statusCode == 200 && (body.contains('succeed') && !body.contains('errorhandle_'));
+      if (success) return null;
+      // 只有明确的未登录 / 登录入口跳转 / 登录页标题才判定为登录失败，否则避免误判
+      final needLogin = RegExp(r'''您需要登录才能|未登录|登录后才能|action=login[^0-9]|<title>[^<]*登录[^<]*</title>''', caseSensitive: false).hasMatch(body);
+      if (needLogin) return '请先登录后回帖';
+      // 令牌 / formhash 失效的明确提示
+      if (RegExp(r'''formhash.*(验证失败|非法请求|失效|令牌)|来路不正确|security\.validate''' ).hasMatch(body) || (body.contains('formhash') && (body.contains('验证失败') || body.contains('非法请求') || body.contains('令牌') || body.contains('失效')))) {
+        return '回帖令牌已失效，请刷新后重试';
+      }
+      // 抓取服务端显式报错
+      final showErr = RegExp(r'''showError\(\s*['"]([^'"]+)['"]''').firstMatch(body)?.group(1) ??
+          RegExp(r'''(?:alert_error|error_message)[^>]*>\s*(?:<[^>]+>\s*)?([^<]{2,120})''').firstMatch(body)?.group(1) ??
+          RegExp(r'<div[^>]*class="alert_error[^"]*"[^>]*>([^<]{2,120})').firstMatch(body)?.group(1);
+      if (showErr != null && showErr.trim().isNotEmpty) return showErr.trim();
+      // 仍命中回复内容也视为成功 (Discuz 有时返回带帖子列表的 HTML)
+      if (body.contains(text)) return null;
       return '回帖失败,请重试';
     } catch (_) {
       return '回帖请求失败,请稍后重试';
