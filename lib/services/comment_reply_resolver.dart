@@ -145,31 +145,29 @@ class CommentReplyResolver {
     final body = NetClient.decode(response.bodyBytes).trim();
     if (body.isEmpty) return '';
 
-    final document = parser.parse(body);
+    // replyfloor 插件在 inajax=1 时返回 <root><![CDATA[ …真实回复 HTML… ]]></root>，
+    // Dart 的 html 解析器不会把 CDATA 里的内容建成可查询的 DOM，需先剥离外层 XML 包装。
+    var raw = body;
+    final cdata = RegExp(r'(?s)<!\[CDATA\[(.*?)\]\]>').firstMatch(body);
+    if (cdata != null) {
+      raw = (cdata.group(1) ?? '').trim();
+    }
+    if (raw.isEmpty) return body;
+
+    final document = parser.parse(raw);
     final candidates = document.querySelectorAll(
-      '.replyfloor_box, .replyfloor_content, .replyfloor_content_ul, li.replyfloor_li',
+      '.replyfloor_box, .replyfloor_content, .replyfloor_content_ul, '
+      '.replyfloor_content_li, li.replyfloor_li',
     );
     if (candidates.isNotEmpty) {
       return candidates.map((e) => e.outerHtml).join();
-    }
-
-    final decodedText = (document.body?.text ?? '').trim();
-    if (decodedText.contains('replyfloor') || decodedText.contains('回复 举报')) {
-      final decoded = parser.parseFragment(decodedText);
-      final decodedCandidates = decoded.querySelectorAll(
-        '.replyfloor_box, .replyfloor_content, .replyfloor_content_ul, li.replyfloor_li',
-      );
-      if (decodedCandidates.isNotEmpty) {
-        return decodedCandidates.map((e) => e.outerHtml).join();
-      }
-      return decodedText;
     }
 
     for (final node in document.querySelectorAll('root, message, body')) {
       final html = node.innerHtml.trim();
       if (html.contains('replyfloor') || html.contains('回复 举报')) return html;
     }
-    return body;
+    return raw;
   }
 
   static int _postPid(dom.Element post) {

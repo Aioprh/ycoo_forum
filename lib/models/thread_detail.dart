@@ -18,10 +18,12 @@ class ThreadDetail {
   String get bodyHtml {
     final sanitized = _sanitizeForumHtml(_bodyHtml);
     if (tid <= 0) return sanitized;
-    // Discuz 的附件块经常位于正文容器之外，直接取正文 HTML 会把它漏掉。
-    // 增加一个标准 attachment.php 入口，让 NativePostContent 将其渲染为附件卡片。
+    // Discuz 的附件块经常位于正文容器之外，直接取正文 HTML 会把它漏掉，
+    // 因此只有当正文里确实存在附件入口时才追加“全部附件”卡片，
+    // 避免纯文字帖子误显示下载卡片、点进去报“未找到可下载的附件”。
     final marker = '<p class="ycoo-attachment-entry"><a href="attachment.php?tid=$tid&ycoo=all">📎 查看并下载本帖全部附件</a></p>';
     if (sanitized.contains('ycoo-attachment-entry')) return sanitized;
+    if (!_bodyHtmlContainsAttachment(_bodyHtml)) return sanitized;
     return sanitized.isEmpty ? marker : '$sanitized$marker';
   }
 
@@ -114,6 +116,16 @@ String _sanitizeForumHtml(String html) {
   final hasMedia = root.querySelector('img,video,iframe,audio,table,pre') != null;
   if (text.isEmpty && !hasMedia) return '';
   return _stripTofu(root.innerHtml).trim();
+}
+
+/// 判断正文原文是否含附件特征，用于决定是否显示“下载全部附件”卡片。
+bool _bodyHtmlContainsAttachment(String html) {
+  final lower = html.toLowerCase();
+  return lower.contains('attachment.php') ||
+      lower.contains('mod=attachment') ||
+      RegExp(r'aid=\d+').hasMatch(lower) ||
+      lower.contains('data/attachment/') ||
+      RegExp(r'(?:attach(?:img|tags?|list)|file_attr|downloadcode)').hasMatch(lower);
 }
 
 bool _isTofuCodePoint(int cp) {

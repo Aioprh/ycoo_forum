@@ -355,7 +355,9 @@ class _CommentCardState extends State<_CommentCard> {
     var nodes = <dom.Element>[];
 
     for (final selector in [
+      '.replyfloor_content_ul > .replyfloor_content_li',
       '.replyfloor_content_ul > li',
+      '.replyfloor_content_li',
       '.replyfloor_content li',
       'li.replyfloor_li',
       '.replyfloor_box li',
@@ -369,7 +371,7 @@ class _CommentCardState extends State<_CommentCard> {
 
     if (nodes.isEmpty) {
       for (final root in doc.querySelectorAll(
-        '.replyfloor_content, .replyfloor_box, .replyfloor',
+        '.replyfloor_content_ul, .replyfloor_content, .replyfloor_box, .replyfloor',
       )) {
         for (final child in root.children) {
           if (child.text.trim().isNotEmpty && !nodes.contains(child)) {
@@ -401,6 +403,8 @@ class _CommentCardState extends State<_CommentCard> {
 
     return nodes.map((node) {
       final author = _firstText(node, [
+        '.replyfloor_content_user a',
+        '.replyfloor_content_user',
         '.replyfloor_author',
         '.replyfloor_user',
         '.replyfloor_username',
@@ -410,6 +414,7 @@ class _CommentCardState extends State<_CommentCard> {
         'a[href*="uid="]',
       ]);
       final time = _firstText(node, [
+        '.replyfloor_content_time',
         '.replyfloor_time',
         '.replyfloor_dateline',
         '.replyfloor_date',
@@ -417,7 +422,8 @@ class _CommentCardState extends State<_CommentCard> {
         'em',
       ]);
       final bodyNode = node.querySelector(
-        '.replyfloor_msg, .replyfloor_message, .replyfloor_body, .replyfloor_text, .reply_content',
+        '.replyfloor_content_text, .replyfloor_msg, .replyfloor_message, '
+        '.replyfloor_body, .replyfloor_text, .reply_content',
       );
       return _FloorReply(
         author: author,
