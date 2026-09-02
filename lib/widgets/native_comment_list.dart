@@ -249,11 +249,11 @@ class _CommentCardState extends State<_CommentCard> {
     }
   }
 
-  Future<void> _loadReplies() async {
+  Future<void> _loadReplies({bool force = false}) async {
     if (_loadingReplies || widget.tid <= 0) return;
     setState(() { _loadingReplies = true; _replyError = null; });
     try {
-      if (_pid <= 0) {
+      if (_pid <= 0 || force) {
         _pid = await CommentReplyResolver.instance.resolvePid(
           tid: widget.tid, commentIndex: widget.index,
           author: widget.comment.author, floor: widget.comment.floor,
@@ -267,7 +267,9 @@ class _CommentCardState extends State<_CommentCard> {
       final replies = _parseReplies();
       setState(() {
         _loadingReplies = false;
-        _repliesExpanded = replies.isNotEmpty;
+        // 首次加载 (force=false): 有回复则默认展开, 方便用户查看。
+        // 强制刷新 (force=true): 保持用户期望的展开状态, 不因结果为空而折叠。
+        if (!force) _repliesExpanded = replies.isNotEmpty;
         if (replies.isEmpty && widget.comment.replyCount > 0) {
           _replyError = '暂时没有取得楼中楼内容';
         }
@@ -283,8 +285,17 @@ class _CommentCardState extends State<_CommentCard> {
 
   void _toggleReplies() {
     if (_loadingReplies) return;
-    if (_replyHtml.trim().isEmpty) { _loadReplies(); return; }
-    setState(() => _repliesExpanded = !_repliesExpanded);
+    final willExpand = !_repliesExpanded;
+    if (willExpand) {
+      // 每次展开都重新 fetch 楼中楼，保证刷新后或有新回复时能看到最新数据。
+      _loadReplies(force: true);
+      // 若 force 加载时发现已有加载，_loadReplies 内部会 return 不重复进入。
+      // 把展开状态同步打开，让用户看到 loading 而不是"先关闭再打开"的闪现。
+      if (!mounted) return;
+      setState(() => _repliesExpanded = true);
+    } else {
+      setState(() => _repliesExpanded = false);
+    }
   }
 
   List<_FloorReply> _parseReplies() {

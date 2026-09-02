@@ -1,3 +1,4 @@
+import 'package:html/dom.dart' as dom;
 import 'package:html/parser.dart' as parser;
 
 import '../models/thread_item.dart';
@@ -86,23 +87,75 @@ class MemberService {
       if (RegExp(r'^(回复|查看|详情|购买主题|下一页|上一页|首页|尾页|分享|收藏)$').hasMatch(title)) continue;
       seen.add(tid);
       final parentText = _clean(a.parent?.text ?? '');
+      // Comiis 个人主页用私用图标字体显示回复/浏览，图标后的数字放在 span.comiis_tm 里，
+      // 同一容器中 comiis_tm 的数值 spans 末尾两个固定是"回复数 / 浏览量"。
+      final counts = _findThreadCounts(a);
+      // 板名: 祖先容器里的第一个 forum-N 链接/分类名
+      var board = '';
+      dom.Element? cur = a.parent;
+      while (cur != null) {
+        final forumLink = cur.querySelector('a[href*="forum-"]');
+        if (forumLink != null && _clean(forumLink.text).isNotEmpty) {
+          board = _clean(forumLink.text);
+          break;
+        }
+        cur = cur.parent;
+      }
       result.add(ThreadItem(
         tid: tid,
         title: title,
         author: '',
         avatar: '',
         fid: int.tryParse(RegExp(r'(?:forum-|[?&]fid=)(\d+)').firstMatch(a.parent?.outerHtml ?? '')?.group(1) ?? '') ?? 0,
-        boardName: '',
+        boardName: board,
         level: '',
         time: '',
         subtitle: parentText == title ? '' : parentText.replaceFirst(title, '').trim(),
         cover: '',
-        likeCount: 0,
-        replyCount: 0,
-        viewCount: 0,
+        likeCount: counts.$1,
+        replyCount: counts.$2,
+        viewCount: counts.$3,
       ));
     }
     return result;
+  }
+
+  /// 在 a 的祖先容器里寻找 comiis_tm 数值 spans (comiis 私用图标字体的计数),
+  /// 返回 (点赞数, 回复数, 浏览量)。找不到时 fallback: 用正则扫祖先文本。
+  (int, int, int) _findThreadCounts(dom.Element a) {
+    dom.Element? cur = a;
+    while (cur != null) {
+      final spans = cur.querySelectorAll('span[class*="comiis_tm"]');
+      final nums = <int>[];
+      for (final s in spans) {
+        final v = int.tryParse(_clean(s.text));
+        if (v != null) nums.add(v);
+      }
+      if (nums.length >= 2) {
+        final views = nums.last;
+        final replies = nums[nums.length - 2];
+        final likes = nums.length >= 3 ? nums[nums.length - 3] : 0;
+        return (likes, replies, views);
+      }
+      cur = cur.parent;
+    }
+    // fallback: 祖先文本里找"回复 12 / 浏览 727"这类可读标签。
+    var text = '';
+    cur = a.parent;
+    while (cur != null) {
+      final t = _clean(cur.text);
+      if (t.length > text.length) text = t;
+      cur = cur.parent;
+    }
+    if (text.isEmpty) return (0, 0, 0);
+    int? grab(List<String> keys) {
+      for (final k in keys) {
+        final m = RegExp('$k\\s*[:：]?\\s*(\\d+)').firstMatch(text);
+        if (m != null) return int.tryParse(m.group(1)!);
+      }
+      return null;
+    }
+    return (0, grab(const ['回复', '评论', '回帖']) ?? 0, grab(const ['浏览', '查看', '人气']) ?? 0);
   }
 
   Future<List<MemberNotice>> fetchNotices() async {
