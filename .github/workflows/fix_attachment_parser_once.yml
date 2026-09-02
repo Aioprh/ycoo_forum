@@ -1,0 +1,63 @@
+name: 临时修复真实附件解析
+on:
+  push:
+    branches: [main]
+
+permissions:
+  contents: write
+
+jobs:
+  patch:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 1
+      - name: Patch parser
+        shell: python
+        run: |
+          from pathlib import Path
+          p = Path('lib/services/attachment_download_service.dart')
+          s = p.read_text(encoding='utf-8')
+          old = """    return result;
+  }
+
+  bool _isRealFileAttachment(Uri uri) {"""
+          new = r'''    // ycoo/Discuz 还有一类真实附件不会被渲染成 <a href>：
+    // 正文或服务端源码可能保留 [attach]URL[/attach] 标记。
+    // 这里补充解析它，但仍严格经过 _isRealFileAttachment，避免把图片/普通链接当附件。
+    final attachRe = RegExp(r'\[attach\]\s*(https?://[^\s\]<>]+)\s*\[/attach\]', caseSensitive: false);
+    for (final match in attachRe.allMatches(source)) {
+      final raw = match.group(1) ?? '';
+      final url = _normalizeUrl(raw);
+      final uri = Uri.tryParse(url);
+      if (uri == null || !_isRealFileAttachment(uri)) continue;
+      if (_looksLikeImageFile('', uri)) continue;
+      final key = uri.queryParameters['aid']?.trim() ?? url;
+      if (!seen.add(key)) continue;
+      result.add(ForumAttachmentInfo(
+        url: url,
+        name: _bestFileName('', uri),
+        size: '',
+      ));
+    }
+
+    return result;
+  }
+
+  bool _isRealFileAttachment(Uri uri) {'''
+          if old not in s:
+              raise SystemExit('target parser anchor not found')
+          p.write_text(s.replace(old, new, 1), encoding='utf-8')
+      - name: Commit and remove this workflow
+        shell: bash
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          git config user.name 'github-actions[bot]'
+          git config user.email '41898282+github-actions[bot]@users.noreply.github.com'
+          git add lib/services/attachment_download_service.dart
+          git commit -m 'fix: parse Discuz attach markers as real files'
+          git rm .github/workflows/fix_attachment_parser_once.yml
+          git commit -m 'chore: remove temporary attachment parser workflow'
+          git push origin HEAD:main
