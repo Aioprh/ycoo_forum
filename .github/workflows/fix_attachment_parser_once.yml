@@ -1,0 +1,42 @@
+name: 临时修复真实附件解析
+on:
+  push:
+    branches: [main]
+
+permissions:
+  contents: write
+
+jobs:
+  patch:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 1
+      - name: Patch parser
+        shell: python
+        run: |
+          from pathlib import Path
+          p = Path('lib/services/attachment_download_service.dart')
+          s = p.read_text(encoding='utf-8')
+          old = '''    return result;\n  }\n\n  bool _isRealFileAttachment(Uri uri) {'''
+          new = r'''    // ycoo/Discuz 还有一类真实附件不会被渲染成 <a href>：\n    // 正文或服务端源码可能保留 [attach]URL[/attach] 标记。\n    // 这里补充解析它，但仍严格经过 _isRealFileAttachment，避免把图片/普通链接当附件。\n    final attachRe = RegExp(r'\\[attach\\]\\s*(https?://[^\\s\\]<>]+)\\s*\\[/attach\\]', caseSensitive: false);\n    for (final match in attachRe.allMatches(source)) {\n      final raw = match.group(1) ?? '';\n      final url = _normalizeUrl(raw);\n      final uri = Uri.tryParse(url);\n      if (uri == null || !_isRealFileAttachment(uri)) continue;\n      if (_looksLikeImageFile('', uri)) continue;\n      final key = uri.queryParameters['aid']?.trim() ?? url;\n      if (!seen.add(key)) continue;\n      result.add(ForumAttachmentInfo(\n        url: url,\n        name: _bestFileName('', uri),\n        size: '',\n      ));\n    }\n\n    return result;\n  }\n\n  bool _isRealFileAttachment(Uri uri) {'''
+          # The Python raw string above contains literal backslash-n; turn those into real lines.
+          new = new.replace(r'\n', '\n')
+          if old not in s:
+              raise SystemExit('target parser anchor not found')
+          if '[attach]' in s:
+              raise SystemExit('attachment parser already patched')
+          p.write_text(s.replace(old, new, 1), encoding='utf-8')
+      - name: Commit and remove this workflow
+        shell: bash
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          git config user.name 'github-actions[bot]'
+          git config user.email '41898282+github-actions[bot]@users.noreply.github.com'
+          git add lib/services/attachment_download_service.dart
+          git commit -m 'fix: parse Discuz attach markers as real files'
+          git rm .github/workflows/fix_attachment_parser_once.yml
+          git commit -m 'chore: remove temporary attachment parser workflow'
+          git push origin HEAD:main
