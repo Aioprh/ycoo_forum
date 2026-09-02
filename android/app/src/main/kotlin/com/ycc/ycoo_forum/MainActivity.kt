@@ -1,6 +1,5 @@
 package com.ycc.ycoo_forum
 
-import android.content.Context
 import android.content.Intent
 import android.net.Uri
 import android.os.Build
@@ -32,6 +31,7 @@ class MainActivity : FlutterActivity() {
                 val cookie = call.argument<String>("cookie")?.trim().orEmpty()
                 val referer = call.argument<String>("referer")?.trim().takeUnless { it.isNullOrEmpty() }
                     ?: "https://ycoo.net/"
+                val requestedFilename = call.argument<String>("filename")?.trim().orEmpty()
 
                 if (url.isEmpty()) {
                     result.error("INVALID_URL", "附件地址为空", null)
@@ -55,15 +55,19 @@ class MainActivity : FlutterActivity() {
                         return@setMethodCallHandler
                     }
 
-                    val guessedName = guessNameFromUrl(url)
+                    val guessedName = if (requestedFilename.isNotEmpty()) {
+                        requestedFilename
+                    } else {
+                        guessNameFromUrl(url)
+                    }
                     val target = uniqueFile(forumDir, sanitizeFileName(guessedName))
 
                     Thread {
-                        val ok = downloadToFile(url, cookie, referer, target)
+                        val finalTarget = downloadToFile(url, cookie, referer, target, requestedFilename)
                         runOnUiThread {
                             Toast.makeText(
                                 this,
-                                if (ok) "附件已保存到 /storage/emulated/0/源论坛/${target.name}"
+                                if (finalTarget != null) "附件已保存到 /storage/emulated/0/源论坛/${finalTarget.name}"
                                 else "附件下载失败，请检查登录状态或网络",
                                 Toast.LENGTH_LONG,
                             ).show()
@@ -82,7 +86,8 @@ class MainActivity : FlutterActivity() {
         cookie: String,
         referer: String,
         initialTarget: File,
-    ): Boolean {
+        requestedFilename: String,
+    ): File? {
         var connection: HttpURLConnection? = null
         var target = initialTarget
         try {
@@ -102,20 +107,22 @@ class MainActivity : FlutterActivity() {
             }
 
             val code = connection.responseCode
-            if (code !in 200..299) return false
+            if (code !in 200..299) return null
 
             val contentType = connection.contentType?.lowercase().orEmpty()
             if (contentType.contains("text/html") && connection.contentLengthLong > 0L && connection.contentLengthLong < 1024 * 1024) {
-                return false
+                return null
             }
 
-            val serverName = resolveResponseFileName(
-                connection.getHeaderField("Content-Disposition"),
-                connection.url.toString(),
-                contentType,
-            )
-            if (serverName.isNotBlank() && !looksGeneric(serverName)) {
-                target = uniqueFile(initialTarget.parentFile ?: return false, sanitizeFileName(serverName))
+            if (requestedFilename.isEmpty()) {
+                val serverName = resolveResponseFileName(
+                    connection.getHeaderField("Content-Disposition"),
+                    connection.url.toString(),
+                    contentType,
+                )
+                if (serverName.isNotBlank() && !looksGeneric(serverName)) {
+                    target = uniqueFile(initialTarget.parentFile ?: return null, sanitizeFileName(serverName))
+                }
             }
 
             val temp = File(target.parentFile, ".${target.name}.part")
@@ -136,9 +143,9 @@ class MainActivity : FlutterActivity() {
                 temp.copyTo(target, overwrite = true)
                 temp.delete()
             }
-            return target.exists() && target.length() > 0L
+            return if (target.exists() && target.length() > 0L) target else null
         } catch (_: Exception) {
-            return false
+            return null
         } finally {
             connection?.disconnect()
         }
