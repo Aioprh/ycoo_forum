@@ -303,7 +303,7 @@ class _InlineContent extends StatelessWidget {
       return;
     }
     for (final child in e.nodes) {
-      _appendSpan(spans, child, next);
+      _appendSpan(spans, child, next, scheme);
     }
   }
 }
