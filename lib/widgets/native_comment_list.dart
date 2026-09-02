@@ -416,7 +416,7 @@ class _CommentCardState extends State<_CommentCard> {
               icon: _loadingReplies
                   ? const SizedBox(width: 16, height: 16, child: CircularProgressIndicator(strokeWidth: 2))
                   : Icon(_repliesExpanded ? Icons.keyboard_arrow_up_rounded : Icons.forum_outlined, size: 17),
-              label: Text(_loadingReplies ? '正在加载楼中楼…' : (_repliesExpanded ? '收起楼中楼' : '展开楼中楼')),
+              label: Text(_loadingReplies ? '正在加载楼中楼…' : (_repliesExpanded ? '收起' : '展开')),
             ),
           ),
           if (_replyError != null && !_loadingReplies)
