@@ -5,6 +5,7 @@ import 'package:html/parser.dart' as html_parser;
 
 import '../services/auth_service.dart';
 import '../services/site_config.dart';
+import 'forum_attachment_section.dart';
 
 /// Native Flutter renderer for forum post HTML.
 /// Supports normal images, Discuz/Comiis lazy-loaded images and protected attachments.
@@ -642,6 +643,19 @@ class _AttachmentCard extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    final lower = href.toLowerCase();
+    if (lower.contains('ycoo=all')) {
+      final uri = Uri.tryParse(href);
+      final tid = int.tryParse(uri?.queryParameters['tid'] ?? '') ?? 0;
+      if (tid > 0) {
+        return ForumAttachmentSection(
+          tid: tid,
+          cookie: AuthService.instance.authCookie,
+          referer: SiteConfig.base,
+        );
+      }
+    }
+
     final c = Theme.of(context).colorScheme;
     final label = title.isNotEmpty ? title : '下载附件';
     return Padding(
