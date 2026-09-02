@@ -332,8 +332,14 @@ class _CommentCardState extends State<_CommentCard> {
       for (final v in node.attributes.values) { buffer.write(' '); buffer.write(v); }
       buffer.write(' '); buffer.write(node.innerHtml);
       final any = buffer.toString();
-      // replyfloor_editor('2657801', 20605, '...') / replyfloor_report('postpid', pid)
-      if (RegExp(r'replyfloor_(editor|report)\s*\(\s*[\'"]?\d+[\'"]?\s*,\s*\d+', caseSensitive: false).hasMatch(any)) return true;
+      // 匹配 replyfloor_editor('postpid', pid, ...) / replyfloor_report("postpid", pid) 这种双参数调用。
+      // 因为 raw 字符串中不能同时包含转义的单双引号，这里分两次匹配。
+      const q1 = r"replyfloor_(editor|report)\s*\(\s*'\d+'?\s*,\s*\d+";
+      const q2 = r'replyfloor_(editor|report)\s*\(\s*"\d+"?\s*,\s*\d+';
+      const q3 = r"replyfloor_(editor|report)\s*\(\s*\d+\s*,\s*\d+";
+      if (RegExp(q1, caseSensitive: false).hasMatch(any)) return true;
+      if (RegExp(q2, caseSensitive: false).hasMatch(any)) return true;
+      if (RegExp(q3, caseSensitive: false).hasMatch(any)) return true;
       return false;
     }
     nodes.retainWhere(looksLikeFloorReply);
