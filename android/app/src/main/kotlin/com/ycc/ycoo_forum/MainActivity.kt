@@ -26,64 +26,33 @@ class MainActivity : FlutterActivity() {
                     result.notImplemented()
                     return@setMethodCallHandler
                 }
-
                 val url = call.argument<String>("url")?.trim().orEmpty()
                 val cookie = call.argument<String>("cookie")?.trim().orEmpty()
-                val referer = call.argument<String>("referer")?.trim().takeUnless { it.isNullOrEmpty() }
-                    ?: "https://ycoo.net/"
+                val referer = call.argument<String>("referer")?.trim().takeUnless { it.isNullOrEmpty() } ?: "https://ycoo.net/"
                 val requestedFilename = call.argument<String>("filename")?.trim().orEmpty()
-
-                if (url.isEmpty()) {
-                    result.error("INVALID_URL", "附件地址为空", null)
-                    return@setMethodCallHandler
-                }
-
+                if (url.isEmpty()) { result.error("INVALID_URL", "附件地址为空", null); return@setMethodCallHandler }
                 try {
                     if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.R && !Environment.isExternalStorageManager()) {
-                        val intent = Intent(
-                            Settings.ACTION_MANAGE_APP_ALL_FILES_ACCESS_PERMISSION,
-                            Uri.parse("package:$packageName"),
-                        )
-                        startActivity(intent)
+                        startActivity(Intent(Settings.ACTION_MANAGE_APP_ALL_FILES_ACCESS_PERMISSION, Uri.parse("package:$packageName")))
                         result.error("STORAGE_PERMISSION", "请允许源论坛访问所有文件后再下载附件", null)
                         return@setMethodCallHandler
                     }
-
                     val forumDir = File(Environment.getExternalStorageDirectory(), "源论坛")
-                    if (!forumDir.exists() && !forumDir.mkdirs()) {
-                        result.error("STORAGE_FAILED", "无法创建 /storage/emulated/0/源论坛", null)
-                        return@setMethodCallHandler
-                    }
-
-                    val guessedName = if (requestedFilename.isNotEmpty()) requestedFilename else guessNameFromUrl(url)
+                    if (!forumDir.exists() && !forumDir.mkdirs()) { result.error("STORAGE_FAILED", "无法创建 /storage/emulated/0/源论坛", null); return@setMethodCallHandler }
+                    val guessedName = if (requestedFilename.isNotEmpty() && !isDownloadScript(requestedFilename)) requestedFilename else guessNameFromUrl(url)
                     val target = uniqueFile(forumDir, sanitizeFileName(guessedName))
-
                     Thread {
                         val finalTarget = downloadToFile(url, cookie, referer, target, requestedFilename)
                         runOnUiThread {
-                            Toast.makeText(
-                                this,
-                                if (finalTarget != null) "附件已保存到 /storage/emulated/0/源论坛/${finalTarget.name}"
-                                else "附件下载失败，请检查登录状态或网络",
-                                Toast.LENGTH_LONG,
-                            ).show()
+                            Toast.makeText(this, if (finalTarget != null) "附件已保存到 /storage/emulated/0/源论坛/${finalTarget.name}" else "附件下载失败，请检查登录状态或网络", Toast.LENGTH_LONG).show()
                         }
                     }.apply { name = "YcooAttachmentDownload" }.start()
-
                     result.success(true)
-                } catch (e: Exception) {
-                    result.error("DOWNLOAD_FAILED", e.message, null)
-                }
+                } catch (e: Exception) { result.error("DOWNLOAD_FAILED", e.message, null) }
             }
     }
 
-    private fun downloadToFile(
-        url: String,
-        cookie: String,
-        referer: String,
-        initialTarget: File,
-        requestedFilename: String,
-    ): File? {
+    private fun downloadToFile(url: String, cookie: String, referer: String, initialTarget: File, requestedFilename: String): File? {
         var connection: HttpURLConnection? = null
         var target = initialTarget
         try {
@@ -94,40 +63,20 @@ class MainActivity : FlutterActivity() {
                 requestMethod = "GET"
                 setRequestProperty("Referer", referer)
                 if (cookie.isNotEmpty()) setRequestProperty("Cookie", cookie)
-                setRequestProperty(
-                    "User-Agent",
-                    "Mozilla/5.0 (Linux; Android) AppleWebKit/537.36 Chrome/120 Mobile Safari/537.36",
-                )
+                setRequestProperty("User-Agent", "Mozilla/5.0 (Linux; Android) AppleWebKit/537.36 Chrome/120 Mobile Safari/537.36")
                 setRequestProperty("Accept", "*/*")
                 setRequestProperty("Accept-Language", "zh-CN,zh;q=0.9")
             }
-
             val code = connection.responseCode
             if (code !in 200..299) return null
+            val contentType = connection.contentType?.substringBefore(';')?.trim()?.lowercase().orEmpty()
+            if (contentType == "text/html" && connection.contentLengthLong > 0L && connection.contentLengthLong < 1024 * 1024) return null
 
-            val contentType = connection.contentType?.lowercase().orEmpty()
-            if (contentType.contains("text/html") && connection.contentLengthLong > 0L && connection.contentLengthLong < 1024 * 1024) {
-                return null
-            }
-
-            // forum.php / attachment.php 是下载接口本身，不是附件文件名。
-            // 只有 Content-Disposition 中明确给出的真实文件名才允许覆盖请求名。
-            val responseName = resolveResponseFileName(
-                connection.getHeaderField("Content-Disposition"),
-                connection.url.toString(),
-                contentType,
-            )
-            val requestedIsGeneric = requestedFilename.isBlank() || looksGeneric(requestedFilename)
+            val responseName = resolveResponseFileName(connection.getHeaderField("Content-Disposition"), connection.url.toString(), contentType)
+            val requestedIsGeneric = requestedFilename.isBlank() || looksGeneric(requestedFilename) || isDownloadScript(requestedFilename)
             val requestedHasExtension = hasFileExtension(requestedFilename)
-
-            if (responseName.isNotBlank() && !looksGeneric(responseName) &&
-                (requestedIsGeneric || !requestedHasExtension || looksGeneric(target.name))) {
+            if (responseName.isNotBlank() && !looksGeneric(responseName) && (requestedIsGeneric || !requestedHasExtension || looksGeneric(target.name))) {
                 target = uniqueFile(initialTarget.parentFile ?: return null, sanitizeFileName(responseName))
-            } else if (!hasFileExtension(target.name)) {
-                val mimeExtension = extensionForMime(contentType)
-                if (mimeExtension.isNotEmpty()) {
-                    target = uniqueFile(initialTarget.parentFile ?: return null, sanitizeFileName("${target.name}$mimeExtension"))
-                }
             }
 
             val temp = File(target.parentFile, ".${target.name}.part")
@@ -144,28 +93,22 @@ class MainActivity : FlutterActivity() {
                 }
             }
 
-            // 有些 Discuz 下载接口返回 application/octet-stream，URL 仍然是 forum.php。
-            // 此时根据实际文件内容识别格式，避免把接口脚本名保存成 forum.php。
-            if (!hasFileExtension(target.name)) {
-                val detectedExtension = detectFileExtension(temp, contentType)
+            // 动态下载入口通常是 forum.php / attachment.php，没有可用扩展名。
+            // 此时必须根据实际响应内容识别格式，而不是把接口脚本名当成附件格式。
+            val detectedExtension = detectFileExtension(temp, contentType)
+            if (isDownloadScript(target.name) || !hasFileExtension(target.name)) {
                 if (detectedExtension.isNotEmpty()) {
-                    val baseName = sanitizeFileName(target.name)
+                    val baseName = if (isDownloadScript(target.name)) "论坛附件" else target.name
                     val renamed = uniqueFile(target.parentFile ?: return null, "$baseName$detectedExtension")
-                    if (renamed.absolutePath != target.absolutePath) target = renamed
+                    target = renamed
                 }
             }
 
             if (target.exists()) target.delete()
-            if (!temp.renameTo(target)) {
-                temp.copyTo(target, overwrite = true)
-                temp.delete()
-            }
+            if (!temp.renameTo(target)) { temp.copyTo(target, overwrite = true); temp.delete() }
             return if (target.exists() && target.length() > 0L) target else null
-        } catch (_: Exception) {
-            return null
-        } finally {
-            connection?.disconnect()
-        }
+        } catch (_: Exception) { return null }
+        finally { connection?.disconnect() }
     }
 
     private fun guessNameFromUrl(url: String): String {
@@ -173,29 +116,26 @@ class MainActivity : FlutterActivity() {
             val uri = Uri.parse(url)
             for (key in listOf("filename", "file", "name")) {
                 val value = uri.getQueryParameter(key)?.trim().orEmpty()
-                if (value.isNotEmpty()) return decodeFileName(value)
-            }
-            val pathName = uri.lastPathSegment?.trim().orEmpty()
-            if (pathName.isNotEmpty() && !isDownloadScript(pathName)) {
-                val decoded = decodeFileName(pathName)
-                if (decoded.isNotEmpty()) return decoded
+                if (value.isNotEmpty() && !isDownloadScript(value)) return decodeFileName(value)
             }
             val f = uri.getQueryParameter("_f")?.trim().orEmpty()
-            if (f.startsWith(".") && f.length <= 12) return "论坛附件$f"
-        } catch (_: Exception) {
-            return "论坛附件_${System.currentTimeMillis()}"
-        }
+            if (f.isNotEmpty()) {
+                val decoded = decodeFileName(f)
+                if (hasFileExtension(decoded)) return decoded
+                if (decoded.startsWith(".") && decoded.length <= 12) return "论坛附件$decoded"
+                if (Regex("^[A-Za-z0-9]{1,12}$").matches(decoded)) return "论坛附件.$decoded"
+            }
+            val pathName = uri.lastPathSegment?.trim().orEmpty()
+            if (pathName.isNotEmpty() && !isDownloadScript(pathName)) return decodeFileName(pathName)
+        } catch (_: Exception) {}
         return "论坛附件_${System.currentTimeMillis()}"
     }
 
     private fun resolveResponseFileName(disposition: String?, finalUrl: String, mime: String): String {
         if (!disposition.isNullOrBlank()) {
             val guessed = URLUtil.guessFileName(finalUrl, disposition, mime)
-            if (guessed.isNotBlank() && !looksGeneric(guessed) && !isDownloadScript(guessed)) return guessed
+            if (guessed.isNotBlank() && !looksGeneric(guessed) && !isDownloadScript(guessed) && hasFileExtension(guessed)) return guessed
         }
-
-        // 没有 Content-Disposition 时，不能使用 attachment.php/forum.php/download.php
-        // 作为文件名；这些只是 Discuz 的动态下载入口。
         val pathName = try { Uri.parse(finalUrl).lastPathSegment.orEmpty() } catch (_: Exception) { "" }
         if (pathName.isNotBlank() && !isDownloadScript(pathName)) {
             val decoded = decodeFileName(pathName)
@@ -206,31 +146,23 @@ class MainActivity : FlutterActivity() {
 
     private fun detectFileExtension(file: File, mime: String): String {
         try {
-            FileInputStreamCompat(file).use { input ->
+            file.inputStream().use { input ->
                 val header = ByteArray(32)
                 val count = input.read(header)
                 if (count > 0) {
                     if (startsWith(header, count, byteArrayOf(0x25, 0x50, 0x44, 0x46))) return ".pdf"
-                    if (startsWith(header, count, byteArrayOf(0x50, 0x4B, 0x03, 0x04)) ||
-                        startsWith(header, count, byteArrayOf(0x50, 0x4B, 0x05, 0x06))) {
-                        return extensionForMime(mime).ifEmpty { ".zip" }
-                    }
+                    if (startsWith(header, count, byteArrayOf(0x50, 0x4B, 0x03, 0x04)) || startsWith(header, count, byteArrayOf(0x50, 0x4B, 0x05, 0x06))) return if (mime.contains("epub")) ".epub" else if (mime.contains("android.package")) ".apk" else ".zip"
                     if (startsWith(header, count, byteArrayOf(0x1F, 0x8B.toByte()))) return ".gz"
                     if (startsWith(header, count, byteArrayOf(0x89.toByte(), 0x50, 0x4E, 0x47))) return ".png"
                     if (startsWith(header, count, byteArrayOf(0xFF.toByte(), 0xD8.toByte(), 0xFF.toByte()))) return ".jpg"
                     if (startsWith(header, count, byteArrayOf(0x47, 0x49, 0x46, 0x38))) return ".gif"
-                    if (count >= 12 && String(header, 0, 4, Charsets.US_ASCII) == "RIFF" &&
-                        String(header, 8, 4, Charsets.US_ASCII) == "WEBP") return ".webp"
+                    if (count >= 12 && String(header, 0, 4, Charsets.US_ASCII) == "RIFF" && String(header, 8, 4, Charsets.US_ASCII) == "WEBP") return ".webp"
                 }
             }
-
             val bytes = file.inputStream().use { it.readNBytes(minOf(file.length().toInt(), 128 * 1024)) }
             val text = bytes.toString(Charsets.UTF_8).trimStart('\uFEFF', ' ', '\t', '\r', '\n')
-            if (text.startsWith("{") || text.startsWith("[")) {
-                return ".json"
-            }
-        } catch (_: Exception) {
-        }
+            if (text.startsWith("{") || text.startsWith("[")) return ".json"
+        } catch (_: Exception) {}
         return extensionForMime(mime)
     }
 
@@ -242,7 +174,7 @@ class MainActivity : FlutterActivity() {
 
     private fun isDownloadScript(name: String): Boolean {
         val n = name.substringBefore('?').substringBefore('#').trim().lowercase()
-        return n == "forum.php" || n == "attachment.php" || n == "download.php" || n == "download"
+        return n == "forum.php" || n == "attachment.php" || n == "download.php" || n == "download" || n == "plugin.php" || n == "index.php"
     }
 
     private fun hasFileExtension(name: String): Boolean {
@@ -277,18 +209,10 @@ class MainActivity : FlutterActivity() {
         return n.isEmpty() || n == "论坛附件" || n.startsWith("论坛附件_") || isDownloadScript(n)
     }
 
-    private fun decodeFileName(value: String): String = try {
-        Uri.decode(value).replace("+", " ").trim()
-    } catch (_: Exception) {
-        value.trim()
-    }
+    private fun decodeFileName(value: String): String = try { Uri.decode(value).replace("+", " ").trim() } catch (_: Exception) { value.trim() }
 
     private fun sanitizeFileName(value: String): String {
-        var name = decodeFileName(value)
-            .replace("/", "_")
-            .replace("\\", "_")
-            .replace(Regex("[\\u0000-\\u001F]"), "")
-            .trim()
+        var name = decodeFileName(value).replace("/", "_").replace("\\", "_").replace(Regex("[\\u0000-\\u001F]"), "").trim()
         if (name.isEmpty() || name == "." || name == "..") name = "论坛附件_${System.currentTimeMillis()}"
         if (name.length > 180) name = name.take(180)
         return name
@@ -301,18 +225,7 @@ class MainActivity : FlutterActivity() {
         val base = if (dot > 0) name.substring(0, dot) else name
         val ext = if (dot > 0) name.substring(dot) else ""
         var index = 1
-        while (target.exists()) {
-            target = File(dir, "$base ($index)$ext")
-            index++
-        }
+        while (target.exists()) { target = File(dir, "$base ($index)$ext"); index++ }
         return target
     }
-}
-
-private class FileInputStreamCompat(private val file: File) : java.io.InputStream() {
-    private val delegate = file.inputStream()
-    override fun read(): Int = delegate.read()
-    override fun read(b: ByteArray): Int = delegate.read(b)
-    override fun read(b: ByteArray, off: Int, len: Int): Int = delegate.read(b, off, len)
-    override fun close() = delegate.close()
 }
