@@ -120,11 +120,19 @@ class AttachmentDownloadService {
     String? cookie,
     String? referer,
   }) async {
-    final result = await _channel.invokeMethod<bool>('download', {
-      'url': url,
-      'cookie': cookie ?? '',
-      'referer': referer ?? SiteConfig.base,
-    });
-    return result == true;
+    try {
+      final result = await _channel.invokeMethod<bool>('download', {
+        'url': url,
+        'cookie': cookie ?? '',
+        'referer': referer ?? SiteConfig.base,
+      });
+      return result == true;
+    } on PlatformException {
+      // Android 11+ 首次下载可能需要打开“允许管理所有文件”设置页。
+      // 不把平台异常冒泡到帖子页面，避免点击附件后出现 Flutter 红色错误。
+      return false;
+    } catch (_) {
+      return false;
+    }
   }
 }
