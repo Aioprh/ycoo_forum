@@ -7,6 +7,7 @@ import '../pages/native_profile_page.dart';
 import '../services/auth_service.dart';
 import '../services/comment_profile_resolver.dart';
 import '../services/comment_reply_resolver.dart';
+import 'native_post_content.dart';
 import 'resolved_user_avatar.dart';
 
 class NativeCommentList extends StatelessWidget {
@@ -101,6 +102,8 @@ class NativeCommentList extends StatelessWidget {
       itemBuilder: (context, index) => _CommentCard(
         comment: comments[index],
         index: index,
+        tid: tid,
+        fid: fid,
         onReply: () => _handleReply(context, tid, fid, index, comments[index]),
         onProfile: () => _openProfile(context, comments[index]),
       ),
@@ -216,16 +219,104 @@ class _CommentFloor {
   const _CommentFloor({required this.pid, required this.uid, required this.floor, required this.author, required this.level, required this.time, required this.body});
 }
 
-class _CommentCard extends StatelessWidget {
+class _CommentCard extends StatefulWidget {
   final _CommentFloor comment;
   final int index;
+  final int tid;
+  final int fid;
   final VoidCallback onReply;
   final VoidCallback onProfile;
-  const _CommentCard({required this.comment, required this.index, required this.onReply, required this.onProfile});
+
+  const _CommentCard({
+    required this.comment,
+    required this.index,
+    required this.tid,
+    required this.fid,
+    required this.onReply,
+    required this.onProfile,
+  });
+
+  @override
+  State<_CommentCard> createState() => _CommentCardState();
+}
+
+class _CommentCardState extends State<_CommentCard> {
+  bool _loadingReplies = false;
+  bool _repliesExpanded = false;
+  String _replyHtml = '';
+  String? _replyError;
+
+  Future<void> _toggleReplies() async {
+    if (_loadingReplies || widget.comment.pid <= 0 || widget.tid <= 0) return;
+    if (_repliesExpanded) {
+      setState(() => _repliesExpanded = false);
+      return;
+    }
+    if (_replyHtml.isEmpty) {
+      setState(() {
+        _loadingReplies = true;
+        _replyError = null;
+      });
+      try {
+        _replyHtml = await CommentReplyResolver.instance.fetchReplies(
+          tid: widget.tid,
+          pid: widget.comment.pid,
+        );
+      } catch (e) {
+        _replyError = '$e';
+      }
+      if (!mounted) return;
+      setState(() {
+        _loadingReplies = false;
+        _repliesExpanded = _replyHtml.trim().isNotEmpty;
+      });
+    } else {
+      setState(() => _repliesExpanded = true);
+    }
+  }
+
+  List<_FloorReply> _parseReplies() {
+    if (_replyHtml.trim().isEmpty) return const [];
+    final doc = parser.parseFragment(_replyHtml);
+    final nodes = <dom.Element>[];
+    for (final selector in [
+      '.replyfloor_content_ul > li',
+      '.replyfloor_content li',
+      'li.replyfloor_li',
+      '.replyfloor_box li',
+    ]) {
+      for (final node in doc.querySelectorAll(selector)) {
+        if (!nodes.contains(node)) nodes.add(node);
+      }
+    }
+    if (nodes.isEmpty) {
+      final root = doc.querySelector('.replyfloor_content') ?? doc.querySelector('.replyfloor_box');
+      if (root != null && root.text.trim().isNotEmpty) {
+        return [_FloorReply(author: '', time: '', bodyHtml: root.innerHtml)];
+      }
+      return const [];
+    }
+    return nodes.map((node) {
+      final author = _firstText(node, ['.replyfloor_author', '.replyfloor_user', '.xw1', '.authi a', 'a']);
+      final time = _firstText(node, ['.replyfloor_time', '.replyfloor_dateline', 'time', 'em']);
+      final body = node.querySelector('.replyfloor_msg, .replyfloor_message, .replyfloor_body, .replyfloor_text, .replyfloor_content')?.innerHtml ?? node.innerHtml;
+      return _FloorReply(author: author, time: time, bodyHtml: body);
+    }).toList();
+  }
+
+  static String _firstText(dom.Element node, List<String> selectors) {
+    for (final selector in selectors) {
+      final e = node.querySelector(selector);
+      if (e != null && e.text.trim().isNotEmpty) return e.text.replaceAll(RegExp(r'\s+'), ' ').trim();
+    }
+    return '';
+  }
 
   @override
   Widget build(BuildContext context) {
+    final comment = widget.comment;
     final s = Theme.of(context).colorScheme;
+    final replies = _parseReplies();
     return Container(
       padding: const EdgeInsets.fromLTRB(14, 13, 14, 10),
       decoration: BoxDecoration(
@@ -236,11 +327,11 @@ class _CommentCard extends StatelessWidget {
       ),
       child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
         Row(crossAxisAlignment: CrossAxisAlignment.center, children: [
-          ResolvedUserAvatar(uid: comment.uid, username: comment.author, radius: 18, onTap: onProfile),
+          ResolvedUserAvatar(uid: comment.uid, username: comment.author, radius: 18, onTap: widget.onProfile),
           const SizedBox(width: 9),
           Expanded(
             child: InkWell(
-              onTap: onProfile,
+              onTap: widget.onProfile,
               child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
                 Row(children: [
                   Flexible(child: Text(comment.author.isEmpty ? '匿名用户' : comment.author, maxLines: 1, overflow: TextOverflow.ellipsis, style: const TextStyle(fontSize: 14, fontWeight: FontWeight.w800))),
@@ -260,21 +351,80 @@ class _CommentCard extends StatelessWidget {
           Container(
             padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
             decoration: BoxDecoration(color: s.surfaceContainerHighest, borderRadius: BorderRadius.circular(9)),
-            child: Text('${index + 1}楼', style: TextStyle(fontSize: 10, fontWeight: FontWeight.w700, color: s.onSurfaceVariant)),
+            child: Text('${widget.index + 1}楼', style: TextStyle(fontSize: 10, fontWeight: FontWeight.w700, color: s.onSurfaceVariant)),
           ),
         ]),
         const SizedBox(height: 11),
         Container(height: 1, color: s.outlineVariant.withValues(alpha: .35)),
         const SizedBox(height: 10),
         _HtmlNodes(element: comment.body),
+        if (comment.pid > 0) ...[
+          const SizedBox(height: 2),
+          Align(
+            alignment: Alignment.centerLeft,
+            child: TextButton.icon(
+              onPressed: _toggleReplies,
+              icon: _loadingReplies
+                  ? const SizedBox(width: 16, height: 16, child: CircularProgressIndicator(strokeWidth: 2))
+                  : Icon(_repliesExpanded ? Icons.keyboard_arrow_up_rounded : Icons.forum_outlined, size: 17),
+              label: Text(_loadingReplies ? '正在加载楼中楼…' : (_repliesExpanded ? '收起楼中楼' : '查看楼中楼回复')),
+            ),
+          ),
+          if (_replyError != null)
+            Padding(padding: const EdgeInsets.only(bottom: 6), child: Text('楼中楼加载失败：$_replyError', style: TextStyle(fontSize: 11, color: s.error))),
+          if (_repliesExpanded && replies.isNotEmpty)
+            Container(
+              width: double.infinity,
+              margin: const EdgeInsets.only(bottom: 4),
+              padding: const EdgeInsets.fromLTRB(10, 8, 10, 4),
+              decoration: BoxDecoration(
+                color: s.primaryContainer.withValues(alpha: .22),
+                borderRadius: BorderRadius.circular(14),
+              ),
+              child: Column(
+                children: replies.map((reply) => _FloorReplyTile(reply: reply)).toList(),
+              ),
+            ),
+          if (_repliesExpanded && replies.isEmpty && _replyError == null)
+            Padding(padding: const EdgeInsets.only(bottom: 6), child: Text('暂无楼中楼回复', style: TextStyle(fontSize: 12, color: s.onSurfaceVariant))),
+        ],
         Align(
           alignment: Alignment.centerRight,
           child: TextButton.icon(
-            onPressed: onReply,
+            onPressed: widget.onReply,
             icon: const Icon(Icons.reply_rounded, size: 17),
             label: const Text('回复本楼'),
           ),
         ),
+      ]),
+    );
+  }
+}
+
+class _FloorReply {
+  final String author;
+  final String time;
+  final String bodyHtml;
+  const _FloorReply({required this.author, required this.time, required this.bodyHtml});
+}
+
+class _FloorReplyTile extends StatelessWidget {
+  final _FloorReply reply;
+  const _FloorReplyTile({required this.reply});
+
+  @override
+  Widget build(BuildContext context) {
+    final s = Theme.of(context).colorScheme;
+    return Container(
+      padding: const EdgeInsets.symmetric(vertical: 8),
+      decoration: BoxDecoration(border: Border(bottom: BorderSide(color: s.outlineVariant.withValues(alpha: .3)))),
+      child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
+        Row(children: [
+          Expanded(child: Text(reply.author.isEmpty ? '楼中楼回复' : reply.author, style: const TextStyle(fontSize: 12.5, fontWeight: FontWeight.w700))),
+          if (reply.time.isNotEmpty) Text(reply.time, style: TextStyle(fontSize: 10, color: s.onSurfaceVariant)),
+        ]),
+        const SizedBox(height: 4),
+        NativePostContent(html: reply.bodyHtml),
       ]),
     );
   }
