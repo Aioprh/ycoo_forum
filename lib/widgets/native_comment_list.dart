@@ -14,6 +14,7 @@ class NativeCommentList extends StatelessWidget {
   final String html;
   final void Function(int pid, String author)? onReply;
   final Future<void> Function(int pid, String author)? onReplySent;
+
   const NativeCommentList({super.key, required this.html, this.onReply, this.onReplySent});
 
   List<_CommentFloor> _parse() {
@@ -24,6 +25,8 @@ class NativeCommentList extends StatelessWidget {
       final body = card.querySelector('.p-body');
       if (body == null) continue;
       final authorNode = card.querySelector('.p-author');
+      final rawCardText = card.text.replaceAll(RegExp(r'\s+'), ' ').trim();
+      final replyMatch = RegExp(r'回复\s*\((\d+)\)').firstMatch(rawCardText);
       result.add(_CommentFloor(
         pid: int.tryParse(card.attributes['data-pid'] ?? '0') ?? 0,
         uid: _extractUid(card, authorNode),
@@ -31,6 +34,7 @@ class NativeCommentList extends StatelessWidget {
         author: _text(authorNode),
         level: _text(card.querySelector('.p-level')),
         time: _text(card.querySelector('.p-time')),
+        replyCount: int.tryParse(replyMatch?.group(1) ?? '0') ?? 0,
         body: body,
       ));
     }
@@ -110,13 +114,7 @@ class NativeCommentList extends StatelessWidget {
     );
   }
 
-  Future<void> _handleReply(
-    BuildContext context,
-    int tid,
-    int fid,
-    int index,
-    _CommentFloor comment,
-  ) async {
+  Future<void> _handleReply(BuildContext context, int tid, int fid, int index, _CommentFloor comment) async {
     var pid = comment.pid;
     if (pid <= 0 && tid > 0) {
       final messenger = ScaffoldMessenger.of(context);
@@ -206,24 +204,30 @@ class NativeCommentList extends StatelessWidget {
     if (!context.mounted) return;
     messenger.hideCurrentSnackBar();
     messenger.showSnackBar(SnackBar(content: Text(error ?? '已回复本楼')));
-    if (error == null && onReplySent != null) {
-      await onReplySent!(pid, author);
-    }
+    if (error == null && onReplySent != null) await onReplySent!(pid, author);
   }
 }
 
 class _CommentFloor {
-  final int pid, uid;
+  final int pid, uid, replyCount;
   final String floor, author, level, time;
   final dom.Element body;
-  const _CommentFloor({required this.pid, required this.uid, required this.floor, required this.author, required this.level, required this.time, required this.body});
+
+  const _CommentFloor({
+    required this.pid,
+    required this.uid,
+    required this.floor,
+    required this.author,
+    required this.level,
+    required this.time,
+    required this.replyCount,
+    required this.body,
+  });
 }
 
 class _CommentCard extends StatefulWidget {
   final _CommentFloor comment;
-  final int index;
-  final int tid;
-  final int fid;
+  final int index, tid, fid;
   final VoidCallback onReply;
   final VoidCallback onProfile;
 
@@ -245,32 +249,63 @@ class _CommentCardState extends State<_CommentCard> {
   bool _repliesExpanded = false;
   String _replyHtml = '';
   String? _replyError;
+  int _pid = 0;
 
-  Future<void> _toggleReplies() async {
-    if (_loadingReplies || widget.comment.pid <= 0 || widget.tid <= 0) return;
-    if (_repliesExpanded) {
-      setState(() => _repliesExpanded = false);
-      return;
+  @override
+  void initState() {
+    super.initState();
+    _pid = widget.comment.pid;
+    if (widget.comment.replyCount > 0 && widget.tid > 0) {
+      WidgetsBinding.instance.addPostFrameCallback((_) => _loadReplies());
     }
-    if (_replyHtml.isEmpty) {
-      setState(() {
-        _loadingReplies = true;
-        _replyError = null;
-      });
-      try {
+  }
+
+  Future<void> _loadReplies({bool expandWhenDone = true}) async {
+    if (_loadingReplies || widget.tid <= 0) return;
+    setState(() {
+      _loadingReplies = true;
+      _replyError = null;
+    });
+    try {
+      if (_pid <= 0) {
+        _pid = await CommentReplyResolver.instance.resolvePid(
+          tid: widget.tid,
+          commentIndex: widget.index,
+          author: widget.comment.author,
+          floor: widget.comment.floor,
+        );
+      }
+      if (_pid > 0) {
         _replyHtml = await CommentReplyResolver.instance.fetchReplies(
           tid: widget.tid,
-          pid: widget.comment.pid,
+          pid: _pid,
         );
-      } catch (e) {
-        _replyError = '$e';
       }
       if (!mounted) return;
       setState(() {
         _loadingReplies = false;
-        _repliesExpanded = _replyHtml.trim().isNotEmpty;
+        _repliesExpanded = expandWhenDone && _parseReplies().isNotEmpty;
+        if (_pid <= 0) _replyError = '未取得评论楼层';
+        else if (_replyHtml.trim().isEmpty) _replyError = '暂时没有取得楼中楼内容';
       });
-    } else {
+    } catch (e) {
+      if (!mounted) return;
+      setState(() {
+        _loadingReplies = false;
+        _replyError = '$e';
+      });
+    }
+  }
+
+  Future<void> _toggleReplies() async {
+    if (_loadingReplies) return;
+    if (_repliesExpanded) {
+      setState(() => _repliesExpanded = false);
+      return;
+    }
+    if (_replyHtml.trim().isEmpty) {
+      await _loadReplies();
+    } else if (mounted) {
       setState(() => _repliesExpanded = true);
     }
   }
@@ -284,22 +319,40 @@ class _CommentCardState extends State<_CommentCard> {
       '.replyfloor_content li',
       'li.replyfloor_li',
       '.replyfloor_box li',
+      '.replyfloor_reply',
+      '.replyfloor_item',
     ]) {
       for (final node in doc.querySelectorAll(selector)) {
         if (!nodes.contains(node)) nodes.add(node);
       }
     }
     if (nodes.isEmpty) {
-      final root = doc.querySelector('.replyfloor_content') ?? doc.querySelector('.replyfloor_box');
-      if (root != null && root.text.trim().isNotEmpty) {
-        return [_FloorReply(author: '', time: '', bodyHtml: root.innerHtml)];
+      final roots = doc.querySelectorAll('.replyfloor_content, .replyfloor_box, .replyfloor');
+      for (final root in roots) {
+        for (final child in root.children) {
+          if (child.text.trim().isNotEmpty && !nodes.contains(child)) nodes.add(child);
+        }
+      }
+    }
+    if (nodes.isEmpty) {
+      final text = doc.text.replaceAll(RegExp(r'\s+'), ' ').trim();
+      if (text.isNotEmpty && !text.contains('回复 举报')) {
+        return [_FloorReply(author: '', time: '', bodyHtml: doc.body?.innerHtml ?? _replyHtml)];
       }
       return const [];
     }
     return nodes.map((node) {
-      final author = _firstText(node, ['.replyfloor_author', '.replyfloor_user', '.xw1', '.authi a', 'a']);
-      final time = _firstText(node, ['.replyfloor_time', '.replyfloor_dateline', 'time', 'em']);
-      final body = node.querySelector('.replyfloor_msg, .replyfloor_message, .replyfloor_body, .replyfloor_text, .replyfloor_content')?.innerHtml ?? node.innerHtml;
+      final author = _firstText(node, [
+        '.replyfloor_author', '.replyfloor_user', '.replyfloor_username',
+        '.xw1', '.authi a', '.authi strong a', 'a[href*="uid="]', 'a',
+      ]);
+      final time = _firstText(node, [
+        '.replyfloor_time', '.replyfloor_dateline', '.replyfloor_date', 'time', 'em',
+      ]);
+      final bodyNode = node.querySelector(
+        '.replyfloor_msg, .replyfloor_message, .replyfloor_body, .replyfloor_text, .replyfloor_content, .reply_content',
+      );
+      final body = bodyNode?.innerHtml ?? node.innerHtml;
       return _FloorReply(author: author, time: time, bodyHtml: body);
     }).toList();
   }
@@ -358,7 +411,7 @@ class _CommentCardState extends State<_CommentCard> {
         Container(height: 1, color: s.outlineVariant.withValues(alpha: .35)),
         const SizedBox(height: 10),
         _HtmlNodes(element: comment.body),
-        if (comment.pid > 0) ...[
+        if (comment.replyCount > 0) ...[
           const SizedBox(height: 2),
           Align(
             alignment: Alignment.centerLeft,
@@ -367,11 +420,11 @@ class _CommentCardState extends State<_CommentCard> {
               icon: _loadingReplies
                   ? const SizedBox(width: 16, height: 16, child: CircularProgressIndicator(strokeWidth: 2))
                   : Icon(_repliesExpanded ? Icons.keyboard_arrow_up_rounded : Icons.forum_outlined, size: 17),
-              label: Text(_loadingReplies ? '正在加载楼中楼…' : (_repliesExpanded ? '收起楼中楼' : '查看楼中楼回复')),
+              label: Text(_loadingReplies ? '正在加载楼中楼…' : (_repliesExpanded ? '收起楼中楼' : '展开楼中楼')),
             ),
           ),
-          if (_replyError != null)
-            Padding(padding: const EdgeInsets.only(bottom: 6), child: Text('楼中楼加载失败：$_replyError', style: TextStyle(fontSize: 11, color: s.error))),
+          if (_replyError != null && !_loadingReplies)
+            Padding(padding: const EdgeInsets.only(bottom: 6), child: Text('楼中楼：$_replyError', style: TextStyle(fontSize: 11, color: s.error))),
           if (_repliesExpanded && replies.isNotEmpty)
             Container(
               width: double.infinity,
@@ -381,12 +434,8 @@ class _CommentCardState extends State<_CommentCard> {
                 color: s.primaryContainer.withValues(alpha: .22),
                 borderRadius: BorderRadius.circular(14),
               ),
-              child: Column(
-                children: replies.map((reply) => _FloorReplyTile(reply: reply)).toList(),
-              ),
+              child: Column(children: replies.map((reply) => _FloorReplyTile(reply: reply)).toList()),
             ),
-          if (_repliesExpanded && replies.isEmpty && _replyError == null)
-            Padding(padding: const EdgeInsets.only(bottom: 6), child: Text('暂无楼中楼回复', style: TextStyle(fontSize: 12, color: s.onSurfaceVariant))),
         ],
         Align(
           alignment: Alignment.centerRight,
