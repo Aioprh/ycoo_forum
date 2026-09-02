@@ -337,27 +337,18 @@ class AuthService {
     await _save();
   }
 
-  Future<String?> reply(int tid, int fid, String message, {int? replyPid, int? nestedParentPid, bool firstPost = false}) async {
+  /// 回复主题(发新楼层): 走 Discuz 原生 reply 接口。
+  Future<String?> reply(int tid, int fid, String message) async {
     final text = message.trim();
     if (text.isEmpty) return '回帖内容不能为空';
     final client = await _http();
     try {
-      // Discuz 原生 reply 的 repquote / reppid 必须是父楼 Discuz 原生 postpid。
-      // replyfloor 插件自己的内部 ID (如 20568) Discuz 根本不认识, 不能拿它构造 URL。
-      // nestedParentPid 用于"回复楼中楼"场景: 此时 replyPid 是 replyfloor 内部 ID,
-      // nestedParentPid 才是真正的父楼 Discuz postpid。
-      final repquoteForGet = nestedParentPid ?? replyPid ?? 0;
-      final isNested = repquoteForGet > 0;
-      final getUrl = isNested
-          ? '${base}forum.php?mod=post&action=reply&fid=$fid&tid=$tid&extra=page%3D1&${firstPost ? 'reppost' : 'repquote'}=$repquoteForGet&page=1&mobile=2'
-          : '${base}thread-$tid-1-1.html';
+      final getUrl = '${base}thread-$tid-1-1.html';
       final pageResp = await client.get(Uri.parse(getUrl), headers: _headers()).timeout(const Duration(seconds: 15));
       final page = NetClient.decode(pageResp.bodyBytes);
       final formhash = _hiddenValue(page, 'formhash') ?? '';
       if (formhash.isEmpty) return '未取得回帖令牌(formhash)';
       final extra = 'page%3D1';
-      // Discuz reply 页面里 replysubmit 的隐藏字段值是 "yes", 不能传中文按钮文案,
-      // 否则后端会把请求路由到错误的处理分支, 出现"变成点评"或成功判断失效。
       final postBody = <String, String>{
         'formhash': formhash,
         'message': text,
@@ -366,35 +357,9 @@ class AuthService {
         'htmlon': _hiddenValue(page, 'htmlon') ?? '0',
         'posttime': _hiddenValue(page, 'posttime') ?? '',
       };
-      if (isNested) {
-        // reppid 必须是父楼 Discuz 原生 postpid, 页面里已经预填了;
-        // 如果缺失, 用我们自己算出来的 repquoteForGet 兜底。
-        final reppid = int.tryParse(_hiddenValue(page, 'reppid') ?? '') ?? 0;
-        final reppidVal = reppid > 0 ? reppid : repquoteForGet;
-        postBody['reppid'] = '$reppidVal';
-        // Discuz reply 表单同时需要 reppost, 值与 reppid 相同(父楼 postpid)。
-        final reppost = _hiddenValue(page, 'reppost');
-        if (reppost != null && reppost.isNotEmpty) {
-          postBody['reppost'] = reppost;
-        } else {
-          postBody['reppost'] = '$reppidVal';
-        }
-        final repquoteH = _hiddenValue(page, 'repquote');
-        if (repquoteH != null && repquoteH.isNotEmpty) postBody['repquote'] = repquoteH;
-        final noticeauthor = _hiddenValue(page, 'noticeauthor');
-        if (noticeauthor != null && noticeauthor.isNotEmpty) postBody['noticeauthor'] = noticeauthor;
-        final noticeauthormsg = _hiddenValue(page, 'noticeauthormsg');
-        if (noticeauthormsg != null && noticeauthormsg.isNotEmpty) postBody['noticeauthormsg'] = noticeauthormsg;
-        final noticetrimstr = _hiddenValue(page, 'noticetrimstr');
-        if (noticetrimstr != null && noticetrimstr.isNotEmpty) postBody['noticetrimstr'] = noticetrimstr;
-      } else {
-        final noticeauthor = _hiddenValue(page, 'noticeauthor');
-        if (noticeauthor != null && noticeauthor.isNotEmpty) postBody['noticeauthor'] = noticeauthor;
-      }
       final url = '${base}forum.php?mod=post&action=reply&fid=$fid&tid=$tid&extra=$extra&replysubmit=yes&mobile=2';
       final resp = await client.post(Uri.parse(url), headers: {..._headers(referer: getUrl), 'Content-Type': 'application/x-www-form-urlencoded; charset=UTF-8', 'Origin': base, 'X-Requested-With': 'XMLHttpRequest'}, body: postBody).timeout(NetClient.timeout);
       final body = NetClient.decode(resp.bodyBytes);
-      // 先精确命中 Discuz 成功标识 (inajax 响应的 succeedhandle_* / redirect 跳转)
       final success = body.contains('succeedhandle_') ||
           body.contains('do_success') ||
           body.contains('回复成功') ||
@@ -402,24 +367,67 @@ class AuthService {
           body.contains('location.href') && (body.contains('tid=$tid') || body.contains('thread-$tid')) ||
           resp.statusCode == 200 && (body.contains('succeed') && !body.contains('errorhandle_'));
       if (success) return null;
-      // 只有明确的未登录 / 登录入口跳转 / 登录页标题才判定为登录失败，否则避免误判
-      final needLogin = RegExp(r'''您需要登录才能|未登录|登录后才能|action=login[^0-9]|<title>[^<]*登录[^<]*</title>''', caseSensitive: false).hasMatch(body);
-      if (needLogin) return '请先登录后回帖';
-      // 令牌 / formhash 失效的明确提示
-      if (RegExp(r'''formhash.*(验证失败|非法请求|失效|令牌)|来路不正确|security\.validate''' ).hasMatch(body) || (body.contains('formhash') && (body.contains('验证失败') || body.contains('非法请求') || body.contains('令牌') || body.contains('失效')))) {
-        return '回帖令牌已失效，请刷新后重试';
-      }
-      // 抓取服务端显式报错
-      final showErr = RegExp(r'''showError\(\s*['"]([^'"]+)['"]''').firstMatch(body)?.group(1) ??
-          RegExp(r'''(?:alert_error|error_message)[^>]*>\s*(?:<[^>]+>\s*)?([^<]{2,120})''').firstMatch(body)?.group(1) ??
-          RegExp(r'<div[^>]*class="alert_error[^"]*"[^>]*>([^<]{2,120})').firstMatch(body)?.group(1);
-      if (showErr != null && showErr.trim().isNotEmpty) return showErr.trim();
-      // 仍命中回复内容也视为成功 (Discuz 有时返回带帖子列表的 HTML)
-      if (body.contains(text)) return null;
-      return '回帖失败,请重试';
+      return _replyError(body, text);
     } catch (_) {
       return '回帖请求失败,请稍后重试';
     }
+  }
+
+  /// 回复楼层/楼中楼: 走 Comiis replyfloor 插件自己的接口
+  /// `plugin.php?id=replyfloor:index&ac=post`, 而不是 Discuz 原生 reply。
+  ///
+  /// [postpid] 是父楼 Discuz 原生 postpid(如 2657801), [msgid] 是 replyfloor 内部回复 id:
+  /// 0 表示回复本楼, 非 0 表示回复某条楼中楼(如 20568)。
+  Future<String?> replyFloor(int tid, int postpid, String message, {int msgid = 0}) async {
+    final text = message.trim();
+    if (text.isEmpty) return '回复内容不能为空';
+    if (postpid <= 0) return '未取得回复楼层，请刷新后重试';
+    final client = await _http();
+    try {
+      // 第一步: 打开 replyfloor 回复表单, 取它自己的 formhash。
+      final formUrl = '${base}plugin.php?id=replyfloor:index&ac=post&tid=$tid&pid=$postpid&msgid=$msgid&style=1&handlekey=messagepost&loc=1&inajax=1';
+      final formResp = await client.get(Uri.parse(formUrl), headers: _headers(referer: '${base}thread-$tid-1-1.html')).timeout(const Duration(seconds: 15));
+      final formPage = NetClient.decode(formResp.bodyBytes);
+      final formhash = _hiddenValue(formPage, 'formhash') ?? '';
+      if (formhash.isEmpty) return '未取得回帖令牌(formhash)';
+
+      // 第二步: 提交回复。表单 action 自带 infloat=yes, JS 再拼 &loc=1&inajax=1。
+      final submitUrl = '${base}plugin.php?id=replyfloor:index&ac=post&tid=$tid&pid=$postpid&infloat=yes&loc=1&inajax=1';
+      final postBody = <String, String>{
+        'formhash': formhash,
+        'message': text,
+        'msgid': '$msgid',
+        'savesubmit': 'true',
+        'handlekey': 'messagepost',
+      };
+      final resp = await client.post(Uri.parse(submitUrl), headers: {..._headers(referer: formUrl), 'Content-Type': 'application/x-www-form-urlencoded; charset=UTF-8', 'Origin': base, 'X-Requested-With': 'XMLHttpRequest'}, body: postBody).timeout(NetClient.timeout);
+      final body = NetClient.decode(resp.bodyBytes);
+      // replyfloor 成功返回: <root><![CDATA[...回复发布成功...succeedhandle_messagepost...]]></root>
+      if (body.contains('succeedhandle_messagepost') ||
+          body.contains('回复发布成功') ||
+          (body.contains('succeedhandle_') && !body.contains('errorhandle_'))) {
+        return null;
+      }
+      return _replyError(body, text);
+    } catch (_) {
+      return '回帖请求失败,请稍后重试';
+    }
+  }
+
+  /// 统一的回复失败信息映射: 从 Discuz / replyfloor 的响应正文里提取可读错误。
+  String? _replyError(String body, String text) {
+    final needLogin = RegExp(r'''您需要登录才能|未登录|登录后才能|action=login[^0-9]|<title>[^<]*登录[^<]*</title>''', caseSensitive: false).hasMatch(body);
+    if (needLogin) return '请先登录后回帖';
+    if (RegExp(r'''formhash.*(验证失败|非法请求|失效|令牌)|来路不正确|security\.validate''').hasMatch(body) ||
+        (body.contains('formhash') && (body.contains('验证失败') || body.contains('非法请求') || body.contains('令牌') || body.contains('失效')))) {
+      return '回帖令牌已失效，请刷新后重试';
+    }
+    final showErr = RegExp(r'''showError\(\s*['"]([^'"]+)['"]''').firstMatch(body)?.group(1) ??
+        RegExp(r'''(?:alert_error|error_message)[^>]*>\s*(?:<[^>]+>\s*)?([^<]{2,120})''').firstMatch(body)?.group(1) ??
+        RegExp(r'<div[^>]*class="alert_error[^"]*"[^>]*>([^<]{2,120})').firstMatch(body)?.group(1);
+    if (showErr != null && showErr.trim().isNotEmpty) return showErr.trim();
+    if (body.contains(text)) return null;
+    return '回复失败,请重试';
   }
 
   Future<void> _save() async {

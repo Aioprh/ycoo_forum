@@ -202,7 +202,8 @@ class NativeCommentList extends StatelessWidget {
     );
     controller.dispose();
     if (message == null || message.isEmpty || !context.mounted) return;
-    final error = await AuthService.instance.reply(tid, fid, message, replyPid: pid);
+    // 回复本楼: replyfloor 接口 pid=楼层 postpid, msgid 固定 0。
+    final error = await AuthService.instance.replyFloor(tid, pid, message);
     if (!context.mounted) return;
     ScaffoldMessenger.of(context).showSnackBar(
       SnackBar(content: Text(error ?? '已回复 $author')),
@@ -484,9 +485,10 @@ class _CommentCardState extends State<_CommentCard> {
     );
     controller.dispose();
     if (message == null || message.isEmpty || !mounted) return;
-    final error = await AuthService.instance.reply(
-      widget.tid, widget.fid, message,
-      replyPid: pid, nestedParentPid: parentPid,
+    // 回复楼中楼: replyfloor 接口 pid=父楼 postpid(parentPid),
+    // msgid=该条楼中楼回复的 replyfloor 内部 id(pid)。
+    final error = await AuthService.instance.replyFloor(
+      widget.tid, parentPid, message, msgid: pid,
     );
     if (!mounted) return;
     ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text(error ?? '已回复 $author')));
