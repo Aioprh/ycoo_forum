@@ -316,24 +316,30 @@ class SocialService {
     if (cookie == null || cookie.isEmpty) return '请先登录论坛';
     try {
       final client = await NetClient.instance.client;
+      // Comiis 模板不把 formhash 放在 <input> hidden 里, 而是嵌入 JS/链接字符串,
+      // 所以这里用能覆盖整页文本的正则来取。
       final pagePath = 'home.php?mod=spacecp&ac=follow&uid=$uid&mobile=2';
       final page = await _get(pagePath);
-      final formhash = _hiddenValue(page, 'formhash');
-      if (formhash.isEmpty) return '未取得操作令牌，请刷新登录状态后重试';
+      final token = _hiddenValue(page, 'formhash');
+      if (token.isEmpty) return '未取得操作令牌,请刷新登录状态后重试';
 
       final path =
           'home.php?mod=spacecp&ac=follow&op=${follow ? 'add' : 'del'}&uid=$uid&mobile=2';
+      // Discuz follow 接口同时接受 query/hash 和 POST body 中的 hash/formhash,
+      // 新版模板服务端会严格校验 hash 查询参数, 直接拼进 URL 确保命中。
+      final urlWithHash = '$_base$path&hash=$token';
       final response = await NetClient.retry(() => client.post(
-            Uri.parse('$_base$path'),
+            Uri.parse(urlWithHash),
             headers: {
               'User-Agent': NetClient.ua,
               'Accept': 'application/json,text/html,*/*',
-              'Referer': '$_base$pagePath',
+              'Referer': '$_base$pagePath&hash=$token',
               'Content-Type': 'application/x-www-form-urlencoded; charset=UTF-8',
               if (cookie.isNotEmpty) 'Cookie': cookie,
             },
             body: {
-              'formhash': formhash,
+              'hash': token,
+              'formhash': token,
               'uid': '$uid',
               'op': follow ? 'add' : 'del',
               'inajax': '1',
@@ -345,12 +351,12 @@ class SocialService {
         return null;
       }
       if (body.contains('登录') && body.contains('失效')) {
-        return '登录态已失效，请重新登录论坛';
+        return '登录态已失效,请重新登录论坛';
       }
-      if (_tokenFailed(body)) return '操作令牌已失效，请刷新后重试';
-      return follow ? '关注失败，请稍后重试' : '取消关注失败，请稍后重试';
+      if (_tokenFailed(body)) return '操作令牌已失效,请刷新后重试';
+      return follow ? '关注失败,请稍后重试' : '取消关注失败,请稍后重试';
     } catch (_) {
-      return '操作失败，请检查网络后重试';
+      return '操作失败,请检查网络后重试';
     }
   }
 
@@ -363,6 +369,10 @@ class SocialService {
     final patterns = <RegExp>[
       RegExp('name\\s*=\\s*["\\\']$escaped["\\\'][^>]*value\\s*=\\s*["\\\']([^"\\\']+)["\\\']', caseSensitive: false),
       RegExp('value\\s*=\\s*["\\\']([^"\\\']+)["\\\'][^>]*name\\s*=\\s*["\\\']$escaped["\\\']', caseSensitive: false),
+      // Comiis 模板: formhash=ca6c6844 形式出现在链接/JS 字符串中。
+      RegExp('(?:^|[?&,;\\s\'"])' + escaped + r'\s*=\s*["\']?([a-zA-Z0-9]{4,})["\']?', caseSensitive: false),
+      RegExp(r'formhash=([a-zA-Z0-9]{4,})', caseSensitive: false),
+      RegExp(r'hash=([a-zA-Z0-9]{4,})', caseSensitive: false),
     ];
     for (final pattern in patterns) {
       final match = pattern.firstMatch(html);

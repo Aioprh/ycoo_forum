@@ -72,6 +72,9 @@ class FollowService {
     final expectedOp = follow ? 'add' : 'del';
     final candidates = <String>[];
 
+    // 先从页面提取全局 hash —— 所有 follow 操作(op=add/del)共用同一令牌。
+    final globalHash = _globalHash(doc, html);
+
     for (final a in doc.querySelectorAll('a[href]')) {
       final href = a.attributes['href'] ?? '';
       if (href.isEmpty) continue;
@@ -85,14 +88,23 @@ class FollowService {
       final targetUid = int.tryParse(uri.queryParameters['fuid'] ?? uri.queryParameters['uid'] ?? '');
       if (targetUid != uid) continue;
 
-      // add 必须带 hash；del 在标准 Discuz 模板中通常不需要 hash。
-      if (follow && (uri.queryParameters['hash'] ?? '').trim().isEmpty) continue;
-      candidates.add(decoded);
+      // Discuz op=del 虽然 href 通常不带 hash, 但服务端仍校验令牌,
+      // 因此必须把页面全局 hash 补进 URL。op=add 同理, 这里统一补齐。
+      if ((uri.queryParameters['hash'] ?? '').trim().isEmpty && globalHash.isNotEmpty) {
+        final rebuilt = <String, String>{
+          for (final entry in uri.queryParametersAll.entries) entry.key: entry.value.first,
+          'hash': globalHash,
+        };
+        final built = uri.replace(queryParameters: rebuilt).toString();
+        candidates.add(built);
+      } else {
+        candidates.add(decoded);
+      }
     }
 
     if (candidates.isNotEmpty) return candidates.first;
 
-    // 某些模板把操作链接放在 HTML/JS 字符串中，而不是普通 <a>。
+    // 某些模板把操作链接放在 HTML/JS 字符串中, 而不是普通 <a>。
     final escapedUid = RegExp.escape('$uid');
     final pattern = RegExp(
       'home\\.php\\?mod=spacecp&ac=follow&op=$expectedOp[^"\\\'<>\\s]*?(?:fuid|uid)=$escapedUid[^"\\\'<>\\s]*',
@@ -103,10 +115,28 @@ class FollowService {
       value = value.replaceAll('&amp;', '&');
       final uri = Uri.tryParse(value);
       if (uri == null) continue;
-      if (follow && (uri.queryParameters['hash'] ?? '').isEmpty) continue;
+      if ((uri.queryParameters['hash'] ?? '').trim().isEmpty && globalHash.isNotEmpty) {
+        final rebuilt = <String, String>{
+          for (final entry in uri.queryParametersAll.entries) entry.key: entry.value.first,
+          'hash': globalHash,
+        };
+        final built = uri.replace(queryParameters: rebuilt).toString();
+        return built;
+      }
       return value;
     }
     return null;
+  }
+
+  static String _globalHash(dom.Document doc, String html) {
+    // 优先从 <input name="formhash"> / <input name="hash"> 取, 回退到页面脚本里常见的 hash 值。
+    for (final input in doc.querySelectorAll('input[name="formhash"], input[name="hash"]')) {
+      final v = input.attributes['value']?.trim() ?? '';
+      if (v.isNotEmpty) return v;
+    }
+    final hashRe = RegExp(r'(?:formhash|hash)\s*[=:]\s*["\']([a-zA-Z0-9]{6,})["\']', caseSensitive: false);
+    final m = hashRe.firstMatch(html);
+    return m?.group(1) ?? '';
   }
 
   static bool _success(String body, bool follow) {
