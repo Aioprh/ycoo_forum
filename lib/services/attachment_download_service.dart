@@ -14,12 +14,7 @@ class ForumAttachmentInfo {
   final String size;
   final String downloads;
 
-  const ForumAttachmentInfo({
-    required this.url,
-    required this.name,
-    this.size = '',
-    this.downloads = '',
-  });
+  const ForumAttachmentInfo({required this.url, required this.name, this.size = '', this.downloads = ''});
 }
 
 class _AttachMeta {
@@ -68,8 +63,13 @@ class AttachmentDownloadService {
       if ((cookie ?? '').isNotEmpty) 'Cookie': cookie!,
     };
     final candidates = <Uri>[
-      Uri.parse('${SiteConfig.base}forum.php').replace(queryParameters: {'mobile': '2', 'mod': 'viewthread', 'tid': '$tid', 'page': '1', '_ycoo_attachment_list': DateTime.now().millisecondsSinceEpoch.toString()}),
-      Uri.parse('${SiteConfig.base}thread-$tid-1-1.html').replace(queryParameters: {'mobile': '2', '_ycoo_attachment_list': DateTime.now().millisecondsSinceEpoch.toString()}),
+      Uri.parse('${SiteConfig.base}forum.php').replace(queryParameters: {
+        'mobile': '2', 'mod': 'viewthread', 'tid': '$tid', 'page': '1',
+        '_ycoo_attachment_list': DateTime.now().millisecondsSinceEpoch.toString(),
+      }),
+      Uri.parse('${SiteConfig.base}thread-$tid-1-1.html').replace(queryParameters: {
+        'mobile': '2', '_ycoo_attachment_list': DateTime.now().millisecondsSinceEpoch.toString(),
+      }),
     ];
     for (final pageUrl in candidates) {
       try {
@@ -84,18 +84,14 @@ class AttachmentDownloadService {
 
   Future<bool> downloadAllFromThread({required int tid, String? cookie, String? referer}) async {
     if (!Platform.isAndroid || tid <= 0) return false;
-    try {
-      final attachments = await fetchAttachments(tid: tid, cookie: cookie, referer: referer);
-      if (attachments.isEmpty) return false;
-      var started = false;
-      for (final attachment in attachments) {
-        final ok = await _enqueue(url: attachment.url, cookie: cookie, referer: referer ?? SiteConfig.base, filename: attachment.name);
-        started = started || ok;
-      }
-      return started;
-    } catch (_) {
-      return false;
+    final attachments = await fetchAttachments(tid: tid, cookie: cookie, referer: referer);
+    if (attachments.isEmpty) return false;
+    var started = false;
+    for (final attachment in attachments) {
+      final ok = await _enqueue(url: attachment.url, cookie: cookie, referer: referer ?? SiteConfig.base, filename: attachment.name);
+      started = started || ok;
     }
+    return started;
   }
 
   List<ForumAttachmentInfo> _extractAttachmentInfos(String html) {
@@ -107,10 +103,10 @@ class AttachmentDownloadService {
 
     final tipInfo = <String, _AttachMeta>{};
     for (final element in doc.querySelectorAll('[id]')) {
-      final id = element.id ?? '';
+      final id = element.id;
       if (!RegExp(r'^(?:aid|aimg)_?\d+_menu$').hasMatch(id)) continue;
-      final aux = _parseTipMeta(element);
-      if (aux != null) tipInfo[aux.aid] = aux;
+      final meta = _parseTipMeta(element);
+      if (meta != null) tipInfo[meta.aid] = meta;
     }
 
     for (final anchor in doc.querySelectorAll('a[href]')) {
@@ -119,16 +115,23 @@ class AttachmentDownloadService {
       final url = _normalizeUrl(href);
       final uri = Uri.tryParse(url);
       if (uri == null || !_isRealFileAttachment(uri)) continue;
-      final name = _bestFileName(_cleanFileName(anchor.text), uri);
+      if (_looksLikeImageFile('', uri) && !_hasNonImageName(anchor.text)) continue;
+
+      final aid = _anchorNumericAid(anchor, uri);
+      _AttachMeta? meta = aid.isEmpty ? null : tipInfo[aid];
+      meta ??= _nearestTipMeta(anchor, tipInfo);
+      if (meta == null && tipInfo.length == 1) meta = tipInfo.values.first;
+
+      var name = _bestFileName(_cleanFileName(anchor.text), anchor, uri);
+      if (meta?.title.isNotEmpty == true) name = meta!.title;
+      name = _ensureFilenameExtension(name, uri);
       if (_looksLikeImageFile(name, uri)) continue;
+
       final key = uri.queryParameters['aid']?.trim() ?? url;
       if (!seen.add(key)) continue;
-      final numAid = _anchorNumericAid(anchor, uri);
-      final meta = numAid.isEmpty ? null : tipInfo[numAid];
-      final resolvedName = meta?.title.isNotEmpty == true ? meta!.title : name;
       result.add(ForumAttachmentInfo(
         url: url,
-        name: _ensureFilenameExtension(resolvedName, uri),
+        name: name,
         size: meta?.size ?? _findAttachmentSize(anchor),
         downloads: meta?.downloads ?? '',
       ));
@@ -139,153 +142,155 @@ class AttachmentDownloadService {
       final url = _normalizeUrl(m.group(1)!);
       final uri = Uri.tryParse(url);
       if (uri == null || !_isRealFileAttachment(uri)) continue;
-      final name = _bestFileName('', uri);
+      final name = _ensureFilenameExtension(_bestFileName('', null, uri), uri);
       if (_looksLikeImageFile(name, uri)) continue;
       final key = uri.queryParameters['aid']?.trim() ?? url;
       if (!seen.add(key)) continue;
-      result.add(ForumAttachmentInfo(url: url, name: _ensureFilenameExtension(name, uri)));
+      result.add(ForumAttachmentInfo(url: url, name: name));
     }
     return result;
   }
 
   bool _isRealFileAttachment(Uri uri) {
     final path = uri.path.toLowerCase();
-    final query = uri.queryParameters;
-    final mod = (query['mod'] ?? '').toLowerCase();
-    final aid = query['aid']?.trim() ?? '';
-    final isAttachmentPath = path.endsWith('attachment.php') || mod == 'attachment' || path.contains('/attachment/');
-    final isDownloadPath = path.contains('/download/');
-    if (!isAttachmentPath && !isDownloadPath) return false;
-    if (aid.isEmpty && !(path.contains('/attachment/') || isDownloadPath)) return false;
-    if ((query['request'] ?? '').toLowerCase() == 'yes') return true;
-    final f = query['_f']?.trim() ?? '';
-    if (f.isNotEmpty) return true;
-    if (query.containsKey('filename') || query.containsKey('file') || query.containsKey('name')) return true;
-    if (aid.isNotEmpty) return true;
-    return _hasKnownFileExtension(path);
+    final q = uri.queryParameters;
+    final mod = (q['mod'] ?? '').toLowerCase();
+    final aid = q['aid']?.trim() ?? '';
+    final attachmentPath = path.endsWith('attachment.php') || mod == 'attachment' || path.contains('/attachment/');
+    final downloadPath = path.contains('/download/');
+    if (!attachmentPath && !downloadPath) return false;
+    if (aid.isEmpty && !path.contains('/attachment/') && !downloadPath) return false;
+    return (q['request'] ?? '').toLowerCase() == 'yes' || (q['_f'] ?? '').isNotEmpty ||
+        q.containsKey('filename') || q.containsKey('file') || q.containsKey('name') || aid.isNotEmpty || _hasKnownFileExtension(path);
   }
 
-  bool _hasKnownFileExtension(String path) => RegExp(r'\.(?:txt|json|xml|csv|md|log|zip|rar|7z|tar|gz|bz2|xz|apk|xapk|apks|ipa|pdf|epub|mobi|azw|azw3|doc|docx|xls|xlsx|ppt|pptx|rtf|mp3|wav|flac|m4a|ogg|mp4|m4v|mkv|avi|mov|webm)(?:$|[?#])', caseSensitive: false).hasMatch(path);
+  bool _hasKnownFileExtension(String value) => RegExp(r'\.(?:txt|json|xml|csv|md|log|zip|rar|7z|tar|gz|bz2|xz|apk|xapk|apks|ipa|pdf|epub|mobi|azw|azw3|doc|docx|xls|xlsx|ppt|pptx|rtf|mp3|wav|flac|m4a|ogg|mp4|m4v|mkv|avi|mov|webm)(?:$|[?#])', caseSensitive: false).hasMatch(value);
 
   String _normalizeUrl(String raw) {
     var value = raw.trim().replaceAll('&amp;', '&').replaceAll('\\/', '/');
     value = value.replaceFirst(RegExp(r'^javascript:\s*', caseSensitive: false), '');
     value = value.replaceAll(RegExp(r'[\)\];,]+$'), '');
     if (value.startsWith('//')) value = 'https:$value';
-    if (!(value.startsWith('http://') || value.startsWith('https://'))) value = value.startsWith('/') ? '${SiteConfig.base}${value.substring(1)}' : SiteConfig.resolve(value);
+    if (!value.startsWith('http://') && !value.startsWith('https://')) {
+      value = value.startsWith('/') ? '${SiteConfig.base}${value.substring(1)}' : SiteConfig.resolve(value);
+    }
     try { return Uri.decodeFull(value); } catch (_) { return value; }
   }
 
   String _cleanFileName(String value) => value.replaceAll(RegExp(r'\s+'), ' ').trim();
 
-  String _bestFileName(String anchorText, Uri uri) {
-    if (anchorText.isNotEmpty && !anchorText.contains('下载') && !anchorText.contains('附件') && !anchorText.contains('保存到相册')) return anchorText;
+  String _bestFileName(String anchorText, dom.Element? anchor, Uri uri) {
+    final candidates = <String>[
+      anchorText,
+      if (anchor != null) ...[
+        anchor.attributes['data-filename'] ?? '',
+        anchor.attributes['data-name'] ?? '',
+        anchor.attributes['data-title'] ?? '',
+        anchor.attributes['filename'] ?? '',
+        anchor.attributes['title'] ?? '',
+      ],
+    ];
+    for (final candidate in candidates) {
+      final value = _cleanFileName(candidate);
+      if (_isUsableAttachmentTitle(value)) return value;
+    }
     for (final key in const ['filename', 'file', 'name']) {
-      final value = uri.queryParameters[key]?.trim() ?? '';
-      if (value.isNotEmpty) return _cleanFileName(value);
+      final value = _cleanFileName(uri.queryParameters[key] ?? '');
+      if (_isUsableAttachmentTitle(value)) return value;
     }
-    final f = _cleanFileName(uri.queryParameters['_f']?.trim() ?? '');
-    if (f.isNotEmpty) {
-      // Discuz 不同版本可能传“json”、“.json”或直接传完整文件名。
-      if (_hasKnownFileExtension(f) || f.startsWith('.')) {
-        return f.startsWith('.') ? '论坛附件$f' : f;
-      }
-      if (RegExp(r'^[A-Za-z0-9]{1,12}$').hasMatch(f)) return '论坛附件.$f';
-    }
+    final f = _cleanFileName(uri.queryParameters['_f'] ?? '');
+    if (_hasKnownFileExtension(f)) return f;
+    if (f.startsWith('.') && f.length <= 12) return '论坛附件$f';
+    if (RegExp(r'^[A-Za-z0-9]{1,12}$').hasMatch(f)) return '论坛附件.$f';
     final segments = uri.pathSegments.where((e) => e.trim().isNotEmpty).toList();
     if (segments.isNotEmpty) {
       final last = _cleanFileName(Uri.decodeComponent(segments.last));
-      if (_hasKnownFileExtension(last) && !{'attachment','download','attachment.php'}.contains(last.toLowerCase())) return last;
+      if (_hasKnownFileExtension(last)) return last;
     }
     return '论坛附件';
+  }
+
+  _AttachMeta? _nearestTipMeta(dom.Element anchor, Map<String, _AttachMeta> tipInfo) {
+    dom.Element? node = anchor;
+    for (var depth = 0; depth < 6 && node != null; depth++, node = node.parent) {
+      final id = node.id;
+      final m = RegExp(r'^(?:aid|aimg)_?(\d+)_menu$').firstMatch(id);
+      if (m != null && tipInfo.containsKey(m.group(1))) return tipInfo[m.group(1)];
+      for (final child in node.querySelectorAll('[id]')) {
+        final cm = RegExp(r'^(?:aid|aimg)_?(\d+)_menu$').firstMatch(child.id);
+        if (cm != null && tipInfo.containsKey(cm.group(1))) return tipInfo[cm.group(1)];
+      }
+    }
+    return null;
+  }
+
+  _AttachMeta? _parseTipMeta(dom.Element tip) {
+    final idMatch = RegExp(r'(?:aid|aimg)_?(\d+)_menu$').firstMatch(tip.id);
+    if (idMatch == null) return null;
+    final aid = idMatch.group(1)!;
+    String title = '';
+    final attrs = <String?>[
+      tip.attributes['data-filename'], tip.attributes['data-name'], tip.attributes['data-title'],
+      tip.attributes['filename'], tip.attributes['name'], tip.attributes['title'], tip.attributes['value'], tip.attributes['alt'],
+      tip.querySelector('[data-filename]')?.attributes['data-filename'],
+      tip.querySelector('[data-name]')?.attributes['data-name'],
+      tip.querySelector('[title]')?.attributes['title'],
+      tip.querySelector('strong')?.text,
+      tip.querySelector('a')?.text,
+    ];
+    for (final candidate in attrs) {
+      final value = _cleanFileName(candidate ?? '');
+      if (_isUsableAttachmentTitle(value)) { title = value; break; }
+    }
+    final text = _cleanFileName(tip.text);
+    final size = RegExp(r'(\d+(?:\.\d+)?\s*(?:B|KB|MB|GB))', caseSensitive: false).firstMatch(text)?.group(1) ?? '';
+    final downloads = RegExp(r'下载次数[:：]?\s*(\d+)').firstMatch(text)?.group(1);
+    return _AttachMeta(aid: aid, title: title, size: size, downloads: downloads == null ? '' : '下载 $downloads 次');
+  }
+
+  bool _isUsableAttachmentTitle(String value) {
+    if (value.isEmpty || value == '论坛附件' || value == '附件' || value == '下载' || value == '点击下载') return false;
+    if (RegExp(r'^\d+(?:\.\d+)?\s*(?:B|KB|MB|GB)$', caseSensitive: false).hasMatch(value)) return false;
+    return !value.contains('下载次数') && value.length <= 220;
+  }
+
+  bool _hasNonImageName(String value) => RegExp(r'\.(?:txt|json|xml|csv|md|log|zip|rar|7z|tar|gz|apk|pdf|epub|mobi|docx?|xlsx?|pptx?|mp3|wav|flac|m4a|ogg|mp4|mkv|avi|mov|webm)$', caseSensitive: false).hasMatch(value.trim());
+
+  String _anchorNumericAid(dom.Element anchor, Uri uri) {
+    final raw = uri.queryParameters['aid']?.trim() ?? '';
+    final direct = int.tryParse(raw);
+    if (direct != null && direct > 0) return '$direct';
+    final idMatch = RegExp(r'(?:aid_?|aimg_?)(\d+)', caseSensitive: false).firstMatch(anchor.id);
+    if (idMatch != null) return idMatch.group(1)!;
+    if (raw.isEmpty) return '';
+    var padded = raw;
+    while (padded.length % 4 != 0) padded += '=';
+    try {
+      final text = utf8.decode(base64.decode(padded));
+      final first = text.split('|').first;
+      if (int.tryParse(first) != null) return first;
+    } catch (_) {}
+    return '';
   }
 
   String _ensureFilenameExtension(String name, Uri uri) {
     var value = _cleanFileName(name);
     if (value.isEmpty) value = '论坛附件';
     if (_hasKnownFileExtension(value)) return value;
-    final f = _cleanFileName(uri.queryParameters['_f']?.trim() ?? '');
-    if (f.isNotEmpty) {
-      if (_hasKnownFileExtension(f) && !f.startsWith('.')) {
-        if (value == '论坛附件') return f;
-        if (!value.toLowerCase().endsWith(f.toLowerCase())) return '$value.${f.split('.').last}';
-      }
-      if (f.startsWith('.') && f.length <= 12 && RegExp(r'^\.[A-Za-z0-9]+$').hasMatch(f)) return '$value$f';
-      if (RegExp(r'^[A-Za-z0-9]{1,12}$').hasMatch(f)) return '$value.$f';
-    }
+    final f = _cleanFileName(uri.queryParameters['_f'] ?? '');
+    if (f.startsWith('.') && f.length <= 12 && RegExp(r'^\.[A-Za-z0-9]+$').hasMatch(f)) return '$value$f';
+    if (RegExp(r'^[A-Za-z0-9]{1,12}$').hasMatch(f)) return '$value.$f';
+    if (_hasKnownFileExtension(f) && value == '论坛附件') return f;
     return value;
   }
 
   String _findAttachmentSize(dynamic anchor) {
     try {
       var e = anchor;
-      for (var i = 0; i < 4 && e != null; i++, e = e.parent) {
-        final match = RegExp(r'(\d+(?:\.\d+)?\s*(?:B|KB|MB|GB))', caseSensitive: false).firstMatch(_cleanFileName(e.text ?? ''));
-        if (match != null) return match.group(1)!;
+      for (var i = 0; i < 6 && e != null; i++, e = e.parent) {
+        final m = RegExp(r'(\d+(?:\.\d+)?\s*(?:B|KB|MB|GB))', caseSensitive: false).firstMatch(_cleanFileName(e.text ?? ''));
+        if (m != null) return m.group(1)!;
       }
-    } catch (_) {}
-    return '';
-  }
-
-  _AttachMeta? _parseTipMeta(dom.Element tip) {
-    final id = tip.id ?? '';
-    final idMatch = RegExp(r'(?:aid|aimg)_?(\d+)_menu').firstMatch(id);
-    if (idMatch == null) return null;
-    final aid = idMatch.group(1)!;
-    String title = '';
-
-    final candidates = <String>[
-      tip.querySelector('strong')?.text ?? '',
-      tip.querySelector('[title]')?.attributes['title'] ?? '',
-      tip.querySelector('a')?.text ?? '',
-    ];
-    for (final candidate in candidates) {
-      final cleaned = _cleanFileName(candidate);
-      if (_isUsableAttachmentTitle(cleaned)) {
-        title = cleaned;
-        break;
-      }
-    }
-
-    String size = '';
-    String downloads = '';
-    final text = _cleanFileName(tip.text);
-    final sizeMatch = RegExp(r'(\d+(?:\.\d+)?\s*(?:B|KB|MB|GB))', caseSensitive: false).firstMatch(text);
-    if (sizeMatch != null) size = sizeMatch.group(1)!;
-    final dlMatch = RegExp(r'下载次数[:：]?\s*(\d+)').firstMatch(text);
-    if (dlMatch != null) downloads = '下载 ${dlMatch.group(1)!} 次';
-
-    if (title.isEmpty && text.isNotEmpty) {
-      var candidate = text
-          .replaceFirst(RegExp(r'\s*\(?\s*\d+(?:\.\d+)?\s*(?:B|KB|MB|GB).*$', caseSensitive: false), '')
-          .replaceFirst(RegExp(r'\s*下载次数[:：]?\s*\d+.*$', caseSensitive: false), '')
-          .replaceAll(RegExp(r'[\(（].*?[\)）]'), '')
-          .trim();
-      if (_isUsableAttachmentTitle(candidate)) title = candidate;
-    }
-
-    return _AttachMeta(aid: aid, title: title, size: size, downloads: downloads);
-  }
-
-  bool _isUsableAttachmentTitle(String value) {
-    if (value.isEmpty) return false;
-    if (value == '论坛附件' || value == '附件' || value == '下载' || value == '点击下载') return false;
-    if (RegExp(r'^\d+(?:\.\d+)?\s*(?:B|KB|MB|GB)$', caseSensitive: false).hasMatch(value)) return false;
-    return !value.contains('下载次数');
-  }
-
-  String _anchorNumericAid(dom.Element anchor, Uri uri) {
-    final idMatch = RegExp(r'(?:aid_?|aimg_?)(\d+)').firstMatch(anchor.id ?? '');
-    if (idMatch != null) return idMatch.group(1)!;
-    final raw = uri.queryParameters['aid'] ?? '';
-    if (raw.isEmpty) return '';
-    String padded = raw;
-    while (padded.length % 4 != 0) padded += '=';
-    try {
-      final bytes = base64.decode(padded);
-      final text = utf8.decode(bytes);
-      final seg = text.split('|').first;
-      if (int.tryParse(seg) != null) return seg;
     } catch (_) {}
     return '';
   }
@@ -294,8 +299,10 @@ class AttachmentDownloadService {
 
   Future<bool> _enqueue({required String url, String? cookie, String? referer, String? filename}) async {
     try {
-      final result = await _channel.invokeMethod<bool>('download', {'url': url, 'cookie': cookie ?? '', 'referer': referer ?? SiteConfig.base, 'filename': filename ?? ''});
-      return result == true;
+      final ok = await _channel.invokeMethod<bool>('download', {
+        'url': url, 'cookie': cookie ?? '', 'referer': referer ?? SiteConfig.base, 'filename': filename ?? '',
+      });
+      return ok == true;
     } on PlatformException { return false; } catch (_) { return false; }
   }
 }
