@@ -356,10 +356,12 @@ class AuthService {
       final formhash = _hiddenValue(page, 'formhash') ?? '';
       if (formhash.isEmpty) return '未取得回帖令牌(formhash)';
       final extra = 'page%3D1';
+      // Discuz reply 页面里 replysubmit 的隐藏字段值是 "yes", 不能传中文按钮文案,
+      // 否则后端会把请求路由到错误的处理分支, 出现"变成点评"或成功判断失效。
       final postBody = <String, String>{
         'formhash': formhash,
         'message': text,
-        'replysubmit': '回复',
+        'replysubmit': 'yes',
         'listextra': extra,
         'htmlon': _hiddenValue(page, 'htmlon') ?? '0',
         'posttime': _hiddenValue(page, 'posttime') ?? '',
@@ -368,7 +370,15 @@ class AuthService {
         // reppid 必须是父楼 Discuz 原生 postpid, 页面里已经预填了;
         // 如果缺失, 用我们自己算出来的 repquoteForGet 兜底。
         final reppid = int.tryParse(_hiddenValue(page, 'reppid') ?? '') ?? 0;
-        postBody['reppid'] = '${reppid > 0 ? reppid : repquoteForGet}';
+        final reppidVal = reppid > 0 ? reppid : repquoteForGet;
+        postBody['reppid'] = '$reppidVal';
+        // Discuz reply 表单同时需要 reppost, 值与 reppid 相同(父楼 postpid)。
+        final reppost = _hiddenValue(page, 'reppost');
+        if (reppost != null && reppost.isNotEmpty) {
+          postBody['reppost'] = reppost;
+        } else {
+          postBody['reppost'] = '$reppidVal';
+        }
         final repquoteH = _hiddenValue(page, 'repquote');
         if (repquoteH != null && repquoteH.isNotEmpty) postBody['repquote'] = repquoteH;
         final noticeauthor = _hiddenValue(page, 'noticeauthor');
