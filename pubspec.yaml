@@ -2,7 +2,7 @@ name: ycoo_forum
 description: "源论坛(YcooForum)民间移动端 - 阅读侧。"
 publish_to: 'none'
 
-version: 1.5.3+57
+version: 1.5.4+58
 
 environment:
   sdk: ^3.13.2
