@@ -163,7 +163,7 @@ class CommentReplyResolver {
         if (response.statusCode != 200) continue;
         final body = NetClient.decode(response.bodyBytes).trim();
         final parsed = _unwrapReplyResponse(body);
-        if (_containsReplyNode(parsed)) return parsed;
+        if (_containsReplyNode(parsed)) return _normalizeReplyPidHtml(parsed);
       } catch (_) {}
     }
 
@@ -173,7 +173,7 @@ class CommentReplyResolver {
       final post = _findPostByPid(doc, pid);
       if (post != null) {
         final nested = _extractNestedReplyHtml(post);
-        if (nested.isNotEmpty) return nested;
+        if (nested.isNotEmpty) return _normalizeReplyPidHtml(nested);
       }
     }
     return '';
@@ -208,6 +208,49 @@ class CommentReplyResolver {
           '.replyfloor_content_li, li.replyfloor_li, .replyfloor_reply, .replyfloor_item',
         ) !=
         null;
+  }
+
+  /// Comiis/replyfloor 的“回复”按钮不是把 PID 放在 li 自身，
+  /// 而是放在按钮 href 的 `repquote=<pid>` 参数里。
+  /// 原生解析器只读取 data-pid/pid 等属性，因此会把真实 PID 解析成 0，
+  /// 最终点击“回复”时就会出现“未取得这条中楼的评论编号”。
+  ///
+  /// 这里在交给 UI 解析前，把 repquote 提升为 data-pid，兼容现有 UI，
+  /// 同时保留原始 HTML 和原站链接，不改变实际回复接口。
+  String _normalizeReplyPidHtml(String html) {
+    if (html.trim().isEmpty) return html;
+    final doc = parser.parseFragment(html);
+    for (final link in doc.querySelectorAll('a[href], [data-url], [onclick]')) {
+      final raw = [
+        link.attributes['href'] ?? '',
+        link.attributes['data-url'] ?? '',
+        link.attributes['onclick'] ?? '',
+      ].join(' ');
+      final match = RegExp(
+        r'(?:[?&]|%3F|%26)repquote(?:=|%3D)(\d+)',
+        caseSensitive: false,
+      ).firstMatch(raw);
+      final replyPid = int.tryParse(match?.group(1) ?? '');
+      if (replyPid == null || replyPid <= 0) continue;
+
+      dom.Element? owner = link;
+      for (var i = 0; i < 4 && owner != null; i++) {
+        final cls = owner.attributes['class'] ?? '';
+        if (cls.contains('replyfloor_content_li') ||
+            cls.contains('replyfloor_reply') ||
+            cls.contains('replyfloor_item') ||
+            owner.localName == 'li') {
+          owner.attributes['data-pid'] = '$replyPid';
+          break;
+        }
+        owner = owner.parent;
+      }
+      owner ??= link;
+      if (!owner.attributes.containsKey('data-pid')) {
+        owner.attributes['data-pid'] = '$replyPid';
+      }
+    }
+    return doc.nodes.map((node) => node is dom.Element ? node.outerHtml : (node.text ?? '')).join();
   }
 
   dom.Element? _findPostByPid(dom.Document doc, int pid) {
