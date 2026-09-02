@@ -11,8 +11,8 @@ import 'resolved_user_avatar.dart';
 
 /// 原生评论列表。
 ///
-/// 每个评论都会尝试读取 Discuz replyfloor。楼中楼中的每一条回复都有
-/// 独立 PID，因此可以直接回复任意一条，而不是只能回复楼中楼楼主。
+/// 每个评论都会尝试读取 Discuz replyfloor。楼中楼中的每一条回复都
+/// 使用自己的 PID，因此可以直接回复任意一条回复。
 class NativeCommentList extends StatelessWidget {
   final String html;
   final void Function(int pid, String author)? onReply;
@@ -29,53 +29,42 @@ class NativeCommentList extends StatelessWidget {
     if (html.trim().isEmpty) return const [];
     final doc = parser.parseFragment(html);
     final result = <_CommentFloor>[];
-
     for (final card in doc.querySelectorAll('.post-card')) {
       final body = card.querySelector('.p-body');
       if (body == null) continue;
       final authorNode = card.querySelector('.p-author');
       final rawText = card.text.replaceAll(RegExp(r'\s+'), ' ').trim();
       final replyMatch = RegExp(r'回复\s*\((\d+)\)').firstMatch(rawText);
-
-      result.add(
-        _CommentFloor(
-          pid: int.tryParse(card.attributes['data-pid'] ?? '') ?? 0,
-          uid: _extractUid(card, authorNode),
-          floor: _text(card.querySelector('.p-floor')),
-          author: _text(authorNode),
-          level: _text(card.querySelector('.p-level')),
-          time: _text(card.querySelector('.p-time')),
-          replyCount: int.tryParse(replyMatch?.group(1) ?? '0') ?? 0,
-          bodyHtml: body.innerHtml,
-        ),
-      );
+      result.add(_CommentFloor(
+        pid: int.tryParse(card.attributes['data-pid'] ?? '') ?? 0,
+        uid: _extractUid(card, authorNode),
+        floor: _text(card.querySelector('.p-floor')),
+        author: _text(authorNode),
+        level: _text(card.querySelector('.p-level')),
+        time: _text(card.querySelector('.p-time')),
+        replyCount: int.tryParse(replyMatch?.group(1) ?? '0') ?? 0,
+        bodyHtml: body.innerHtml,
+      ));
     }
     return result;
   }
 
   static int _extractUid(dom.Element card, dom.Element? author) {
     const keys = [
-      'data-uid',
-      'data-user-id',
-      'data-author-id',
-      'uid',
-      'userid',
-      'user-id',
-      'author-id',
+      'data-uid', 'data-user-id', 'data-author-id', 'uid', 'userid',
+      'user-id', 'author-id',
     ];
     for (final key in keys) {
       final uid = _firstInt(card.attributes[key] ?? author?.attributes[key]);
       if (uid != null && uid > 0) return uid;
     }
-
     final nodes = <dom.Element>[
       card,
       if (author != null) author,
       ...card.querySelectorAll('a[href], img[src], img[data-src]'),
     ];
     for (final node in nodes) {
-      final raw =
-          '${node.attributes['href'] ?? ''} '
+      final raw = '${node.attributes['href'] ?? ''} '
           '${node.attributes['src'] ?? ''} '
           '${node.attributes['data-src'] ?? ''}';
       final match = RegExp(
@@ -103,17 +92,13 @@ class NativeCommentList extends StatelessWidget {
     if (comments.isEmpty) {
       return const Padding(
         padding: EdgeInsets.all(24),
-        child: Center(
-          child: Text('暂无评论', style: TextStyle(color: Colors.grey)),
-        ),
+        child: Center(child: Text('暂无评论', style: TextStyle(color: Colors.grey))),
       );
     }
-
     final root = parser.parseFragment(html);
     final section = root.querySelector('.comments-section');
     final tid = int.tryParse(section?.attributes['data-tid'] ?? '') ?? 0;
     final fid = int.tryParse(section?.attributes['data-fid'] ?? '') ?? 0;
-
     return ListView.separated(
       shrinkWrap: true,
       physics: const NeverScrollableScrollPhysics(),
@@ -134,32 +119,19 @@ class NativeCommentList extends StatelessWidget {
     );
   }
 
-  Future<void> _handleReply(
-    BuildContext context,
-    int tid,
-    int fid,
-    int index,
-    _CommentFloor comment,
-  ) async {
+  Future<void> _handleReply(BuildContext context, int tid, int fid, int index,
+      _CommentFloor comment) async {
     var pid = comment.pid;
     if (pid <= 0 && tid > 0) {
       pid = await CommentReplyResolver.instance.resolvePid(
-        tid: tid,
-        commentIndex: index,
-        author: comment.author,
-        floor: comment.floor,
+        tid: tid, commentIndex: index, author: comment.author, floor: comment.floor,
       );
     }
     await _replyByPid(context, tid, fid, pid, comment.author);
   }
 
-  Future<void> _replyByPid(
-    BuildContext context,
-    int tid,
-    int fid,
-    int pid,
-    String author,
-  ) async {
+  Future<void> _replyByPid(BuildContext context, int tid, int fid, int pid,
+      String author) async {
     if (!context.mounted) return;
     if (pid <= 0) {
       ScaffoldMessenger.of(context).showSnackBar(
@@ -167,19 +139,14 @@ class NativeCommentList extends StatelessWidget {
       );
       return;
     }
-
     if (onReply != null) {
       onReply!(pid, author);
       return;
     }
-
     await _replyDialog(context, tid, fid, pid, author);
   }
 
-  Future<void> _openProfile(
-    BuildContext context,
-    _CommentFloor comment,
-  ) async {
+  Future<void> _openProfile(BuildContext context, _CommentFloor comment) async {
     var uid = comment.uid;
     if (uid <= 0 && comment.author.trim().isNotEmpty) {
       uid = await CommentProfileResolver.instance.resolveUid(comment.author) ?? 0;
@@ -191,22 +158,14 @@ class NativeCommentList extends StatelessWidget {
       );
       return;
     }
-    Navigator.of(context).push(
-      MaterialPageRoute(
-        builder: (_) => NativeProfilePage(uid: uid, username: comment.author),
-      ),
-    );
+    Navigator.of(context).push(MaterialPageRoute(
+      builder: (_) => NativeProfilePage(uid: uid, username: comment.author),
+    ));
   }
 
-  Future<void> _replyDialog(
-    BuildContext context,
-    int tid,
-    int fid,
-    int pid,
-    String author,
-  ) async {
+  Future<void> _replyDialog(BuildContext context, int tid, int fid, int pid,
+      String author) async {
     if (tid <= 0 || fid <= 0 || pid <= 0) return;
-
     await AuthService.instance.init();
     if (!AuthService.instance.isLoggedIn) {
       ScaffoldMessenger.of(context).showSnackBar(
@@ -214,7 +173,6 @@ class NativeCommentList extends StatelessWidget {
       );
       return;
     }
-
     final controller = TextEditingController();
     final message = await showDialog<String>(
       context: context,
@@ -227,21 +185,15 @@ class NativeCommentList extends StatelessWidget {
           maxLines: 6,
           textInputAction: TextInputAction.newline,
           decoration: const InputDecoration(
-            hintText: '输入回复内容…',
-            border: OutlineInputBorder(),
+            hintText: '输入回复内容…', border: OutlineInputBorder(),
           ),
         ),
         actions: [
-          TextButton(
-            onPressed: () => Navigator.pop(dialogContext),
-            child: const Text('取消'),
-          ),
+          TextButton(onPressed: () => Navigator.pop(dialogContext), child: const Text('取消')),
           FilledButton(
             onPressed: () {
               final value = controller.text.trim();
-              if (value.isNotEmpty) {
-                Navigator.pop(dialogContext, value);
-              }
+              if (value.isNotEmpty) Navigator.pop(dialogContext, value);
             },
             child: const Text('发送'),
           ),
@@ -249,71 +201,40 @@ class NativeCommentList extends StatelessWidget {
       ),
     );
     controller.dispose();
-
     if (message == null || message.isEmpty || !context.mounted) return;
-    final error = await AuthService.instance.reply(
-      tid,
-      fid,
-      message,
-      replyPid: pid,
-    );
+    final error = await AuthService.instance.reply(tid, fid, message, replyPid: pid);
     if (!context.mounted) return;
-
     ScaffoldMessenger.of(context).showSnackBar(
       SnackBar(content: Text(error ?? '已回复 $author')),
     );
-    if (error == null && onReplySent != null) {
-      await onReplySent!(pid, author);
-    }
+    if (error == null && onReplySent != null) await onReplySent!(pid, author);
   }
 }
 
 class _CommentFloor {
-  final int pid;
-  final int uid;
-  final int replyCount;
-  final String floor;
-  final String author;
-  final String level;
-  final String time;
-  final String bodyHtml;
-
+  final int pid, uid, replyCount;
+  final String floor, author, level, time, bodyHtml;
   const _CommentFloor({
-    required this.pid,
-    required this.uid,
-    required this.replyCount,
-    required this.floor,
-    required this.author,
-    required this.level,
-    required this.time,
-    required this.bodyHtml,
+    required this.pid, required this.uid, required this.replyCount,
+    required this.floor, required this.author, required this.level,
+    required this.time, required this.bodyHtml,
   });
 }
 
 class _CommentCard extends StatefulWidget {
   final _CommentFloor comment;
-  final int index;
-  final int tid;
-  final int fid;
-  final VoidCallback onReply;
-  final VoidCallback onProfile;
-
+  final int index, tid, fid;
+  final VoidCallback onReply, onProfile;
   const _CommentCard({
-    required this.comment,
-    required this.index,
-    required this.tid,
-    required this.fid,
-    required this.onReply,
-    required this.onProfile,
+    required this.comment, required this.index, required this.tid, required this.fid,
+    required this.onReply, required this.onProfile,
   });
-
   @override
   State<_CommentCard> createState() => _CommentCardState();
 }
 
 class _CommentCardState extends State<_CommentCard> {
-  bool _loadingReplies = false;
-  bool _repliesExpanded = false;
+  bool _loadingReplies = false, _repliesExpanded = false;
   String _replyHtml = '';
   String? _replyError;
   int _pid = 0;
@@ -329,28 +250,19 @@ class _CommentCardState extends State<_CommentCard> {
 
   Future<void> _loadReplies() async {
     if (_loadingReplies || widget.tid <= 0) return;
-    setState(() {
-      _loadingReplies = true;
-      _replyError = null;
-    });
-
+    setState(() { _loadingReplies = true; _replyError = null; });
     try {
       if (_pid <= 0) {
         _pid = await CommentReplyResolver.instance.resolvePid(
-          tid: widget.tid,
-          commentIndex: widget.index,
-          author: widget.comment.author,
-          floor: widget.comment.floor,
+          tid: widget.tid, commentIndex: widget.index,
+          author: widget.comment.author, floor: widget.comment.floor,
         );
       }
       if (_pid <= 0) throw Exception('未取得评论楼层');
-
       _replyHtml = await CommentReplyResolver.instance.fetchReplies(
-        tid: widget.tid,
-        pid: _pid,
+        tid: widget.tid, pid: _pid,
       );
       if (!mounted) return;
-
       final replies = _parseReplies();
       setState(() {
         _loadingReplies = false;
@@ -370,51 +282,35 @@ class _CommentCardState extends State<_CommentCard> {
 
   void _toggleReplies() {
     if (_loadingReplies) return;
-    if (_replyHtml.trim().isEmpty) {
-      _loadReplies();
-      return;
-    }
+    if (_replyHtml.trim().isEmpty) { _loadReplies(); return; }
     setState(() => _repliesExpanded = !_repliesExpanded);
   }
 
   List<_FloorReply> _parseReplies() {
     if (_replyHtml.trim().isEmpty) return const [];
-
     var doc = parser.parseFragment(_replyHtml);
     var nodes = <dom.Element>[];
-
     const selectors = [
       '.replyfloor_content_ul > .replyfloor_content_li',
-      '.replyfloor_content_ul > li',
-      '.replyfloor_content_li',
-      '.replyfloor_content li',
-      'li.replyfloor_li',
-      '.replyfloor_box li',
-      '.replyfloor_reply',
-      '.replyfloor_item',
+      '.replyfloor_content_ul > li', '.replyfloor_content_li',
+      '.replyfloor_content li', 'li.replyfloor_li', '.replyfloor_box li',
+      '.replyfloor_reply', '.replyfloor_item',
     ];
-
     for (final selector in selectors) {
       for (final node in doc.querySelectorAll(selector)) {
         if (!nodes.contains(node)) nodes.add(node);
       }
     }
-
     if (nodes.isEmpty) {
       for (final root in doc.querySelectorAll(
-        '.replyfloor_content_ul, .replyfloor_content, .replyfloor_box, .replyfloor',
-      )) {
+          '.replyfloor_content_ul, .replyfloor_content, .replyfloor_box, .replyfloor')) {
         for (final child in root.children) {
-          if (child.text.trim().isNotEmpty && !nodes.contains(child)) {
-            nodes.add(child);
-          }
+          if (child.text.trim().isNotEmpty && !nodes.contains(child)) nodes.add(child);
         }
       }
     }
-
-    // 有些主题把 AJAX 响应再包了一层 HTML 实体。
     if (nodes.isEmpty) {
-      final decoded = doc.text.trim();
+      final decoded = doc.text?.trim() ?? '';
       if (decoded.contains('replyfloor') || decoded.contains('回复 举报')) {
         doc = parser.parseFragment(decoded);
         for (final selector in selectors) {
@@ -424,77 +320,37 @@ class _CommentCardState extends State<_CommentCard> {
         }
       }
     }
-
     if (nodes.isEmpty) return const [];
-
-    return nodes
-        .map(
-          (node) => _FloorReply(
-            pid: _extractReplyPid(node),
-            uid: _extractUid(node, node.querySelector('a[href*="uid="]')),
-            author: _firstText(node, const [
-              '.replyfloor_content_user a',
-              '.replyfloor_content_user',
-              '.replyfloor_author',
-              '.replyfloor_user',
-              '.replyfloor_username',
-              '.xw1',
-              '.authi a',
-              '.authi strong a',
-              'a[href*="uid="]',
-            ]),
-            time: _firstText(node, const [
-              '.replyfloor_content_time',
-              '.replyfloor_time',
-              '.replyfloor_dateline',
-              '.replyfloor_date',
-              'time',
-              'em',
-            ]),
-            bodyHtml: _extractReplyBody(node),
-          ),
-        )
-        .where((r) => r.author.isNotEmpty || r.bodyHtml.trim().isNotEmpty)
-        .toList();
+    return nodes.map((node) => _FloorReply(
+      pid: _extractReplyPid(node),
+      uid: NativeCommentList._extractUid(node, node.querySelector('a[href*="uid="]')),
+      author: _firstText(node, const [
+        '.replyfloor_content_user a', '.replyfloor_content_user',
+        '.replyfloor_author', '.replyfloor_user', '.replyfloor_username',
+        '.xw1', '.authi a', '.authi strong a', 'a[href*="uid="]',
+      ]),
+      time: _firstText(node, const [
+        '.replyfloor_content_time', '.replyfloor_time',
+        '.replyfloor_dateline', '.replyfloor_date', 'time', 'em',
+      ]),
+      bodyHtml: _extractReplyBody(node),
+    )).where((r) => r.author.isNotEmpty || r.bodyHtml.trim().isNotEmpty).toList();
   }
 
   static int _extractReplyPid(dom.Element node) {
     const keys = [
-      'data-pid',
-      'data-post-id',
-      'data-reply-id',
-      'data-reppid',
-      'pid',
-      'reppid',
-      'replypid',
-      'replyid',
-      'data-id',
+      'data-pid', 'data-post-id', 'data-reply-id', 'data-reppid',
+      'pid', 'reppid', 'replypid', 'replyid', 'data-id',
     ];
     for (final key in keys) {
-      final value = node.attributes[key];
-      final pid = int.tryParse(value ?? '');
+      final pid = int.tryParse(node.attributes[key] ?? '');
       if (pid != null && pid > 0) return pid;
     }
-
     final rawValues = <String>[
-      node.id,
-      node.attributes['name'] ?? '',
-      node.attributes['href'] ?? '',
-      ...node.querySelectorAll(
-        '[id], [name], [href], [data-pid], [data-post-id], [data-reppid], [reppid], [replypid], [replyid]',
-      ).map(
-        (e) => '${e.id} '
-            '${e.attributes['name'] ?? ''} '
-            '${e.attributes['href'] ?? ''} '
-            '${e.attributes['data-pid'] ?? ''} '
-            '${e.attributes['data-post-id'] ?? ''} '
-            '${e.attributes['data-reppid'] ?? ''} '
-            '${e.attributes['reppid'] ?? ''} '
-            '${e.attributes['replypid'] ?? ''} '
-            '${e.attributes['replyid'] ?? ''}',
-      ),
+      node.id, node.attributes['name'] ?? '', node.attributes['href'] ?? '',
+      ...node.querySelectorAll('[id], [name], [href], [data-pid], [data-post-id], [data-reppid], [reppid], [replypid], [replyid]')
+          .map((e) => '${e.id} ${e.attributes['name'] ?? ''} ${e.attributes['href'] ?? ''} ${e.attributes['data-pid'] ?? ''} ${e.attributes['data-post-id'] ?? ''} ${e.attributes['data-reppid'] ?? ''} ${e.attributes['reppid'] ?? ''} ${e.attributes['replypid'] ?? ''} ${e.attributes['replyid'] ?? ''}'),
     ];
-
     for (final raw in rawValues) {
       final direct = RegExp(
         r'(?:[?&]|%3F|%26)(?:reppid|replypid|replyid|pid)(?:=|%3D)(\d+)',
@@ -502,11 +358,7 @@ class _CommentCardState extends State<_CommentCard> {
       ).firstMatch(raw);
       final directPid = int.tryParse(direct?.group(1) ?? '');
       if (directPid != null && directPid > 0) return directPid;
-
-      final named = RegExp(
-        r'(?:reply(?:floor)?|post|pid)[_-]?(\d+)',
-        caseSensitive: false,
-      ).firstMatch(raw);
+      final named = RegExp(r'(?:reply(?:floor)?|post|pid)[_-]?(\d+)', caseSensitive: false).firstMatch(raw);
       final namedPid = int.tryParse(named?.group(1) ?? '');
       if (namedPid != null && namedPid > 0) return namedPid;
     }
@@ -518,31 +370,17 @@ class _CommentCardState extends State<_CommentCard> {
       '.replyfloor_content_text, .replyfloor_msg, .replyfloor_message, '
       '.replyfloor_body, .replyfloor_text, .reply_content',
     );
-
     if (body != null) {
-      final hasImage = body.querySelector('img') != null;
-      final text = body.text.replaceAll(RegExp(r'\s+'), ' ').trim();
-      if (hasImage || text.isNotEmpty) return body.innerHtml;
+      if (body.querySelector('img') != null || body.text.trim().isNotEmpty) return body.innerHtml;
     }
-
-    // 模板正文选择器不一致时，保留整个回复节点并删除头像/作者/时间/操作区。
     final clone = dom.Element.html('<div>${node.innerHtml}</div>');
     for (final selector in [
-      '.replyfloor_content_user',
-      '.replyfloor_content_time',
-      '.replyfloor_time',
-      '.replyfloor_dateline',
-      '.replyfloor_date',
-      '.replyfloor_author',
-      '.replyfloor_user',
-      '.replyfloor_username',
-      '.replyfloor_actions',
-      '.replyfloor_tools',
-      '.authi',
+      '.replyfloor_content_user', '.replyfloor_content_time', '.replyfloor_time',
+      '.replyfloor_dateline', '.replyfloor_date', '.replyfloor_author',
+      '.replyfloor_user', '.replyfloor_username', '.replyfloor_actions',
+      '.replyfloor_tools', '.authi',
     ]) {
-      for (final e in clone.querySelectorAll(selector).toList()) {
-        e.remove();
-      }
+      for (final e in clone.querySelectorAll(selector).toList()) e.remove();
     }
     return clone.innerHtml;
   }
@@ -550,94 +388,53 @@ class _CommentCardState extends State<_CommentCard> {
   static String _firstText(dom.Element node, List<String> selectors) {
     for (final selector in selectors) {
       final e = node.querySelector(selector);
-      if (e != null && e.text.trim().isNotEmpty) {
-        return e.text.replaceAll(RegExp(r'\s+'), ' ').trim();
-      }
+      if (e != null && e.text.trim().isNotEmpty) return e.text.replaceAll(RegExp(r'\s+'), ' ').trim();
     }
     return '';
   }
 
   Future<void> _replyNested(_FloorReply reply) async {
     if (!mounted) return;
-    var pid = reply.pid;
-
-    if (pid <= 0) {
+    if (reply.pid <= 0) {
       ScaffoldMessenger.of(context).showSnackBar(
         const SnackBar(content: Text('未取得这条楼中楼的评论编号，请刷新后重试')),
       );
       return;
     }
-
-    await _showReplyDialog(
-      tid: widget.tid,
-      fid: widget.fid,
-      pid: pid,
-      author: reply.author,
-    );
+    await _showReplyDialog(reply.pid, reply.author);
   }
 
-  Future<void> _showReplyDialog({
-    required int tid,
-    required int fid,
-    required int pid,
-    required String author,
-  }) async {
-    if (tid <= 0 || fid <= 0 || pid <= 0) return;
-
+  Future<void> _showReplyDialog(int pid, String author) async {
     await AuthService.instance.init();
     if (!AuthService.instance.isLoggedIn) {
       if (!mounted) return;
-      ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(content: Text('请先登录后回复')),
-      );
+      ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('请先登录后回复')));
       return;
     }
-
     final controller = TextEditingController();
     final message = await showDialog<String>(
       context: context,
       builder: (dialogContext) => AlertDialog(
         title: Text(author.isEmpty ? '回复楼中楼' : '回复 $author'),
         content: TextField(
-          controller: controller,
-          autofocus: true,
-          minLines: 2,
-          maxLines: 6,
+          controller: controller, autofocus: true, minLines: 2, maxLines: 6,
           textInputAction: TextInputAction.newline,
-          decoration: const InputDecoration(
-            hintText: '输入回复内容…',
-            border: OutlineInputBorder(),
-          ),
+          decoration: const InputDecoration(hintText: '输入回复内容…', border: OutlineInputBorder()),
         ),
         actions: [
-          TextButton(
-            onPressed: () => Navigator.pop(dialogContext),
-            child: const Text('取消'),
-          ),
-          FilledButton(
-            onPressed: () {
-              final value = controller.text.trim();
-              if (value.isNotEmpty) Navigator.pop(dialogContext, value);
-            },
-            child: const Text('发送'),
-          ),
+          TextButton(onPressed: () => Navigator.pop(dialogContext), child: const Text('取消')),
+          FilledButton(onPressed: () {
+            final value = controller.text.trim();
+            if (value.isNotEmpty) Navigator.pop(dialogContext, value);
+          }, child: const Text('发送')),
         ],
       ),
     );
     controller.dispose();
-
     if (message == null || message.isEmpty || !mounted) return;
-    final error = await AuthService.instance.reply(
-      tid,
-      fid,
-      message,
-      replyPid: pid,
-    );
+    final error = await AuthService.instance.reply(widget.tid, widget.fid, message, replyPid: pid);
     if (!mounted) return;
-
-    ScaffoldMessenger.of(context).showSnackBar(
-      SnackBar(content: Text(error ?? '已回复 $author')),
-    );
+    ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text(error ?? '已回复 $author')));
   }
 
   @override
@@ -645,280 +442,109 @@ class _CommentCardState extends State<_CommentCard> {
     final comment = widget.comment;
     final colors = Theme.of(context).colorScheme;
     final replies = _parseReplies();
-    final hasReplies = replies.isNotEmpty;
-    final showReplyToggle =
-        hasReplies || comment.replyCount > 0 || _replyError != null;
-
+    final showReplyToggle = replies.isNotEmpty || comment.replyCount > 0 || _replyError != null;
     return Container(
       padding: const EdgeInsets.fromLTRB(14, 13, 14, 10),
       decoration: BoxDecoration(
         color: colors.surfaceContainerLowest,
         borderRadius: BorderRadius.circular(18),
-        border: Border.all(
-          color: colors.outlineVariant.withValues(alpha: .55),
-        ),
-        boxShadow: [
-          BoxShadow(
-            color: colors.shadow.withValues(alpha: .035),
-            blurRadius: 8,
-            offset: const Offset(0, 2),
-          ),
-        ],
+        border: Border.all(color: colors.outlineVariant.withValues(alpha: .55)),
       ),
-      child: Column(
-        crossAxisAlignment: CrossAxisAlignment.start,
-        children: [
-          Row(
-            crossAxisAlignment: CrossAxisAlignment.center,
+      child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
+        Row(children: [
+          ResolvedUserAvatar(uid: comment.uid, username: comment.author, radius: 18, onTap: widget.onProfile),
+          const SizedBox(width: 9),
+          Expanded(child: InkWell(onTap: widget.onProfile, child: Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
             children: [
-              ResolvedUserAvatar(
-                uid: comment.uid,
-                username: comment.author,
-                radius: 18,
-                onTap: widget.onProfile,
-              ),
-              const SizedBox(width: 9),
-              Expanded(
-                child: InkWell(
-                  onTap: widget.onProfile,
-                  child: Column(
-                    crossAxisAlignment: CrossAxisAlignment.start,
-                    children: [
-                      Row(
-                        children: [
-                          Flexible(
-                            child: Text(
-                              comment.author.isEmpty ? '匿名用户' : comment.author,
-                              maxLines: 1,
-                              overflow: TextOverflow.ellipsis,
-                              style: const TextStyle(
-                                fontSize: 14,
-                                fontWeight: FontWeight.w800,
-                              ),
-                            ),
-                          ),
-                          if (comment.level.isNotEmpty) ...[
-                            const SizedBox(width: 6),
-                            Container(
-                              padding: const EdgeInsets.symmetric(
-                                horizontal: 6,
-                                vertical: 2,
-                              ),
-                              decoration: BoxDecoration(
-                                color: colors.secondaryContainer,
-                                borderRadius: BorderRadius.circular(7),
-                              ),
-                              child: Text(
-                                comment.level,
-                                style: TextStyle(
-                                  fontSize: 9.5,
-                                  color: colors.onSecondaryContainer,
-                                ),
-                              ),
-                            ),
-                          ],
-                        ],
-                      ),
-                      if (comment.time.isNotEmpty)
-                        Text(
-                          comment.time,
-                          style: TextStyle(
-                            fontSize: 10.5,
-                            color: colors.onSurfaceVariant,
-                          ),
-                        ),
-                    ],
-                  ),
-                ),
-              ),
-              Container(
-                padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
-                decoration: BoxDecoration(
-                  color: colors.surfaceContainerHighest,
-                  borderRadius: BorderRadius.circular(9),
-                ),
-                child: Text(
-                  comment.floor.isEmpty ? '${widget.index + 1}楼' : comment.floor,
-                  style: TextStyle(
-                    fontSize: 10,
-                    fontWeight: FontWeight.w700,
-                    color: colors.onSurfaceVariant,
-                  ),
-                ),
-              ),
+              Row(children: [
+                Flexible(child: Text(comment.author.isEmpty ? '匿名用户' : comment.author,
+                    maxLines: 1, overflow: TextOverflow.ellipsis,
+                    style: const TextStyle(fontSize: 14, fontWeight: FontWeight.w800))),
+                if (comment.level.isNotEmpty) ...[
+                  const SizedBox(width: 6),
+                  Container(padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 2),
+                    decoration: BoxDecoration(color: colors.secondaryContainer, borderRadius: BorderRadius.circular(7)),
+                    child: Text(comment.level, style: TextStyle(fontSize: 9.5, color: colors.onSecondaryContainer))),
+                ],
+              ]),
+              if (comment.time.isNotEmpty) Text(comment.time,
+                  style: TextStyle(fontSize: 10.5, color: colors.onSurfaceVariant)),
             ],
-          ),
-          const SizedBox(height: 11),
-          Container(
-            height: 1,
-            color: colors.outlineVariant.withValues(alpha: .35),
-          ),
-          const SizedBox(height: 10),
-          NativePostContent(html: comment.bodyHtml),
-          if (showReplyToggle) ...[
-            Align(
-              alignment: Alignment.centerLeft,
-              child: TextButton.icon(
-                onPressed: _toggleReplies,
-                icon: _loadingReplies
-                    ? const SizedBox(
-                        width: 16,
-                        height: 16,
-                        child: CircularProgressIndicator(strokeWidth: 2),
-                      )
-                    : Icon(
-                        _repliesExpanded
-                            ? Icons.keyboard_arrow_up_rounded
-                            : Icons.forum_outlined,
-                        size: 17,
-                      ),
-                label: Text(
-                  _loadingReplies
-                      ? '正在加载…'
-                      : (_repliesExpanded ? '收起' : '展开'),
-                ),
-              ),
-            ),
-            if (_replyError != null && !_loadingReplies)
-              Padding(
-                padding: const EdgeInsets.only(bottom: 6),
-                child: Text(
-                  '楼中楼：$_replyError',
-                  style: TextStyle(fontSize: 11, color: colors.error),
-                ),
-              ),
-            if (_repliesExpanded && hasReplies)
-              Container(
-                width: double.infinity,
-                margin: const EdgeInsets.only(bottom: 4),
-                padding: const EdgeInsets.fromLTRB(10, 8, 10, 4),
-                decoration: BoxDecoration(
-                  color: colors.primaryContainer.withValues(alpha: .22),
-                  borderRadius: BorderRadius.circular(14),
-                ),
-                child: Column(
-                  children: [
-                    for (final reply in replies)
-                      _FloorReplyTile(
-                        reply: reply,
-                        onReply: () => _replyNested(reply),
-                      ),
-                  ],
-                ),
-              ),
-          ],
-          Align(
-            alignment: Alignment.centerRight,
-            child: TextButton.icon(
-              onPressed: widget.onReply,
-              icon: const Icon(Icons.reply_rounded, size: 17),
-              label: const Text('回复本楼'),
-            ),
-          ),
+          ))),
+          Container(padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
+            decoration: BoxDecoration(color: colors.surfaceContainerHighest, borderRadius: BorderRadius.circular(9)),
+            child: Text(comment.floor.isEmpty ? '${widget.index + 1}楼' : comment.floor,
+                style: TextStyle(fontSize: 10, fontWeight: FontWeight.w700, color: colors.onSurfaceVariant))),
+        ]),
+        const SizedBox(height: 11),
+        Container(height: 1, color: colors.outlineVariant.withValues(alpha: .35)),
+        const SizedBox(height: 10),
+        NativePostContent(html: comment.bodyHtml),
+        if (showReplyToggle) ...[
+          Align(alignment: Alignment.centerLeft, child: TextButton.icon(
+            onPressed: _toggleReplies,
+            icon: _loadingReplies ? const SizedBox(width: 16, height: 16, child: CircularProgressIndicator(strokeWidth: 2))
+                : Icon(_repliesExpanded ? Icons.keyboard_arrow_up_rounded : Icons.forum_outlined, size: 17),
+            label: Text(_loadingReplies ? '正在加载…' : (_repliesExpanded ? '收起' : '展开')),
+          )),
+          if (_replyError != null && !_loadingReplies)
+            Padding(padding: const EdgeInsets.only(bottom: 6), child: Text('楼中楼：$_replyError', style: TextStyle(fontSize: 11, color: colors.error))),
+          if (_repliesExpanded && replies.isNotEmpty)
+            Container(width: double.infinity, margin: const EdgeInsets.only(bottom: 4),
+              padding: const EdgeInsets.fromLTRB(10, 8, 10, 4),
+              decoration: BoxDecoration(color: colors.primaryContainer.withValues(alpha: .22), borderRadius: BorderRadius.circular(14)),
+              child: Column(children: [for (final reply in replies) _FloorReplyTile(reply: reply, onReply: () => _replyNested(reply))])),
         ],
-      ),
+        Align(alignment: Alignment.centerRight, child: TextButton.icon(
+          onPressed: widget.onReply,
+          icon: const Icon(Icons.reply_rounded, size: 17),
+          label: const Text('回复本楼'),
+        )),
+      ]),
     );
   }
 }
 
 class _FloorReply {
-  final int pid;
-  final int uid;
-  final String author;
-  final String time;
-  final String bodyHtml;
-
-  const _FloorReply({
-    required this.pid,
-    required this.uid,
-    required this.author,
-    required this.time,
-    required this.bodyHtml,
-  });
+  final int pid, uid;
+  final String author, time, bodyHtml;
+  const _FloorReply({required this.pid, required this.uid, required this.author, required this.time, required this.bodyHtml});
 }
 
 class _FloorReplyTile extends StatelessWidget {
   final _FloorReply reply;
   final VoidCallback onReply;
-
-  const _FloorReplyTile({
-    required this.reply,
-    required this.onReply,
-  });
-
-  List<String> _imageHtml() {
-    final doc = parser.parseFragment(reply.bodyHtml);
-    return doc.querySelectorAll('img').map((e) => e.outerHtml).toList();
-  }
-
-  String _textHtmlWithoutImages() {
-    final doc = parser.parseFragment(reply.bodyHtml);
-    for (final img in doc.querySelectorAll('img').toList()) {
-      img.remove();
-    }
-    return doc.nodes
-        .map((e) => e is dom.Element ? e.outerHtml : (e.text ?? ''))
-        .join();
-  }
+  const _FloorReplyTile({required this.reply, required this.onReply});
 
   @override
   Widget build(BuildContext context) {
     final colors = Theme.of(context).colorScheme;
-    final images = _imageHtml();
-    final textHtml = _textHtmlWithoutImages();
-
+    final doc = parser.parseFragment(reply.bodyHtml);
+    final images = doc.querySelectorAll('img').map((e) => e.outerHtml).toList();
+    for (final img in doc.querySelectorAll('img').toList()) img.remove();
+    final textHtml = doc.nodes.map((e) => e is dom.Element ? e.outerHtml : (e.text ?? '')).join();
     return Container(
       padding: const EdgeInsets.symmetric(vertical: 8),
-      decoration: BoxDecoration(
-        border: Border(
-          bottom: BorderSide(
-            color: colors.outlineVariant.withValues(alpha: .3),
-          ),
-        ),
-      ),
-      child: Column(
-        crossAxisAlignment: CrossAxisAlignment.start,
-        children: [
-          Row(
-            children: [
-              Expanded(
-                child: Text(
-                  reply.author.isEmpty ? '楼中楼回复' : reply.author,
-                  style: const TextStyle(
-                    fontSize: 12.5,
-                    fontWeight: FontWeight.w700,
-                  ),
-                ),
-              ),
-              if (reply.time.isNotEmpty)
-                Text(
-                  reply.time,
-                  style: TextStyle(
-                    fontSize: 10,
-                    color: colors.onSurfaceVariant,
-                  ),
-                ),
-            ],
-          ),
-          if (textHtml.trim().isNotEmpty) ...[
-            const SizedBox(height: 4),
-            NativePostContent(html: textHtml),
-          ],
-          for (final image in images) NativePostContent(html: image),
-          Align(
-            alignment: Alignment.centerRight,
-            child: TextButton.icon(
-              onPressed: onReply,
-              style: TextButton.styleFrom(
-                visualDensity: VisualDensity.compact,
-                tapTargetSize: MaterialTapTargetSize.shrinkWrap,
-              ),
-              icon: const Icon(Icons.reply_rounded, size: 15),
-              label: const Text('回复'),
-            ),
-          ),
+      decoration: BoxDecoration(border: Border(bottom: BorderSide(color: colors.outlineVariant.withValues(alpha: .3)))),
+      child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
+        Row(children: [
+          Expanded(child: Text(reply.author.isEmpty ? '楼中楼回复' : reply.author,
+              style: const TextStyle(fontSize: 12.5, fontWeight: FontWeight.w700))),
+          if (reply.time.isNotEmpty) Text(reply.time, style: TextStyle(fontSize: 10, color: colors.onSurfaceVariant)),
+        ]),
+        if (textHtml.trim().isNotEmpty) ...[
+          const SizedBox(height: 4),
+          NativePostContent(html: textHtml),
         ],
-      ),
+        for (final image in images) NativePostContent(html: image),
+        Align(alignment: Alignment.centerRight, child: TextButton.icon(
+          onPressed: onReply,
+          style: TextButton.styleFrom(visualDensity: VisualDensity.compact, tapTargetSize: MaterialTapTargetSize.shrinkWrap),
+          icon: const Icon(Icons.reply_rounded, size: 15),
+          label: const Text('回复'),
+        )),
+      ]),
     );
   }
 }
