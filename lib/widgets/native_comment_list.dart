@@ -321,20 +321,38 @@ class _CommentCardState extends State<_CommentCard> {
       }
     }
     if (nodes.isEmpty) return const [];
-    return nodes.map((node) => _FloorReply(
-      pid: _extractReplyPid(node),
-      uid: NativeCommentList._extractUid(node, node.querySelector('a[href*="uid="]')),
-      author: _firstText(node, const [
-        '.replyfloor_content_user a', '.replyfloor_content_user',
-        '.replyfloor_author', '.replyfloor_user', '.replyfloor_username',
-        '.xw1', '.authi a', '.authi strong a', 'a[href*="uid="]',
-      ]),
-      time: _firstText(node, const [
-        '.replyfloor_content_time', '.replyfloor_time',
-        '.replyfloor_dateline', '.replyfloor_date', 'time', 'em',
-      ]),
-      bodyHtml: _extractReplyBody(node),
-    )).where((r) => r.author.isNotEmpty || r.bodyHtml.trim().isNotEmpty).toList();
+    return nodes.map((node) {
+      final pid = _extractReplyPid(node);
+      // 父楼 Discuz postpid: Comiis replyfloor_editor / replyfloor_report
+      // 的第一个参数就是挂载该 replyfloor_box 的父楼 postpid。
+      // fallback: replyfloor_box_XXX / replyfloor_content_XXX 的 id 后缀。
+      int parentPid = 0;
+      final all = <dom.Element>[node, ...node.querySelectorAll('*')];
+      parentLoop:
+      for (final e in all) {
+        for (final v in e.attributes.values) {
+          final m = RegExp(r'''replyfloor_(?:editor|report)\s*\(\s*["']?(\d+)''', caseSensitive: false).firstMatch(v) ??
+              RegExp(r'replyfloor_(?:box|bd|content)_(\d+)', caseSensitive: false).firstMatch(v);
+          final val = int.tryParse(m?.group(1) ?? '');
+          if (val != null && val > 0) { parentPid = val; break parentLoop; }
+        }
+      }
+      return _FloorReply(
+        pid: pid,
+        uid: NativeCommentList._extractUid(node, node.querySelector('a[href*="uid="]')),
+        parentPid: parentPid,
+        author: _firstText(node, const [
+          '.replyfloor_content_user a', '.replyfloor_content_user',
+          '.replyfloor_author', '.replyfloor_user', '.replyfloor_username',
+          '.xw1', '.authi a', '.authi strong a', 'a[href*="uid="]',
+        ]),
+        time: _firstText(node, const [
+          '.replyfloor_content_time', '.replyfloor_time',
+          '.replyfloor_dateline', '.replyfloor_date', 'time', 'em',
+        ]),
+        bodyHtml: _extractReplyBody(node),
+      );
+    }).where((r) => r.author.isNotEmpty || r.bodyHtml.trim().isNotEmpty).toList();
   }
 
   static int _extractReplyPid(dom.Element node) {
@@ -429,16 +447,16 @@ class _CommentCardState extends State<_CommentCard> {
 
   Future<void> _replyNested(_FloorReply reply) async {
     if (!mounted) return;
-    if (reply.pid <= 0) {
+    if (reply.parentPid <= 0) {
       ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(content: Text('未取得这条楼中楼的评论编号，请刷新后重试')),
+        const SnackBar(content: Text('未取得这条楼中楼所属楼层的编号，请刷新后重试')),
       );
       return;
     }
-    await _showReplyDialog(reply.pid, reply.author);
+    await _showReplyDialog(reply.pid, reply.parentPid, reply.author);
   }
 
-  Future<void> _showReplyDialog(int pid, String author) async {
+  Future<void> _showReplyDialog(int pid, int parentPid, String author) async {
     await AuthService.instance.init();
     if (!AuthService.instance.isLoggedIn) {
       if (!mounted) return;
@@ -466,7 +484,10 @@ class _CommentCardState extends State<_CommentCard> {
     );
     controller.dispose();
     if (message == null || message.isEmpty || !mounted) return;
-    final error = await AuthService.instance.reply(widget.tid, widget.fid, message, replyPid: pid);
+    final error = await AuthService.instance.reply(
+      widget.tid, widget.fid, message,
+      replyPid: pid, nestedParentPid: parentPid,
+    );
     if (!mounted) return;
     ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text(error ?? '已回复 $author')));
   }
@@ -541,9 +562,18 @@ class _CommentCardState extends State<_CommentCard> {
 }
 
 class _FloorReply {
+  /// 该条楼中楼回复的 replyfloor 内部 PID (如 20568)。
   final int pid, uid;
+
+  /// 挂载该 replyfloor 的父楼 Discuz 原生 postpid (如 2657801)。
+  /// 构造 Discuz reply 的 repquote / reppid 参数必须用它，replyfloor 的内部 PID
+  /// Discuz 根本不认识。
+  final int parentPid;
   final String author, time, bodyHtml;
-  const _FloorReply({required this.pid, required this.uid, required this.author, required this.time, required this.bodyHtml});
+  const _FloorReply({
+    required this.pid, required this.uid, required this.parentPid,
+    required this.author, required this.time, required this.bodyHtml,
+  });
 }
 
 class _FloorReplyTile extends StatelessWidget {

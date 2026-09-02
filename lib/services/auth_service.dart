@@ -337,16 +337,19 @@ class AuthService {
     await _save();
   }
 
-  Future<String?> reply(int tid, int fid, String message, {int? replyPid, bool firstPost = false}) async {
+  Future<String?> reply(int tid, int fid, String message, {int? replyPid, int? nestedParentPid, bool firstPost = false}) async {
     final text = message.trim();
     if (text.isEmpty) return '回帖内容不能为空';
     final client = await _http();
     try {
-      final isNested = replyPid != null && replyPid > 0;
-      // 楼中楼回复必须从带 repquote 的回复页取回引用相关的隐藏字段(reppid/noticeauthormsg/posttime等),
-      // 否则服务端无法确定要回哪一层, 会退化为普通顶层回帖。
+      // Discuz 原生 reply 的 repquote / reppid 必须是父楼 Discuz 原生 postpid。
+      // replyfloor 插件自己的内部 ID (如 20568) Discuz 根本不认识, 不能拿它构造 URL。
+      // nestedParentPid 用于"回复楼中楼"场景: 此时 replyPid 是 replyfloor 内部 ID,
+      // nestedParentPid 才是真正的父楼 Discuz postpid。
+      final repquoteForGet = nestedParentPid ?? replyPid ?? 0;
+      final isNested = repquoteForGet > 0;
       final getUrl = isNested
-          ? '${base}forum.php?mod=post&action=reply&fid=$fid&tid=$tid&extra=page%3D1&${firstPost ? 'reppost' : 'repquote'}=$replyPid&page=1&mobile=2'
+          ? '${base}forum.php?mod=post&action=reply&fid=$fid&tid=$tid&extra=page%3D1&${firstPost ? 'reppost' : 'repquote'}=$repquoteForGet&page=1&mobile=2'
           : '${base}thread-$tid-1-1.html';
       final pageResp = await client.get(Uri.parse(getUrl), headers: _headers()).timeout(const Duration(seconds: 15));
       final page = NetClient.decode(pageResp.bodyBytes);
@@ -362,9 +365,10 @@ class AuthService {
         'posttime': _hiddenValue(page, 'posttime') ?? '',
       };
       if (isNested) {
-        // 楼中楼: reppid 为要回复的楼层 pid, 引用块字段从带 repquote 的回复页原样取回。
+        // reppid 必须是父楼 Discuz 原生 postpid, 页面里已经预填了;
+        // 如果缺失, 用我们自己算出来的 repquoteForGet 兜底。
         final reppid = int.tryParse(_hiddenValue(page, 'reppid') ?? '') ?? 0;
-        postBody['reppid'] = '${reppid > 0 ? reppid : replyPid}';
+        postBody['reppid'] = '${reppid > 0 ? reppid : repquoteForGet}';
         final repquoteH = _hiddenValue(page, 'repquote');
         if (repquoteH != null && repquoteH.isNotEmpty) postBody['repquote'] = repquoteH;
         final noticeauthor = _hiddenValue(page, 'noticeauthor');
