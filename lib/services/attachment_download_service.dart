@@ -164,10 +164,13 @@ class AttachmentDownloadService {
       final size = _findAttachmentSize(anchor);
       result.add(ForumAttachmentInfo(url: url, name: name, size: size));
     }
+
     // ycoo/Discuz 还有一类真实附件不会被渲染成 <a href>：
     // 正文或服务端源码可能保留 [attach]URL[/attach] 标记。
-    // 这里补充解析它，但仍严格经过 _isRealFileAttachment，避免把图片/普通链接当附件。
-    final attachRe = RegExp(r'\\[attach\\]\\s*(https?://[^\\s\\]<>]+)\\s*\\[/attach\\]', caseSensitive: false);
+    final attachRe = RegExp(
+      r'\[attach(?:ment)?\]\s*(https?://[^\s\[\]<>]+)\s*\[/attach(?:ment)?\]',
+      caseSensitive: false,
+    );
     for (final match in attachRe.allMatches(source)) {
       final raw = match.group(1) ?? '';
       final url = _normalizeUrl(raw);
@@ -260,9 +263,6 @@ class AttachmentDownloadService {
     }
     final f = uri.queryParameters['_f']?.trim() ?? '';
     if (f.startsWith('.') && f.length <= 12) return '论坛附件$f';
-
-    // 直接 /attachment/.../小说目录.txt 形式没有查询参数时，
-    // 从 URL 最后一段取得真实文件名，保留 .txt/.json/.zip 等扩展名。
     final segments = uri.pathSegments.where((e) => e.trim().isNotEmpty).toList();
     if (segments.isNotEmpty) {
       final last = _cleanFileName(Uri.decodeComponent(segments.last));
