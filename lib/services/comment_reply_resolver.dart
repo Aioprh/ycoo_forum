@@ -111,28 +111,92 @@ class CommentReplyResolver {
     return int.tryParse(match?.group(1) ?? '');
   }
 
+  /// 拉取指定父楼 pid 的全部楼中楼，自动翻页拼接。
+  ///
+  /// replyfloor 插件接口按 ~5 条/页分页，且第 1 页底部有一个
+  /// `div.replyfloor_content_showmore`(含 rel=...page=N 的"更多 N 条回复"链接)。
+  /// 如果软件端只请求 page=1，则用户在后面的页写下的新回复永远拉不到，
+  /// 即使刷新/重进也无效。这里必须逐页抓取并合并所有 li，网页端能看到的回复
+  /// 软件端才能看到。
   Future<String> fetchReplies({required int tid, required int pid}) async {
     if (tid <= 0 || pid <= 0) return '';
     final client = await NetClient.instance.client;
-    final params = <String, String>{
-      'id': 'replyfloor:index', 'tid': '$tid', 'pid': '$pid', 'inajax': '1', 'page': '1',
-    };
-    final urls = <Uri>[
-      Uri.parse('${_base}plugin.php').replace(queryParameters: {
-        ...params, '_ycoo_replyfloor': DateTime.now().millisecondsSinceEpoch.toString(),
-      }),
-      Uri.parse('${_base}plugin.php').replace(queryParameters: params),
-    ];
-    for (final uri in urls) {
-      try {
-        final response = await NetClient.retry(
-          () => client.get(uri, headers: _headers(referer: '${_base}thread-$tid-1-1.html')).timeout(NetClient.timeout),
-        );
-        if (response.statusCode != 200) continue;
-        final parsed = _unwrapReplyResponse(NetClient.decode(response.bodyBytes).trim());
-        if (_containsReplyNode(parsed)) return _normalizeReplyPidHtml(parsed);
-      } catch (_) {}
+    final mergedUl = <String>[];
+    const maxPages = 50;
+    for (var page = 1; page <= maxPages; page++) {
+      final params = <String, String>{
+        'id': 'replyfloor:index', 'tid': '$tid', 'pid': '$pid',
+        'inajax': '1', 'page': '$page',
+      };
+      final urls = <Uri>[
+        Uri.parse('${_base}plugin.php').replace(queryParameters: {
+          ...params, '_ycoo_replyfloor': DateTime.now().millisecondsSinceEpoch.toString(),
+        }),
+        Uri.parse('${_base}plugin.php').replace(queryParameters: params),
+      ];
+      String? pageHtml;
+      for (final uri in urls) {
+        if (pageHtml != null) break;
+        try {
+          final response = await NetClient.retry(
+            () => client.get(uri, headers: _headers(referer: '${_base}thread-$tid-1-1.html')).timeout(NetClient.timeout),
+          );
+          if (response.statusCode == 200) {
+            pageHtml = _unwrapReplyResponse(NetClient.decode(response.bodyBytes).trim());
+          }
+        } catch (_) {}
+      }
+      if (pageHtml == null || pageHtml.trim().isEmpty) break;
+      if (!_containsReplyNode(pageHtml)) {
+        // 没有任何楼中楼(第 1 页即空)。
+        if (page == 1) return '';
+        break;
+      }
+      final liDoc = parser.parseFragment(pageHtml);
+      final lis = <dom.Element>[];
+      for (final selector in [
+        '.replyfloor_content_ul > .replyfloor_content_li',
+        '.replyfloor_content_ul > li', '.replyfloor_content_li',
+        'li.replyfloor_li', '.replyfloor_box li', 'li[id*="replyfloor_content_li"]',
+      ]) {
+        for (final li in liDoc.querySelectorAll(selector)) {
+          if (li.querySelector('div[class*="replyfloor_content_li"]') != null) continue;
+          if (!lis.contains(li)) lis.add(li);
+        }
+      }
+      // 当前页能抽取到具体 li 才拼接；否则交回携分页标记的原始 HTML 缓存。
+      if (lis.isNotEmpty) {
+        for (final li in lis) {
+          // 保留 li 的 id(如 replyfloor_content_li_20606)与全部属性，
+          // 因为 _extractReplyPid / _parseReplies 依赖 id 后缀提取该条回复的 PID。
+          mergedUl.add(li.outerHtml);
+        }
+      }
+      // 判断是否还有后续页：存在 rel=...page=N 的"更多回复"链接或 replyfloor 分页器。
+      final hasMore = pageHtml.contains('replyfloor_content_showmore') &&
+          pageHtml.contains('class="replyfloor_content_more"');
+      final nextPageMatch = hasMore
+          ? RegExp(r'replyfloor_content_showmore[^>]*rel\s*=\s*"([^"]*)"').firstMatch(pageHtml)
+          : null;
+      if (nextPageMatch != null) {
+        final pageParam = RegExp(r'[?&]page=(\d+)').firstMatch(nextPageMatch.group(1)!);
+        final next = int.tryParse(pageParam?.group(1) ?? '');
+        // 服务器页码可能跳跃，用 rel 里的真实页码直接推进。
+        if (next != null && next > page) {
+          page = next - 1; // for 循环尾部 +1 后跳到 next
+          continue;
+        }
+      }
+      // 没有明确的下一页页码 => 无法安全继续，终止。
+      break;
     }
+
+    final combined = mergedUl.isEmpty
+        ? ''
+        : '<div class="replyfloor_content_ul">${mergedUl.join()}</div>';
+    if (combined.isNotEmpty) return _normalizeReplyPidHtml(combined);
+
+    // 接口逐页拉取失败时，回退到从完整帖子页提取全部楼中楼。
     final html = await _fetchThreadHtml(tid);
     if (html.isNotEmpty) {
       final doc = parser.parse(html);
