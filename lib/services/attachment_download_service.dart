@@ -106,13 +106,17 @@ class AttachmentDownloadService {
     if (html.trim().isEmpty) return result;
     final source = html.replaceAll('&amp;', '&').replaceAll('\\/', '/').replaceAll('&#x2F;', '/');
     final doc = parser.parse(source);
-    // Discuz 把文件名/大小/下载次数/上传时间放在隐藏的 tip 菜单 id="aid<aid>_menu" 里,
-    // 先索引出来, 供下面按 aid 匹配补充元信息。
+
+    // Discuz 的附件信息不一定是 div，且不同模板的 tip 结构不同。
+    // 不再依赖 CSS 的 $= 选择器，直接扫描所有带 id 的元素，避免模板差异导致文件名丢失。
     final tipInfo = <String, _AttachMeta>{};
-    for (final tip in doc.querySelectorAll('div[id^="aid"][id\$="_menu"], div[id^="aimg"][id\$="_menu"]')) {
-      final aux = _parseTipMeta(tip);
+    for (final element in doc.querySelectorAll('[id]')) {
+      final id = element.id ?? '';
+      if (!RegExp(r'^(?:aid|aimg)_?\d+_menu$').hasMatch(id)) continue;
+      final aux = _parseTipMeta(element);
       if (aux != null) tipInfo[aux.aid] = aux;
     }
+
     for (final anchor in doc.querySelectorAll('a[href]')) {
       final href = (anchor.attributes['href'] ?? '').trim();
       if (href.isEmpty) continue;
@@ -123,17 +127,17 @@ class AttachmentDownloadService {
       if (_looksLikeImageFile(name, uri)) continue;
       final key = uri.queryParameters['aid']?.trim() ?? url;
       if (!seen.add(key)) continue;
-      // URL 的 aid 是 base64 串, tip 菜单按数字 aid(id="aid152006_menu")索引,
-      // 用链接自身 id(aid152006 / aimg152013)或 base64 解码首段得到数字 aid 去匹配。
       final numAid = _anchorNumericAid(anchor, uri);
       final meta = numAid.isEmpty ? null : tipInfo[numAid];
+      final resolvedName = meta?.title.isNotEmpty == true ? meta!.title : name;
       result.add(ForumAttachmentInfo(
         url: url,
-        name: meta?.title.isNotEmpty == true ? meta!.title : name,
+        name: _ensureFilenameExtension(resolvedName, uri),
         size: meta?.size ?? _findAttachmentSize(anchor),
         downloads: meta?.downloads ?? '',
       ));
     }
+
     final attachRe = RegExp(r'\[attach(?:ment)?\]\s*(https?://[^\s\[\]<>]+)\s*\[/attach(?:ment)?\]', caseSensitive: false);
     for (final m in attachRe.allMatches(source)) {
       final url = _normalizeUrl(m.group(1)!);
@@ -143,7 +147,7 @@ class AttachmentDownloadService {
       if (_looksLikeImageFile(name, uri)) continue;
       final key = uri.queryParameters['aid']?.trim() ?? url;
       if (!seen.add(key)) continue;
-      result.add(ForumAttachmentInfo(url: url, name: name));
+      result.add(ForumAttachmentInfo(url: url, name: _ensureFilenameExtension(name, uri)));
     }
     return result;
   }
@@ -161,9 +165,6 @@ class AttachmentDownloadService {
     final f = query['_f']?.trim() ?? '';
     if (f.isNotEmpty) return true;
     if (query.containsKey('filename') || query.containsKey('file') || query.containsKey('name')) return true;
-    // Discuz 附件以 aid 定位(如 forum.php?mod=attachment&aid=123&noupdate=yes),
-    // 路径本身为 forum.php 无扩展名, 这里直接判定为文件附件候选,
-    // 图片附件交由后续 _looksLikeImageFile 按文件名过滤。
     if (aid.isNotEmpty) return true;
     return _hasKnownFileExtension(path);
   }
@@ -197,6 +198,17 @@ class AttachmentDownloadService {
     return '论坛附件';
   }
 
+  String _ensureFilenameExtension(String name, Uri uri) {
+    var value = _cleanFileName(name);
+    if (value.isEmpty) value = '论坛附件';
+    if (_hasKnownFileExtension(value)) return value;
+    final f = uri.queryParameters['_f']?.trim() ?? '';
+    if (f.startsWith('.') && f.length <= 12 && RegExp(r'^\.[A-Za-z0-9]+$').hasMatch(f)) {
+      return '$value$f';
+    }
+    return value;
+  }
+
   String _findAttachmentSize(dynamic anchor) {
     try {
       var e = anchor;
@@ -208,29 +220,55 @@ class AttachmentDownloadService {
     return '';
   }
 
-  /// 解析隐藏 tip 菜单(如 id="aid152006_menu")里的附件元信息:
-  /// <p><strong>文件名</strong><em>(大小, 下载次数: N)</em></p>
+  /// 解析不同 Discuz 模板里的隐藏附件 tip 元信息。
   _AttachMeta? _parseTipMeta(dom.Element tip) {
     final id = tip.id ?? '';
-    final idMatch = RegExp(r'(?:aid_?|aimg_?)(\d+)_menu').firstMatch(id);
+    final idMatch = RegExp(r'(?:aid|aimg)_?(\d+)_menu').firstMatch(id);
     if (idMatch == null) return null;
     final aid = idMatch.group(1)!;
     String title = '';
-    final strong = tip.querySelector('strong');
-    if (strong != null) title = _cleanFileName(strong.text);
+
+    final candidates = <String>[
+      tip.querySelector('strong')?.text ?? '',
+      tip.querySelector('[title]')?.attributes['title'] ?? '',
+      tip.querySelector('a')?.text ?? '',
+    ];
+    for (final candidate in candidates) {
+      final cleaned = _cleanFileName(candidate);
+      if (_isUsableAttachmentTitle(cleaned)) {
+        title = cleaned;
+        break;
+      }
+    }
+
     String size = '';
     String downloads = '';
-    final em = tip.querySelector('em');
-    final emText = _cleanFileName(em?.text ?? '');
-    final sizeMatch = RegExp(r'(\d+(?:\.\d+)?\s*(?:B|KB|MB|GB))', caseSensitive: false).firstMatch(emText);
+    final text = _cleanFileName(tip.text);
+    final sizeMatch = RegExp(r'(\d+(?:\.\d+)?\s*(?:B|KB|MB|GB))', caseSensitive: false).firstMatch(text);
     if (sizeMatch != null) size = sizeMatch.group(1)!;
-    final dlMatch = RegExp(r'下载次数[:：]?\s*(\d+)').firstMatch(emText);
+    final dlMatch = RegExp(r'下载次数[:：]?\s*(\d+)').firstMatch(text);
     if (dlMatch != null) downloads = '下载 ${dlMatch.group(1)!} 次';
+
+    // 有些模板没有 strong/a，文件名直接作为 tip 文本的第一段出现。
+    if (title.isEmpty && text.isNotEmpty) {
+      var candidate = text
+          .replaceFirst(RegExp(r'\s*\(?\s*\d+(?:\.\d+)?\s*(?:B|KB|MB|GB).*$', caseSensitive: false), '')
+          .replaceFirst(RegExp(r'\s*下载次数[:：]?\s*\d+.*$', caseSensitive: false), '')
+          .replaceAll(RegExp(r'[\(（].*?[\)）]'), '')
+          .trim();
+      if (_isUsableAttachmentTitle(candidate)) title = candidate;
+    }
+
     return _AttachMeta(aid: aid, title: title, size: size, downloads: downloads);
   }
 
-  /// 附件链接对应的数字 aid, 优先取链接自身 id(aid152006/aimg152013),
-  /// 否则把 URL 里 base64 的 aid(首段为数字)解码。
+  bool _isUsableAttachmentTitle(String value) {
+    if (value.isEmpty) return false;
+    if (value == '论坛附件' || value == '附件' || value == '下载' || value == '点击下载') return false;
+    if (RegExp(r'^\d+(?:\.\d+)?\s*(?:B|KB|MB|GB)$', caseSensitive: false).hasMatch(value)) return false;
+    return !value.contains('下载次数');
+  }
+
   String _anchorNumericAid(dom.Element anchor, Uri uri) {
     final idMatch = RegExp(r'(?:aid_?|aimg_?)(\d+)').firstMatch(anchor.id ?? '');
     if (idMatch != null) return idMatch.group(1)!;
