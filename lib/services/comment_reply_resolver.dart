@@ -42,43 +42,89 @@ class CommentReplyResolver {
     if (response.statusCode != 200) return 0;
 
     final doc = parser.parse(NetClient.decode(response.bodyBytes));
-    final posts = doc.querySelectorAll(
-      '.comiis_postli, #postlist .plhin, #postlist .plc, #postlist > div[id^="post_"], div[id^="postmessage_"]',
-    );
-    if (posts.isEmpty) return 0;
-
-    final serverIndex = commentIndex + 1;
-    if (serverIndex < posts.length) {
-      final pid = _postPid(posts[serverIndex]);
-      if (pid > 0) return pid;
+    final rawPosts = <dom.Element>[];
+    for (final selector in [
+      '#postlist > div[id^="post_"]',
+      '.comiis_postli',
+      '#postlist .plhin',
+      '#postlist .plc',
+      'div[id^="postmessage_"]',
+    ]) {
+      for (final post in doc.querySelectorAll(selector)) {
+        if (!rawPosts.contains(post)) rawPosts.add(post);
+      }
     }
+
+    final posts = <dom.Element>[];
+    final seenPids = <int>{};
+    for (final post in rawPosts) {
+      final pid = _postPid(post);
+      if (pid > 0) {
+        if (seenPids.add(pid)) posts.add(post);
+      } else if (!posts.contains(post)) {
+        posts.add(post);
+      }
+    }
+    if (posts.isEmpty) return 0;
 
     final normalizedAuthor = _normalize(author);
     final floorNumber = _firstInt(floor);
-    for (var i = 1; i < posts.length; i++) {
-      final post = posts[i];
-      final pid = _postPid(post);
-      if (pid <= 0) continue;
-      final postAuthor = _normalize(
-        post.querySelector('.top_user, .authi .xw1, .authi a')?.text ?? '',
-      );
-      final postFloor = _firstInt(
-        post.querySelector('.f_d.y, .pi .authi em, .pls .authi em')?.text ?? '',
-      );
-      if (normalizedAuthor.isNotEmpty &&
-          postAuthor == normalizedAuthor &&
-          (floorNumber == null || postFloor == floorNumber)) {
-        return pid;
+
+    // Prefer exact floor + author. The forum displays floors such as “10#”.
+    if (floorNumber != null || normalizedAuthor.isNotEmpty) {
+      for (final post in posts) {
+        final pid = _postPid(post);
+        if (pid <= 0) continue;
+        final postAuthor = _normalize(_postAuthor(post));
+        final postFloor = _postFloor(post);
+        final authorMatches = normalizedAuthor.isEmpty || postAuthor == normalizedAuthor;
+        final floorMatches = floorNumber == null || postFloor == floorNumber;
+        if (authorMatches && floorMatches) return pid;
       }
+    }
+
+    final candidates = posts.where((p) => _postPid(p) > 0).toList();
+    if (commentIndex >= 0 && commentIndex < candidates.length) {
+      return _postPid(candidates[commentIndex]);
+    }
+    if (commentIndex + 1 < candidates.length) {
+      return _postPid(candidates[commentIndex + 1]);
     }
     return 0;
   }
 
+  String _postAuthor(dom.Element post) {
+    for (final selector in [
+      '.top_user',
+      '.authi .xw1',
+      '.authi a',
+      '.p-author',
+      'a[href*="uid="]',
+    ]) {
+      final node = post.querySelector(selector);
+      final text = node?.text.replaceAll(RegExp(r'\s+'), ' ').trim() ?? '';
+      if (text.isNotEmpty) return text;
+    }
+    return '';
+  }
+
+  int? _postFloor(dom.Element post) {
+    for (final selector in [
+      '.f_d.y',
+      '.pi .authi em',
+      '.pls .authi em',
+      '.p-floor',
+    ]) {
+      final node = post.querySelector(selector);
+      final number = _firstInt(node?.text ?? '');
+      if (number != null) return number;
+    }
+    final text = post.text.replaceAll(RegExp(r'\s+'), ' ');
+    final match = RegExp(r'(\d+)\s*#').firstMatch(text);
+    return int.tryParse(match?.group(1) ?? '');
+  }
+
   /// Loads the nested replies rendered by the site's replyfloor plugin.
-  ///
-  /// The plugin endpoint is intentionally used instead of scraping the visible
-  /// page text because reply-floor contents are often fetched asynchronously by
-  /// JavaScript and therefore are not present in the original post body.
   Future<String> fetchReplies({required int tid, required int pid}) async {
     if (tid <= 0 || pid <= 0) return '';
     final client = await NetClient.instance.client;
@@ -96,28 +142,37 @@ class CommentReplyResolver {
     );
     if (response.statusCode != 200) return '';
 
-    var body = NetClient.decode(response.bodyBytes).trim();
+    final body = NetClient.decode(response.bodyBytes).trim();
     if (body.isEmpty) return '';
 
-    // Discuz AJAX/XML responses may wrap the fragment in <root><root>...</root>.
     final document = parser.parse(body);
-    final candidates = <dom.Element>[
-      ...document.querySelectorAll('.replyfloor_box, .replyfloor_content, .replyfloor_content_ul, li.replyfloor_li'),
-    ];
+    final candidates = document.querySelectorAll(
+      '.replyfloor_box, .replyfloor_content, .replyfloor_content_ul, li.replyfloor_li',
+    );
     if (candidates.isNotEmpty) {
       return candidates.map((e) => e.outerHtml).join();
     }
 
-    // Some installations return the fragment as text inside an XML node.
-    final textNodes = document.querySelectorAll('root, message, body');
-    for (final node in textNodes) {
+    final decodedText = document.body?.text.trim() ?? document.text.trim();
+    if (decodedText.contains('replyfloor') || decodedText.contains('回复 举报')) {
+      final decoded = parser.parseFragment(decodedText);
+      final decodedCandidates = decoded.querySelectorAll(
+        '.replyfloor_box, .replyfloor_content, .replyfloor_content_ul, li.replyfloor_li',
+      );
+      if (decodedCandidates.isNotEmpty) {
+        return decodedCandidates.map((e) => e.outerHtml).join();
+      }
+      return decodedText;
+    }
+
+    for (final node in document.querySelectorAll('root, message, body')) {
       final html = node.innerHtml.trim();
       if (html.contains('replyfloor') || html.contains('回复 举报')) return html;
     }
     return body;
   }
 
-  static int _postPid(dynamic post) {
+  static int _postPid(dom.Element post) {
     const attrs = ['data-pid', 'data-post-id', 'data-id', 'pid'];
     for (final key in attrs) {
       final pid = int.tryParse(post.attributes[key] ?? '');
