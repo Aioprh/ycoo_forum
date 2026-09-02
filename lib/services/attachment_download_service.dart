@@ -164,6 +164,25 @@ class AttachmentDownloadService {
       final size = _findAttachmentSize(anchor);
       result.add(ForumAttachmentInfo(url: url, name: name, size: size));
     }
+    // ycoo/Discuz 还有一类真实附件不会被渲染成 <a href>：
+    // 正文或服务端源码可能保留 [attach]URL[/attach] 标记。
+    // 这里补充解析它，但仍严格经过 _isRealFileAttachment，避免把图片/普通链接当附件。
+    final attachRe = RegExp(r'\\[attach\\]\\s*(https?://[^\\s\\]<>]+)\\s*\\[/attach\\]', caseSensitive: false);
+    for (final match in attachRe.allMatches(source)) {
+      final raw = match.group(1) ?? '';
+      final url = _normalizeUrl(raw);
+      final uri = Uri.tryParse(url);
+      if (uri == null || !_isRealFileAttachment(uri)) continue;
+      if (_looksLikeImageFile('', uri)) continue;
+      final key = uri.queryParameters['aid']?.trim() ?? url;
+      if (!seen.add(key)) continue;
+      result.add(ForumAttachmentInfo(
+        url: url,
+        name: _bestFileName('', uri),
+        size: '',
+      ));
+    }
+
     return result;
   }
 
