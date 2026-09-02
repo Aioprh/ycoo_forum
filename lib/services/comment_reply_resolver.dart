@@ -181,6 +181,11 @@ class CommentReplyResolver {
         RegExp(r'''\brepquote\s*[:=]\s*["']?(\d+)''', caseSensitive: false),
         RegExp(r'\brepquote[^0-9]{0,30}(\d+)', caseSensitive: false),
         RegExp(r'''replyfloor_reply\s*\(\s*["']?(\d+)''', caseSensitive: false),
+        // Comiis mobile: li id="replyfloor_content_li_<PID>" 后缀即该条楼中楼回复的 PID
+        RegExp(r'replyfloor_content_li_(\d+)', caseSensitive: false),
+        // Comiis mobile: 按钮 onclick="replyfloor_editor('<postPid>', <PID>, ...)" / report('<postPid>', <PID>)，
+        // 第二个整型参数即该条楼中楼回复的 PID
+        RegExp(r'''replyfloor_(?:editor|report)\s*\(\s*["']?\d+["']?\s*,\s*["']?(\d+)''', caseSensitive: false),
       ]) {
         final match = pattern.firstMatch(raw);
         final value = int.tryParse(match?.group(1) ?? '');
