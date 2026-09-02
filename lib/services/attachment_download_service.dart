@@ -109,7 +109,7 @@ class AttachmentDownloadService {
     // Discuz 把文件名/大小/下载次数/上传时间放在隐藏的 tip 菜单 id="aid<aid>_menu" 里,
     // 先索引出来, 供下面按 aid 匹配补充元信息。
     final tipInfo = <String, _AttachMeta>{};
-    for (final tip in doc.querySelectorAll('div[id^="aid"][id$="_menu"], div[id^="aimg"][id$="_menu"]')) {
+    for (final tip in doc.querySelectorAll('div[id^="aid"][id\$="_menu"], div[id^="aimg"][id\$="_menu"]')) {
       final aux = _parseTipMeta(tip);
       if (aux != null) tipInfo[aux.aid] = aux;
     }
