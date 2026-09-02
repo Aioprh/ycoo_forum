@@ -1,7 +1,7 @@
 import 'package:html/dom.dart' as dom;
 import 'package:html/parser.dart' as parser;
 
-/// 帖子详情: 原生展示头部, 正文和评论分别交给 WebView 渲染。
+/// 帖子详情: 原生展示头部, 正文和评论分别交给 Flutter 渲染。
 class ThreadDetail {
   final int tid;
   final String title;
@@ -15,7 +15,17 @@ class ThreadDetail {
   final String _bodyHtml;
   final String _commentsHtml;
 
-  String get bodyHtml => _sanitizeForumHtml(_bodyHtml);
+  String get bodyHtml {
+    final sanitized = _sanitizeForumHtml(_bodyHtml);
+    if (tid <= 0) return sanitized;
+    // Discuz 的附件块经常位于正文容器之外，直接取正文 HTML 会把它漏掉。
+    // 这里增加一个内部附件入口，由 AttachmentDownloadService 用当前 Cookie
+    // 重新读取帖子并解析真实 attachment.php/aid= 地址，再交给系统下载器。
+    final marker = '<div class="ycoo-attachment-entry"><a href="attachment.php?tid=$tid&ycoo=all">📎 查看并下载本帖全部附件</a></div>';
+    if (sanitized.contains('ycoo-attachment-entry')) return sanitized;
+    return sanitized.isEmpty ? marker : '$sanitized$marker';
+  }
+
   String get commentsHtml {
     final sanitized = _sanitizeForumHtml(_commentsHtml);
     if (sanitized.trim().isEmpty) return '';
@@ -29,7 +39,6 @@ class ThreadDetail {
   }
 
   /// Discuz 付费主题可能仍提供一部分免费预览内容。
-  /// 不能再用“清洗后的正文为空”判断付费状态，否则购买按钮会消失。
   final bool _paid;
   bool get isPaid => _paid;
   final int? price;
@@ -108,12 +117,10 @@ String _sanitizeForumHtml(String html) {
   final text = root.text.replaceAll(RegExp(r'\s+'), '').trim();
   final hasMedia = root.querySelector('img,video,iframe,audio,table,pre') != null;
   if (text.isEmpty && !hasMedia) return '';
-  // 兜底: 剔除仍残留在输出里的“豆腐块”字形(图标 PUA、替换符、控制字符、补充区 PUA)。
   return _stripTofu(root.innerHtml).trim();
 }
 
 bool _isTofuCodePoint(int cp) {
-  // Discuz 图标字体私有区 + 替换符 U+FFFD + BOM U+FEFF + 控制字符。
   if (cp == 0xFFFD) return true;
   if (cp == 0xFEFF) return true;
   if (cp >= 0xE000 && cp <= 0xF8FF) return true;
@@ -123,7 +130,6 @@ bool _isTofuCodePoint(int cp) {
   return false;
 }
 
-/// 移除 Discuz 网页图标字体及其他会在无配套字体时渲染成“方块/”的字形。
 String _stripTofu(String value) {
   final out = StringBuffer();
   for (final codePoint in value.runes) {
