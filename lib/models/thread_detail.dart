@@ -72,18 +72,18 @@ class ThreadDetail {
         _commentsHtml = commentsHtml,
         this.authorUid = authorUid,
         _paid = isPaid {
-    // Discuz 的分页页码是评论分页：第 2 页开始通常只包含回帖。
-    // 因此不能用当前页第一条回帖覆盖楼主头像、昵称和正文。
+    // Discuz 评论分页第 2 页开始通常只包含回帖。
+    // 楼主信息和正文必须沿用第 1 页，不能被当前页第一条回复覆盖。
     if (commentPage <= 1) {
       _firstPageCache[tid] = this;
     } else {
       final firstPage = _firstPageCache[tid];
       if (firstPage != null) {
-        author = firstPage.author;
-        avatar = firstPage.avatar;
-        level = firstPage.level;
+        this.author = firstPage.author;
+        this.avatar = firstPage.avatar;
+        this.level = firstPage.level;
         _bodyHtml = firstPage._bodyHtml;
-        authorUid = firstPage.authorUid;
+        this.authorUid = firstPage.authorUid;
       }
     }
   }
