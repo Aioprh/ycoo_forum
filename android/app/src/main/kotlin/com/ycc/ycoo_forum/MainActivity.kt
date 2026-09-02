@@ -1,6 +1,5 @@
 package com.ycc.ycoo_forum
 
-import android.app.DownloadManager
 import android.content.Context
 import android.content.Intent
 import android.net.Uri
@@ -8,10 +7,12 @@ import android.os.Build
 import android.os.Environment
 import android.provider.Settings
 import android.webkit.URLUtil
+import android.widget.Toast
 import io.flutter.embedding.android.FlutterActivity
 import io.flutter.embedding.engine.FlutterEngine
 import io.flutter.plugin.common.MethodChannel
 import java.io.File
+import java.io.FileOutputStream
 import java.net.HttpURLConnection
 import java.net.URL
 
@@ -26,22 +27,18 @@ class MainActivity : FlutterActivity() {
                     result.notImplemented()
                     return@setMethodCallHandler
                 }
+
                 val url = call.argument<String>("url")?.trim().orEmpty()
                 val cookie = call.argument<String>("cookie")?.trim().orEmpty()
                 val referer = call.argument<String>("referer")?.trim().takeUnless { it.isNullOrEmpty() }
-                    ?: "https://www.ycoo.net/"
+                    ?: "https://ycoo.net/"
+
                 if (url.isEmpty()) {
                     result.error("INVALID_URL", "附件地址为空", null)
                     return@setMethodCallHandler
                 }
-                try {
-                    val storageRoot = Environment.getExternalStorageDirectory()
-                    val forumDir = File(storageRoot, "源论坛")
 
-                    // Android 11+ 对 /storage/emulated/0/ 根目录下的自定义文件夹采用
-                    // scoped storage 限制。用户明确要求固定保存到 /storage/emulated/0/源论坛，
-                    // 因此这里使用系统的“所有文件访问权”。没有授权时只打开对应设置页，
-                    // 不再偷偷退回 Android.providers.downloads/cache。
+                try {
                     if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.R && !Environment.isExternalStorageManager()) {
                         val intent = Intent(
                             Settings.ACTION_MANAGE_APP_ALL_FILES_ACCESS_PERMISSION,
@@ -52,29 +49,32 @@ class MainActivity : FlutterActivity() {
                         return@setMethodCallHandler
                     }
 
+                    val forumDir = File(Environment.getExternalStorageDirectory(), "源论坛")
                     if (!forumDir.exists() && !forumDir.mkdirs()) {
                         result.error("STORAGE_FAILED", "无法创建 /storage/emulated/0/源论坛", null)
                         return@setMethodCallHandler
                     }
 
-                    val filename = resolveFileName(url, cookie, referer)
-                    val target = uniqueFile(forumDir, sanitizeFileName(filename))
-                    val manager = getSystemService(Context.DOWNLOAD_SERVICE) as DownloadManager
-                    val request = DownloadManager.Request(Uri.parse(url)).apply {
-                        setTitle(target.name)
-                        setDescription("源论坛附件")
-                        setNotificationVisibility(DownloadManager.Request.VISIBILITY_VISIBLE_NOTIFY_COMPLETED)
-                        setAllowedOverMetered(true)
-                        setAllowedOverRoaming(true)
-                        setDestinationUri(Uri.fromFile(target))
-                        addRequestHeader("Referer", referer)
-                        if (cookie.isNotEmpty()) addRequestHeader("Cookie", cookie)
-                        addRequestHeader(
-                            "User-Agent",
-                            "Mozilla/5.0 (Linux; Android) AppleWebKit/537.36 Chrome/120 Mobile Safari/537.36",
-                        )
-                    }
-                    manager.enqueue(request)
+                    // 不再使用 DownloadManager.setDestinationUri(Uri.fromFile(...))。
+                    // Android 10+ 对 DownloadManager 的自定义公共目录有额外限制，
+                    // 即使拥有 all-files 权限也可能回退/拒绝。这里直接以 HTTP GET
+                    // 写入用户指定的公共目录，确保最终路径就是：
+                    // /storage/emulated/0/源论坛/文件名
+                    val guessedName = guessNameFromUrl(url)
+                    val target = uniqueFile(forumDir, sanitizeFileName(guessedName))
+
+                    Thread {
+                        val ok = downloadToFile(url, cookie, referer, target)
+                        runOnUiThread {
+                            Toast.makeText(
+                                this,
+                                if (ok) "附件已保存到 /storage/emulated/0/源论坛/${target.name}"
+                                else "附件下载失败，请检查登录状态或网络",
+                                Toast.LENGTH_LONG,
+                            ).show()
+                        }
+                    }.apply { name = "YcooAttachmentDownload" }.start()
+
                     result.success(true)
                 } catch (e: Exception) {
                     result.error("DOWNLOAD_FAILED", e.message, null)
@@ -82,63 +82,98 @@ class MainActivity : FlutterActivity() {
             }
     }
 
-    private fun resolveFileName(url: String, cookie: String, referer: String): String {
-        var current = url
+    private fun downloadToFile(
+        url: String,
+        cookie: String,
+        referer: String,
+        initialTarget: File,
+    ): Boolean {
         var connection: HttpURLConnection? = null
+        var target = initialTarget
         try {
-            repeat(6) {
-                connection = (URL(current).openConnection() as HttpURLConnection).apply {
-                    requestMethod = "HEAD"
-                    instanceFollowRedirects = false
-                    connectTimeout = 10000
-                    readTimeout = 10000
-                    setRequestProperty("Referer", referer)
-                    if (cookie.isNotEmpty()) setRequestProperty("Cookie", cookie)
-                    setRequestProperty(
-                        "User-Agent",
-                        "Mozilla/5.0 (Linux; Android) AppleWebKit/537.36 Chrome/120 Mobile Safari/537.36",
-                    )
-                }
-                val code = connection!!.responseCode
-                val disposition = connection!!.getHeaderField("Content-Disposition")
-                val mime = connection!!.contentType
-                val dispositionName = if (!disposition.isNullOrBlank()) {
-                    URLUtil.guessFileName(current, disposition, mime)
-                } else ""
-                if (dispositionName.isNotBlank() && !looksGeneric(dispositionName)) return dispositionName
-
-                val location = connection!!.getHeaderField("Location")
-                if (code in 300..399 && !location.isNullOrBlank()) {
-                    current = URL(URL(current), location).toString()
-                    return@repeat
-                }
-
-                val guessed = URLUtil.guessFileName(current, disposition, mime)
-                if (guessed.isNotBlank() && !looksGeneric(guessed)) return guessed
-                return@repeat
+            connection = (URL(url).openConnection() as HttpURLConnection).apply {
+                instanceFollowRedirects = true
+                connectTimeout = 15000
+                readTimeout = 30000
+                requestMethod = "GET"
+                setRequestProperty("Referer", referer)
+                if (cookie.isNotEmpty()) setRequestProperty("Cookie", cookie)
+                setRequestProperty(
+                    "User-Agent",
+                    "Mozilla/5.0 (Linux; Android) AppleWebKit/537.36 Chrome/120 Mobile Safari/537.36",
+                )
+                setRequestProperty("Accept", "*/*")
+                setRequestProperty("Accept-Language", "zh-CN,zh;q=0.9")
             }
+
+            val code = connection.responseCode
+            if (code !in 200..299) return false
+
+            val contentType = connection.contentType?.lowercase().orEmpty()
+            // 未登录/权限失效时 Discuz 可能返回 HTML 登录页，而不是附件本身。
+            if (contentType.contains("text/html") && connection.contentLengthLong > 0L && connection.contentLengthLong < 1024 * 1024) {
+                return false
+            }
+
+            val serverName = resolveResponseFileName(
+                connection.getHeaderField("Content-Disposition"),
+                connection.url?.toString() ?: url,
+                contentType,
+            )
+            if (serverName.isNotBlank() && !looksGeneric(serverName)) {
+                target = uniqueFile(initialTarget.parentFile ?: return false, sanitizeFileName(serverName))
+            }
+
+            val temp = File(target.parentFile, ".${target.name}.part")
+            if (temp.exists()) temp.delete()
+            connection.inputStream.use { input ->
+                FileOutputStream(temp).use { output ->
+                    val buffer = ByteArray(64 * 1024)
+                    while (true) {
+                        val read = input.read(buffer)
+                        if (read <= 0) break
+                        output.write(buffer, 0, read)
+                    }
+                    output.flush()
+                }
+            }
+            if (target.exists()) target.delete()
+            if (!temp.renameTo(target)) {
+                temp.copyTo(target, overwrite = true)
+                temp.delete()
+            }
+            return target.exists() && target.length() > 0L
         } catch (_: Exception) {
-            // Fall through to URL/query based filename recovery.
+            return false
         } finally {
             connection?.disconnect()
         }
+    }
 
-        val uri = Uri.parse(current)
-        val queryNames = listOf("filename", "file", "name")
-        for (key in queryNames) {
-            val value = uri.getQueryParameter(key)?.trim().orEmpty()
-            if (value.isNotEmpty()) return decodeFileName(value)
-        }
-        val pathName = uri.lastPathSegment?.trim().orEmpty()
-        if (pathName.isNotEmpty() && !pathName.equals("attachment.php", true)) {
-            val decoded = decodeFileName(pathName)
-            if (decoded.isNotEmpty()) return decoded
-        }
-        val f = uri.getQueryParameter("_f")?.trim().orEmpty()
-        if (f.isNotEmpty() && f.startsWith(".") && f.length <= 12) {
-            return "论坛附件$f"
-        }
+    private fun guessNameFromUrl(url: String): String {
+        return try {
+            val uri = Uri.parse(url)
+            for (key in listOf("filename", "file", "name")) {
+                val value = uri.getQueryParameter(key)?.trim().orEmpty()
+                if (value.isNotEmpty()) return decodeFileName(value)
+            }
+            val pathName = uri.lastPathSegment?.trim().orEmpty()
+            if (pathName.isNotEmpty() && !pathName.equals("attachment.php", true)) {
+                val decoded = decodeFileName(pathName)
+                if (decoded.isNotEmpty()) return decoded
+            }
+            val f = uri.getQueryParameter("_f")?.trim().orEmpty()
+            if (f.startsWith(".") && f.length <= 12) return "论坛附件$f"
+        } catch (_: Exception) {}
         return "论坛附件_${System.currentTimeMillis()}"
+    }
+
+    private fun resolveResponseFileName(disposition: String?, finalUrl: String, mime: String): String {
+        if (!disposition.isNullOrBlank()) {
+            val guessed = URLUtil.guessFileName(finalUrl, disposition, mime)
+            if (guessed.isNotBlank() && !looksGeneric(guessed)) return guessed
+        }
+        return guessNameFromUrl(finalUrl)
     }
 
     private fun looksGeneric(name: String): Boolean {
@@ -158,7 +193,9 @@ class MainActivity : FlutterActivity() {
             .replace("\\", "_")
             .replace(Regex("[\\u0000-\\u001F]"), "")
             .trim()
-        if (name.isEmpty() || name == "." || name == "..") name = "论坛附件_${System.currentTimeMillis()}"
+        if (name.isEmpty() || name == "." || name == "..") {
+            name = "论坛附件_${System.currentTimeMillis()}"
+        }
         if (name.length > 180) name = name.take(180)
         return name
     }
