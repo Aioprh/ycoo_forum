@@ -210,47 +210,104 @@ class CommentReplyResolver {
         null;
   }
 
-  /// Comiis/replyfloor 的“回复”按钮不是把 PID 放在 li 自身，
-  /// 而是放在按钮 href 的 `repquote=<pid>` 参数里。
-  /// 原生解析器只读取 data-pid/pid 等属性，因此会把真实 PID 解析成 0，
-  /// 最终点击“回复”时就会出现“未取得这条中楼的评论编号”。
-  ///
-  /// 这里在交给 UI 解析前，把 repquote 提升为 data-pid，兼容现有 UI，
-  /// 同时保留原始 HTML 和原站链接，不改变实际回复接口。
+  /// Comiis/replyfloor 的“回复”按钮可能把真实 PID 放在
+  /// href、data-url、onclick 或自定义 repquote 属性中。
+  /// 统一提升到楼中楼节点的 data-pid，供原生 UI 稳定读取。
   String _normalizeReplyPidHtml(String html) {
     if (html.trim().isEmpty) return html;
     final doc = parser.parseFragment(html);
-    for (final link in doc.querySelectorAll('a[href], [data-url], [onclick]')) {
-      final raw = [
-        link.attributes['href'] ?? '',
-        link.attributes['data-url'] ?? '',
-        link.attributes['onclick'] ?? '',
-      ].join(' ');
-      final match = RegExp(
-        r'(?:[?&]|%3F|%26)repquote(?:=|%3D)(\d+)',
-        caseSensitive: false,
-      ).firstMatch(raw);
-      final replyPid = int.tryParse(match?.group(1) ?? '');
-      if (replyPid == null || replyPid <= 0) continue;
-
-      dom.Element? owner = link;
-      for (var i = 0; i < 4 && owner != null; i++) {
-        final cls = owner.attributes['class'] ?? '';
-        if (cls.contains('replyfloor_content_li') ||
-            cls.contains('replyfloor_reply') ||
-            cls.contains('replyfloor_item') ||
-            owner.localName == 'li') {
-          owner.attributes['data-pid'] = '$replyPid';
-          break;
-        }
-        owner = owner.parent;
-      }
-      owner ??= link;
-      if (!owner.attributes.containsKey('data-pid')) {
-        owner.attributes['data-pid'] = '$replyPid';
+    final replyNodes = <dom.Element>[];
+    const nodeSelectors = [
+      '.replyfloor_content_ul > .replyfloor_content_li',
+      '.replyfloor_content_ul > li',
+      '.replyfloor_content_li',
+      '.replyfloor_content li',
+      'li.replyfloor_li',
+      '.replyfloor_box li',
+      '.replyfloor_reply',
+      '.replyfloor_item',
+    ];
+    for (final selector in nodeSelectors) {
+      for (final node in doc.querySelectorAll(selector)) {
+        if (!replyNodes.contains(node)) replyNodes.add(node);
       }
     }
-    return doc.nodes.map((node) => node is dom.Element ? node.outerHtml : (node.text ?? '')).join();
+
+    int? extractRepquote(String raw) {
+      if (raw.isEmpty) return null;
+      final patterns = <RegExp>[
+        RegExp(r'(?:[?&]|%3F|%26|&amp;)repquote(?:=|%3D)(\d+)', caseSensitive: false),
+        RegExp(r'\brepquote\s*[:=]\s*["\']?(\d+)', caseSensitive: false),
+        RegExp(r'\brepquote[^0-9]{0,12}(\d+)', caseSensitive: false),
+      ];
+      for (final pattern in patterns) {
+        final match = pattern.firstMatch(raw);
+        final pid = int.tryParse(match?.group(1) ?? '');
+        if (pid != null && pid > 0) return pid;
+      }
+      return null;
+    }
+
+    // 第一阶段：从每条“回复”节点自身及其后代按钮提取 PID。
+    for (final node in replyNodes) {
+      int pid = 0;
+      final selfRaw = [
+        node.id,
+        node.attributes['name'] ?? '',
+        node.attributes['repquote'] ?? '',
+        node.attributes['data-pid'] ?? '',
+        node.attributes['data-post-id'] ?? '',
+        node.attributes['data-url'] ?? '',
+        node.attributes['href'] ?? '',
+        node.attributes['onclick'] ?? '',
+      ].join(' ');
+      pid = extractRepquote(selfRaw) ??
+          int.tryParse(node.attributes['data-pid'] ?? '') ??
+          int.tryParse(node.attributes['data-post-id'] ?? '') ??
+          0;
+
+      if (pid <= 0) {
+        for (final link in node.querySelectorAll('[href], [data-url], [onclick], [repquote]')) {
+          final raw = [
+            link.attributes['href'] ?? '',
+            link.attributes['data-url'] ?? '',
+            link.attributes['onclick'] ?? '',
+            link.attributes['repquote'] ?? '',
+          ].join(' ');
+          pid = extractRepquote(raw) ?? 0;
+          if (pid > 0) break;
+        }
+      }
+      if (pid > 0) {
+        node.attributes['data-pid'] = '$pid';
+      }
+    }
+
+    // 第二阶段：某些模板把“回复”按钮放在 li 外层，
+    // 此时按 DOM 顺序将按钮 PID 绑定到最接近的楼中楼节点。
+    final loosePids = <int>[];
+    for (final element in doc.querySelectorAll('[href], [data-url], [onclick], [repquote]')) {
+      final raw = [
+        element.attributes['href'] ?? '',
+        element.attributes['data-url'] ?? '',
+        element.attributes['onclick'] ?? '',
+        element.attributes['repquote'] ?? '',
+      ].join(' ');
+      final pid = extractRepquote(raw);
+      if (pid != null && pid > 0) loosePids.add(pid);
+    }
+    var looseIndex = 0;
+    for (final node in replyNodes) {
+      final current = int.tryParse(node.attributes['data-pid'] ?? '') ?? 0;
+      if (current > 0) continue;
+      if (looseIndex < loosePids.length) {
+        node.attributes['data-pid'] = '${loosePids[looseIndex++]}';
+      }
+    }
+
+    return doc.nodes
+        .map((node) => node is dom.Element ? node.outerHtml : (node.text ?? ''))
+        .join();
   }
 
   dom.Element? _findPostByPid(dom.Document doc, int pid) {
