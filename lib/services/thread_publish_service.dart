@@ -85,10 +85,9 @@ class ThreadPublishService {
       _copyIfPresent(doc, form, 'typeid');
       _copyIfPresent(doc, form, 'sortid');
       _copyIfPresent(doc, form, 'special');
-
-      // 这些字段是 Discuz 原生“高级设置”的标准字段；只有当前版块/用户实际提供时才提交，
-      // 避免把不存在的字段硬塞给站点导致兼容性问题。
       _setIfPresent(doc, form, 'hiddenreplies', hiddenreplies ? '1' : '0');
+      // Discuz X3.x 原生字段名是 ordertype，部分二开模板才使用 descviewdefault。
+      _setIfPresent(doc, form, 'ordertype', descviewdefault ? '1' : '0');
       _setIfPresent(doc, form, 'descviewdefault', descviewdefault ? '1' : '0');
       _setIfPresent(doc, form, 'addfeed', addfeed ? '1' : '0');
 
