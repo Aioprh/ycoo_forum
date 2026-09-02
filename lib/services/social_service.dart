@@ -27,6 +27,9 @@ class SocialService {
   static final instance = SocialService._();
   static String get _base => SiteConfig.base;
 
+  /// 从已加载的页面中缓存的 formhash —— 用户能看到列表说明这个令牌一定有效。
+  static String _cachedFormhash = '';
+
   Future<String> _get(String path) async {
     final client = await NetClient.instance.client;
     final cookie = AuthService.instance.authCookie;
@@ -46,7 +49,14 @@ class SocialService {
     }
     final html = NetClient.decode(response.bodyBytes);
     if (_looksLikeLogin(html)) throw Exception('登录态已失效，请重新登录论坛');
+    // 每次请求后都尝试提取并缓存 formhash
+    _tryCacheFormhash(html);
     return html;
+  }
+
+  static void _tryCacheFormhash(String html) {
+    final token = _hiddenValue(html, 'formhash');
+    if (token.isNotEmpty) _cachedFormhash = token;
   }
 
   int get _currentUid => AuthService.instance.uid ?? 0;
@@ -316,37 +326,42 @@ class SocialService {
     if (cookie == null || cookie.isEmpty) return '请先登录论坛';
     try {
       final client = await NetClient.instance.client;
-      // Comiis 模板不把 formhash 放在 <input> hidden 里, 而是嵌入 JS/链接字符串,
-      // 所以这里用能覆盖整页文本的正则来取。
-      final pagePath = 'home.php?mod=spacecp&ac=follow&uid=$uid&mobile=2';
-      final page = await _get(pagePath);
-      final token = _hiddenValue(page, 'formhash');
+
+      // 优先使用缓存的 formhash —— 用户能看到列表说明缓存一定有效。
+      // 如果缓存为空(极端情况:用户没进过列表就点了关注), 就去拉一次关注列表页。
+      var token = _cachedFormhash;
+      if (token.isEmpty) {
+        final listPath = 'home.php?mod=follow&do=following&uid=$_currentUid&mobile=2';
+        final listHtml = await _get(listPath);
+        token = _cachedFormhash;
+        if (token.isEmpty) token = _hiddenValue(listHtml, 'formhash');
+      }
       if (token.isEmpty) return '未取得操作令牌,请刷新登录状态后重试';
 
-      final path =
-          'home.php?mod=spacecp&ac=follow&op=${follow ? 'add' : 'del'}&uid=$uid&mobile=2';
-      // Discuz follow 接口同时接受 query/hash 和 POST body 中的 hash/formhash,
-      // 新版模板服务端会严格校验 hash 查询参数, 直接拼进 URL 确保命中。
-      final urlWithHash = '$_base$path&hash=$token';
-      final response = await NetClient.retry(() => client.post(
-            Uri.parse(urlWithHash),
+      // Discuz follow 接口: fuid 是目标用户 UID, hash 查询参数必须带上。
+      // 用 GET 即可触发操作, 比 POST 更简单可靠, Comiis 模板不会拦截。
+      final op = follow ? 'add' : 'del';
+      final actionUrl = '$_base'
+          'home.php?mod=spacecp&ac=follow&op=$op&fuid=$uid&hash=$token&mobile=2';
+      final refererUrl = '$_base'
+          'home.php?mod=space&uid=$uid&mobile=2';
+
+      final response = await NetClient.retry(() => client.get(
+            Uri.parse(actionUrl),
             headers: {
               'User-Agent': NetClient.ua,
-              'Accept': 'application/json,text/html,*/*',
-              'Referer': '$_base$pagePath&hash=$token',
-              'Content-Type': 'application/x-www-form-urlencoded; charset=UTF-8',
-              if (cookie.isNotEmpty) 'Cookie': cookie,
-            },
-            body: {
-              'hash': token,
-              'formhash': token,
-              'uid': '$uid',
-              'op': follow ? 'add' : 'del',
-              'inajax': '1',
+              'Accept': 'text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8',
+              'Accept-Language': 'zh-CN,zh;q=0.9',
+              'Referer': refererUrl,
+              'Cookie': cookie,
             },
           ).timeout(const Duration(seconds: 20)));
       final body = NetClient.decode(response.bodyBytes);
-      if (RegExp(r'(succeed|成功|已关注|关注成功|取消关注成功)', caseSensitive: false)
+
+      // 刷新缓存, 关注操作后服务器可能更换 formhash
+      _tryCacheFormhash(body);
+
+      if (RegExp(r'(succeed|成功|已关注|关注成功|取消关注成功|follow\w*ok)', caseSensitive: false)
           .hasMatch(body)) {
         return null;
       }
