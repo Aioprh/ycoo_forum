@@ -742,7 +742,7 @@ class _DetailPageState extends State<DetailPage> {
           ),
           item(
             _favorited ? Icons.star_rounded : Icons.star_border_rounded,
-            _favorited ? '已收藏' : '收藏',
+            _favorited ? '取消收藏' : '收藏',
             active: _favorited,
             onTap: () => _favorite(d),
           ),
