@@ -153,7 +153,7 @@ class CommentReplyResolver {
       return candidates.map((e) => e.outerHtml).join();
     }
 
-    final decodedText = document.body?.text.trim() ?? document.text.trim();
+    final decodedText = (document.body?.text ?? document.text).trim();
     if (decodedText.contains('replyfloor') || decodedText.contains('回复 举报')) {
       final decoded = parser.parseFragment(decodedText);
       final decodedCandidates = decoded.querySelectorAll(

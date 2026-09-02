@@ -381,7 +381,7 @@ class _CommentCardState extends State<_CommentCard> {
 
     // 如果 AJAX 返回的是转义后的 HTML，再解析一次文本内容。
     if (nodes.isEmpty) {
-      final decoded = doc.text.trim();
+      final decoded = (doc.text ?? '').trim();
       if (decoded.contains('replyfloor') || decoded.contains('回复 举报')) {
         doc = parser.parseFragment(decoded);
         for (final selector in [
