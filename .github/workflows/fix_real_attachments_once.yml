@@ -13,29 +13,19 @@ jobs:
       - uses: actions/checkout@v4
         with:
           fetch-depth: 1
-      - name: Patch attachment parsing
+      - name: Patch parser
         shell: python
         run: |
           from pathlib import Path
-
           p = Path('lib/services/attachment_download_service.dart')
           s = p.read_text(encoding='utf-8')
-
-          public_marker = "  Set<String> _extractAttachmentUrls(String html) =>"
-          if public_marker not in s:
-              s = s.replace(
-                  public_marker,
-                  "  List<ForumAttachmentInfo> extractAttachmentInfos(String html) => _extractAttachmentInfos(html);\n\n" + public_marker,
-                  1,
-              )
-
-          anchor = "    return result;\n  }\n\n  bool _isRealFileAttachment(Uri uri) {"
-          if anchor not in s:
-              raise SystemExit('attachment parser return anchor not found')
-
-          insertion = r'''    // ycoo/Discuz 可能保留 BBCode [attach]URL[/attach]，而不是渲染成 <a>。
-    final attachRe = RegExp(r'\[attach(?:ment)?\]\s*(https?://[^\s\[\]<>]+)\s*\[/attach(?:ment)?\]', caseSensitive: false);
-    for (final m in attachRe.allMatches(source)) {
+          marker = '    return result;\n  }\n\n  bool _isRealFileAttachment(Uri uri)'
+          pos = s.find(marker)
+          if pos < 0:
+              raise SystemExit('parser marker not found')
+          insertion = '''    // ycoo/Discuz 的真实附件有时保留 BBCode [attach]URL[/attach]，不会生成 <a>。
+    attach_re = RegExp(r'\\[attach(?:ment)?\\]\\s*(https?://[^\\s\\[\\]<>]+)\\s*\\[/attach(?:ment)?\\]', caseSensitive: false);
+    for (final m in attach_re.allMatches(source)) {
       final url = _normalizeUrl(m.group(1)!);
       final uri = Uri.tryParse(url);
       if (uri == null || !_isRealFileAttachment(uri)) continue;
@@ -46,86 +36,18 @@ jobs:
       result.add(ForumAttachmentInfo(url: url, name: name));
     }
 
-    // 有些页面把附件 URL 放在属性/脚本/JSON 中，没有可点击的 <a>。
-    final attachmentUrlRe = RegExp(r'https?://[^\s\"\'<>]+(?:attachment\.php|forum\.php\?[^\s\"\'<>]*mod=attachment)[^\s\"\'<>]*', caseSensitive: false);
-    for (final m in attachmentUrlRe.allMatches(source)) {
-      final url = _normalizeUrl(m.group(0)!);
-      final uri = Uri.tryParse(url);
-      if (uri == null || !_isRealFileAttachment(uri)) continue;
-      final name = _bestFileName('', uri);
-      if (_looksLikeImageFile(name, uri)) continue;
-      final key = uri.queryParameters['aid']?.trim() ?? url;
-      if (!seen.add(key)) continue;
-      result.add(ForumAttachmentInfo(url: url, name: name));
-    }
-
 '''
-          s = s.replace(anchor, insertion + anchor, 1)
+          s = s[:pos] + insertion + s[pos:]
           p.write_text(s, encoding='utf-8')
-
-          # 让附件区域优先从已经解析出来的正文 HTML 取真实附件，避免再次请求时拿到不同的移动端页面。
-          p = Path('lib/widgets/forum_attachment_section.dart')
-          s = p.read_text(encoding='utf-8')
-          if 'final String bodyHtml;' not in s:
-              s = s.replace('  final String? referer;\n', '  final String? referer;\n  final String bodyHtml;\n', 1)
-              s = s.replace('    this.referer,\n  });', '    this.referer,\n    this.bodyHtml = \'\',\n  });', 1)
-          if 'Future<List<ForumAttachmentInfo>> _loadAttachments()' not in s:
-              s = s.replace(
-                  "  @override\n  Widget build(BuildContext context) {",
-                  """  Future<List<ForumAttachmentInfo>> _loadAttachments() async {
-    if (bodyHtml.trim().isNotEmpty) {
-      final local = AttachmentDownloadService.instance.extractAttachmentInfos(bodyHtml);
-      if (local.isNotEmpty) return local;
-    }
-    return AttachmentDownloadService.instance.fetchAttachments(
-      tid: tid,
-      cookie: cookie,
-      referer: referer ?? SiteConfig.base,
-    );
-  }
-
-  @override
-  Widget build(BuildContext context) {""",
-                  1,
-              )
-          s = s.replace(
-              """      future: AttachmentDownloadService.instance.fetchAttachments(
-        tid: tid,
-        cookie: cookie,
-        referer: referer ?? SiteConfig.base,
-      ),""",
-              "      future: _loadAttachments(),",
-              1,
-          )
-          p.write_text(s, encoding='utf-8')
-
-          p = Path('lib/pages/detail_page.dart')
-          s = p.read_text(encoding='utf-8')
-          if 'bodyHtml: d.bodyHtml,' not in s:
-              target = """                tid: d.tid,
-                cookie: AuthService.instance.authCookie,
-                referer: SiteConfig.base,
-              ),"""
-              replacement = """                tid: d.tid,
-                cookie: AuthService.instance.authCookie,
-                referer: SiteConfig.base,
-                bodyHtml: d.bodyHtml,
-              ),"""
-              if target not in s:
-                  raise SystemExit('detail attachment section target not found')
-              s = s.replace(target, replacement, 1)
-          p.write_text(s, encoding='utf-8')
-      - name: Verify changes
-        shell: bash
-        run: |
-          grep -n "extractAttachmentInfos\|attachRe\|bodyHtml: d.bodyHtml" lib/services/attachment_download_service.dart lib/widgets/forum_attachment_section.dart lib/pages/detail_page.dart
-      - name: Commit and remove one-shot workflows
+      - name: Verify
+        run: grep -n "attach_re" lib/services/attachment_download_service.dart
+      - name: Commit and remove temporary workflows
         shell: bash
         run: |
           git config user.name 'github-actions[bot]'
           git config user.email '41898282+github-actions[bot]@users.noreply.github.com'
-          git add lib/services/attachment_download_service.dart lib/widgets/forum_attachment_section.dart lib/pages/detail_page.dart
-          git commit -m 'fix: parse real attachment links from post content'
+          git add lib/services/attachment_download_service.dart
+          git commit -m 'fix: parse Discuz attach markers as real files'
           git rm -f .github/workflows/fix_real_attachments_once.yml .github/workflows/fix_attachment_parser_once.yml || true
           git add -A
           git commit -m 'chore: remove temporary attachment workflows' || true
