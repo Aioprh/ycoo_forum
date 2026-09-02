@@ -327,9 +327,13 @@ class _CommentCardState extends State<_CommentCard> {
       if (node.attributes['id']?.contains('replyfloor_content_li') ?? false) return true;
       if ((node.attributes['class'] ?? '').contains('replyfloor_content_li')) return true;
       if (node.querySelector('.replyfloor_content_text') != null) return true;
-      final any = '${node.attributes['onclick'] ?? ''} ${node.attributes.values.join(' ')} '
-          '${node.innerHtml}';
-      if (RegExp(r'replyfloor_(?:editor|report)\s*\(\s*["\']?\d+["\']?\s*,\s*\d+', caseSensitive: false).hasMatch(any)) return true;
+      final buffer = StringBuffer();
+      buffer.write(node.attributes['onclick'] ?? '');
+      for (final v in node.attributes.values) { buffer.write(' '); buffer.write(v); }
+      buffer.write(' '); buffer.write(node.innerHtml);
+      final any = buffer.toString();
+      // replyfloor_editor('2657801', 20605, '...') / replyfloor_report('postpid', pid)
+      if (RegExp(r'replyfloor_(editor|report)\s*\(\s*[\'"]?\d+[\'"]?\s*,\s*\d+', caseSensitive: false).hasMatch(any)) return true;
       return false;
     }
     nodes.retainWhere(looksLikeFloorReply);
