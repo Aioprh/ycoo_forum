@@ -11,9 +11,8 @@ import 'resolved_user_avatar.dart';
 
 /// 原生评论列表。
 ///
-/// 楼中楼不再依赖页面上是否出现“回复(n)”这几个字：每个当前页评论都会
-/// 自动尝试取得 replyfloor 内容，取得成功后直接展开；没有楼中楼的评论
-/// 不显示多余的展开按钮。
+/// 每个评论都会尝试读取 Discuz replyfloor。楼中楼中的每一条回复都有
+/// 独立 PID，因此可以直接回复任意一条，而不是只能回复楼中楼楼主。
 class NativeCommentList extends StatelessWidget {
   final String html;
   final void Function(int pid, String author)? onReply;
@@ -30,15 +29,17 @@ class NativeCommentList extends StatelessWidget {
     if (html.trim().isEmpty) return const [];
     final doc = parser.parseFragment(html);
     final result = <_CommentFloor>[];
+
     for (final card in doc.querySelectorAll('.post-card')) {
       final body = card.querySelector('.p-body');
       if (body == null) continue;
       final authorNode = card.querySelector('.p-author');
-      final rawCardText = card.text.replaceAll(RegExp(r'\s+'), ' ').trim();
-      final replyMatch = RegExp(r'回复\s*\((\d+)\)').firstMatch(rawCardText);
+      final rawText = card.text.replaceAll(RegExp(r'\s+'), ' ').trim();
+      final replyMatch = RegExp(r'回复\s*\((\d+)\)').firstMatch(rawText);
+
       result.add(
         _CommentFloor(
-          pid: int.tryParse(card.attributes['data-pid'] ?? '0') ?? 0,
+          pid: int.tryParse(card.attributes['data-pid'] ?? '') ?? 0,
           uid: _extractUid(card, authorNode),
           floor: _text(card.querySelector('.p-floor')),
           author: _text(authorNode),
@@ -66,14 +67,21 @@ class NativeCommentList extends StatelessWidget {
       final uid = _firstInt(card.attributes[key] ?? author?.attributes[key]);
       if (uid != null && uid > 0) return uid;
     }
+
     final nodes = <dom.Element>[
       card,
       if (author != null) author,
       ...card.querySelectorAll('a[href], img[src], img[data-src]'),
     ];
     for (final node in nodes) {
-      final raw = '${node.attributes['href'] ?? ''} ${node.attributes['src'] ?? ''} ${node.attributes['data-src'] ?? ''}';
-      final match = RegExp(r'(?:[?&]|%3F|%26)uid(?:=|%3D)(\d+)', caseSensitive: false).firstMatch(raw);
+      final raw =
+          '${node.attributes['href'] ?? ''} '
+          '${node.attributes['src'] ?? ''} '
+          '${node.attributes['data-src'] ?? ''}';
+      final match = RegExp(
+        r'(?:[?&]|%3F|%26)uid(?:=|%3D)(\d+)',
+        caseSensitive: false,
+      ).firstMatch(raw);
       final uid = int.tryParse(match?.group(1) ?? '');
       if (uid != null && uid > 0) return uid;
     }
@@ -103,8 +111,8 @@ class NativeCommentList extends StatelessWidget {
 
     final root = parser.parseFragment(html);
     final section = root.querySelector('.comments-section');
-    final tid = int.tryParse(section?.attributes['data-tid'] ?? '0') ?? 0;
-    final fid = int.tryParse(section?.attributes['data-fid'] ?? '0') ?? 0;
+    final tid = int.tryParse(section?.attributes['data-tid'] ?? '') ?? 0;
+    final fid = int.tryParse(section?.attributes['data-fid'] ?? '') ?? 0;
 
     return ListView.separated(
       shrinkWrap: true,
@@ -112,14 +120,17 @@ class NativeCommentList extends StatelessWidget {
       padding: const EdgeInsets.fromLTRB(12, 4, 12, 14),
       itemCount: comments.length,
       separatorBuilder: (_, __) => const SizedBox(height: 10),
-      itemBuilder: (context, index) => _CommentCard(
-        comment: comments[index],
-        index: index,
-        tid: tid,
-        fid: fid,
-        onReply: () => _handleReply(context, tid, fid, index, comments[index]),
-        onProfile: () => _openProfile(context, comments[index]),
-      ),
+      itemBuilder: (context, index) {
+        final comment = comments[index];
+        return _CommentCard(
+          comment: comment,
+          index: index,
+          tid: tid,
+          fid: fid,
+          onReply: () => _handleReply(context, tid, fid, index, comment),
+          onProfile: () => _openProfile(context, comment),
+        );
+      },
     );
   }
 
@@ -139,6 +150,16 @@ class NativeCommentList extends StatelessWidget {
         floor: comment.floor,
       );
     }
+    await _replyByPid(context, tid, fid, pid, comment.author);
+  }
+
+  Future<void> _replyByPid(
+    BuildContext context,
+    int tid,
+    int fid,
+    int pid,
+    String author,
+  ) async {
     if (!context.mounted) return;
     if (pid <= 0) {
       ScaffoldMessenger.of(context).showSnackBar(
@@ -146,14 +167,19 @@ class NativeCommentList extends StatelessWidget {
       );
       return;
     }
+
     if (onReply != null) {
-      onReply!(pid, comment.author);
-    } else {
-      await _replyDialog(context, tid, fid, pid, comment.author);
+      onReply!(pid, author);
+      return;
     }
+
+    await _replyDialog(context, tid, fid, pid, author);
   }
 
-  Future<void> _openProfile(BuildContext context, _CommentFloor comment) async {
+  Future<void> _openProfile(
+    BuildContext context,
+    _CommentFloor comment,
+  ) async {
     var uid = comment.uid;
     if (uid <= 0 && comment.author.trim().isNotEmpty) {
       uid = await CommentProfileResolver.instance.resolveUid(comment.author) ?? 0;
@@ -180,6 +206,7 @@ class NativeCommentList extends StatelessWidget {
     String author,
   ) async {
     if (tid <= 0 || fid <= 0 || pid <= 0) return;
+
     await AuthService.instance.init();
     if (!AuthService.instance.isLoggedIn) {
       ScaffoldMessenger.of(context).showSnackBar(
@@ -187,6 +214,7 @@ class NativeCommentList extends StatelessWidget {
       );
       return;
     }
+
     final controller = TextEditingController();
     final message = await showDialog<String>(
       context: context,
@@ -210,8 +238,9 @@ class NativeCommentList extends StatelessWidget {
           ),
           FilledButton(
             onPressed: () {
-              if (controller.text.trim().isNotEmpty) {
-                Navigator.pop(dialogContext, controller.text.trim());
+              final value = controller.text.trim();
+              if (value.isNotEmpty) {
+                Navigator.pop(dialogContext, value);
               }
             },
             child: const Text('发送'),
@@ -220,6 +249,7 @@ class NativeCommentList extends StatelessWidget {
       ),
     );
     controller.dispose();
+
     if (message == null || message.isEmpty || !context.mounted) return;
     final error = await AuthService.instance.reply(
       tid,
@@ -228,8 +258,9 @@ class NativeCommentList extends StatelessWidget {
       replyPid: pid,
     );
     if (!context.mounted) return;
+
     ScaffoldMessenger.of(context).showSnackBar(
-      SnackBar(content: Text(error ?? '已回复本楼')),
+      SnackBar(content: Text(error ?? '已回复 $author')),
     );
     if (error == null && onReplySent != null) {
       await onReplySent!(pid, author);
@@ -291,8 +322,6 @@ class _CommentCardState extends State<_CommentCard> {
   void initState() {
     super.initState();
     _pid = widget.comment.pid;
-    // 不再依赖“回复(n)”文本。论坛的实际楼中楼计数有时由 JS 后加载，
-    // 因此每个当前页评论都自动检查一次 replyfloor。
     if (widget.tid > 0) {
       WidgetsBinding.instance.addPostFrameCallback((_) => _loadReplies());
     }
@@ -304,6 +333,7 @@ class _CommentCardState extends State<_CommentCard> {
       _loadingReplies = true;
       _replyError = null;
     });
+
     try {
       if (_pid <= 0) {
         _pid = await CommentReplyResolver.instance.resolvePid(
@@ -313,14 +343,14 @@ class _CommentCardState extends State<_CommentCard> {
           floor: widget.comment.floor,
         );
       }
-      if (_pid <= 0) {
-        throw Exception('未取得评论楼层');
-      }
+      if (_pid <= 0) throw Exception('未取得评论楼层');
+
       _replyHtml = await CommentReplyResolver.instance.fetchReplies(
         tid: widget.tid,
         pid: _pid,
       );
       if (!mounted) return;
+
       final replies = _parseReplies();
       setState(() {
         _loadingReplies = false;
@@ -333,7 +363,6 @@ class _CommentCardState extends State<_CommentCard> {
       if (!mounted) return;
       setState(() {
         _loadingReplies = false;
-        // 只有论坛明确显示有楼中楼时才提示错误；普通评论不刷屏。
         _replyError = widget.comment.replyCount > 0 ? '$e' : null;
       });
     }
@@ -351,10 +380,10 @@ class _CommentCardState extends State<_CommentCard> {
   List<_FloorReply> _parseReplies() {
     if (_replyHtml.trim().isEmpty) return const [];
 
-    dom.DocumentFragment doc = parser.parseFragment(_replyHtml);
+    var doc = parser.parseFragment(_replyHtml);
     var nodes = <dom.Element>[];
 
-    for (final selector in [
+    const selectors = [
       '.replyfloor_content_ul > .replyfloor_content_li',
       '.replyfloor_content_ul > li',
       '.replyfloor_content_li',
@@ -363,7 +392,9 @@ class _CommentCardState extends State<_CommentCard> {
       '.replyfloor_box li',
       '.replyfloor_reply',
       '.replyfloor_item',
-    ]) {
+    ];
+
+    for (final selector in selectors) {
       for (final node in doc.querySelectorAll(selector)) {
         if (!nodes.contains(node)) nodes.add(node);
       }
@@ -381,17 +412,12 @@ class _CommentCardState extends State<_CommentCard> {
       }
     }
 
-    // 如果 AJAX 返回的是转义后的 HTML，再解析一次文本内容。
+    // 有些主题把 AJAX 响应再包了一层 HTML 实体。
     if (nodes.isEmpty) {
-      final decoded = (doc.text ?? '').trim();
+      final decoded = doc.text.trim();
       if (decoded.contains('replyfloor') || decoded.contains('回复 举报')) {
         doc = parser.parseFragment(decoded);
-        for (final selector in [
-          '.replyfloor_content_ul > li',
-          '.replyfloor_content li',
-          'li.replyfloor_li',
-          '.replyfloor_box li',
-        ]) {
+        for (final selector in selectors) {
           for (final node in doc.querySelectorAll(selector)) {
             if (!nodes.contains(node)) nodes.add(node);
           }
@@ -401,36 +427,124 @@ class _CommentCardState extends State<_CommentCard> {
 
     if (nodes.isEmpty) return const [];
 
-    return nodes.map((node) {
-      final author = _firstText(node, [
-        '.replyfloor_content_user a',
-        '.replyfloor_content_user',
-        '.replyfloor_author',
-        '.replyfloor_user',
-        '.replyfloor_username',
-        '.xw1',
-        '.authi a',
-        '.authi strong a',
-        'a[href*="uid="]',
-      ]);
-      final time = _firstText(node, [
-        '.replyfloor_content_time',
-        '.replyfloor_time',
-        '.replyfloor_dateline',
-        '.replyfloor_date',
-        'time',
-        'em',
-      ]);
-      final bodyNode = node.querySelector(
-        '.replyfloor_content_text, .replyfloor_msg, .replyfloor_message, '
-        '.replyfloor_body, .replyfloor_text, .reply_content',
-      );
-      return _FloorReply(
-        author: author,
-        time: time,
-        bodyHtml: bodyNode?.innerHtml ?? node.innerHtml,
-      );
-    }).toList();
+    return nodes
+        .map(
+          (node) => _FloorReply(
+            pid: _extractReplyPid(node),
+            uid: _extractUid(node, node.querySelector('a[href*="uid="]')),
+            author: _firstText(node, const [
+              '.replyfloor_content_user a',
+              '.replyfloor_content_user',
+              '.replyfloor_author',
+              '.replyfloor_user',
+              '.replyfloor_username',
+              '.xw1',
+              '.authi a',
+              '.authi strong a',
+              'a[href*="uid="]',
+            ]),
+            time: _firstText(node, const [
+              '.replyfloor_content_time',
+              '.replyfloor_time',
+              '.replyfloor_dateline',
+              '.replyfloor_date',
+              'time',
+              'em',
+            ]),
+            bodyHtml: _extractReplyBody(node),
+          ),
+        )
+        .where((r) => r.author.isNotEmpty || r.bodyHtml.trim().isNotEmpty)
+        .toList();
+  }
+
+  static int _extractReplyPid(dom.Element node) {
+    const keys = [
+      'data-pid',
+      'data-post-id',
+      'data-reply-id',
+      'data-reppid',
+      'pid',
+      'reppid',
+      'replypid',
+      'replyid',
+      'data-id',
+    ];
+    for (final key in keys) {
+      final value = node.attributes[key];
+      final pid = int.tryParse(value ?? '');
+      if (pid != null && pid > 0) return pid;
+    }
+
+    final rawValues = <String>[
+      node.id,
+      node.attributes['name'] ?? '',
+      node.attributes['href'] ?? '',
+      ...node.querySelectorAll(
+        '[id], [name], [href], [data-pid], [data-post-id], [data-reppid], [reppid], [replypid], [replyid]',
+      ).map(
+        (e) => '${e.id} '
+            '${e.attributes['name'] ?? ''} '
+            '${e.attributes['href'] ?? ''} '
+            '${e.attributes['data-pid'] ?? ''} '
+            '${e.attributes['data-post-id'] ?? ''} '
+            '${e.attributes['data-reppid'] ?? ''} '
+            '${e.attributes['reppid'] ?? ''} '
+            '${e.attributes['replypid'] ?? ''} '
+            '${e.attributes['replyid'] ?? ''}',
+      ),
+    ];
+
+    for (final raw in rawValues) {
+      final direct = RegExp(
+        r'(?:[?&]|%3F|%26)(?:reppid|replypid|replyid|pid)(?:=|%3D)(\d+)',
+        caseSensitive: false,
+      ).firstMatch(raw);
+      final directPid = int.tryParse(direct?.group(1) ?? '');
+      if (directPid != null && directPid > 0) return directPid;
+
+      final named = RegExp(
+        r'(?:reply(?:floor)?|post|pid)[_-]?(\d+)',
+        caseSensitive: false,
+      ).firstMatch(raw);
+      final namedPid = int.tryParse(named?.group(1) ?? '');
+      if (namedPid != null && namedPid > 0) return namedPid;
+    }
+    return 0;
+  }
+
+  static String _extractReplyBody(dom.Element node) {
+    final body = node.querySelector(
+      '.replyfloor_content_text, .replyfloor_msg, .replyfloor_message, '
+      '.replyfloor_body, .replyfloor_text, .reply_content',
+    );
+
+    if (body != null) {
+      final hasImage = body.querySelector('img') != null;
+      final text = body.text.replaceAll(RegExp(r'\s+'), ' ').trim();
+      if (hasImage || text.isNotEmpty) return body.innerHtml;
+    }
+
+    // 模板正文选择器不一致时，保留整个回复节点并删除头像/作者/时间/操作区。
+    final clone = dom.Element.html('<div>${node.innerHtml}</div>');
+    for (final selector in [
+      '.replyfloor_content_user',
+      '.replyfloor_content_time',
+      '.replyfloor_time',
+      '.replyfloor_dateline',
+      '.replyfloor_date',
+      '.replyfloor_author',
+      '.replyfloor_user',
+      '.replyfloor_username',
+      '.replyfloor_actions',
+      '.replyfloor_tools',
+      '.authi',
+    ]) {
+      for (final e in clone.querySelectorAll(selector).toList()) {
+        e.remove();
+      }
+    }
+    return clone.innerHtml;
   }
 
   static String _firstText(dom.Element node, List<String> selectors) {
@@ -443,20 +557,106 @@ class _CommentCardState extends State<_CommentCard> {
     return '';
   }
 
+  Future<void> _replyNested(_FloorReply reply) async {
+    if (!mounted) return;
+    var pid = reply.pid;
+
+    if (pid <= 0) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(content: Text('未取得这条楼中楼的评论编号，请刷新后重试')),
+      );
+      return;
+    }
+
+    await _showReplyDialog(
+      tid: widget.tid,
+      fid: widget.fid,
+      pid: pid,
+      author: reply.author,
+    );
+  }
+
+  Future<void> _showReplyDialog({
+    required int tid,
+    required int fid,
+    required int pid,
+    required String author,
+  }) async {
+    if (tid <= 0 || fid <= 0 || pid <= 0) return;
+
+    await AuthService.instance.init();
+    if (!AuthService.instance.isLoggedIn) {
+      if (!mounted) return;
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(content: Text('请先登录后回复')),
+      );
+      return;
+    }
+
+    final controller = TextEditingController();
+    final message = await showDialog<String>(
+      context: context,
+      builder: (dialogContext) => AlertDialog(
+        title: Text(author.isEmpty ? '回复楼中楼' : '回复 $author'),
+        content: TextField(
+          controller: controller,
+          autofocus: true,
+          minLines: 2,
+          maxLines: 6,
+          textInputAction: TextInputAction.newline,
+          decoration: const InputDecoration(
+            hintText: '输入回复内容…',
+            border: OutlineInputBorder(),
+          ),
+        ),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.pop(dialogContext),
+            child: const Text('取消'),
+          ),
+          FilledButton(
+            onPressed: () {
+              final value = controller.text.trim();
+              if (value.isNotEmpty) Navigator.pop(dialogContext, value);
+            },
+            child: const Text('发送'),
+          ),
+        ],
+      ),
+    );
+    controller.dispose();
+
+    if (message == null || message.isEmpty || !mounted) return;
+    final error = await AuthService.instance.reply(
+      tid,
+      fid,
+      message,
+      replyPid: pid,
+    );
+    if (!mounted) return;
+
+    ScaffoldMessenger.of(context).showSnackBar(
+      SnackBar(content: Text(error ?? '已回复 $author')),
+    );
+  }
+
   @override
   Widget build(BuildContext context) {
     final comment = widget.comment;
     final colors = Theme.of(context).colorScheme;
     final replies = _parseReplies();
     final hasReplies = replies.isNotEmpty;
-    final showReplyToggle = hasReplies || comment.replyCount > 0 || _replyError != null;
+    final showReplyToggle =
+        hasReplies || comment.replyCount > 0 || _replyError != null;
 
     return Container(
       padding: const EdgeInsets.fromLTRB(14, 13, 14, 10),
       decoration: BoxDecoration(
         color: colors.surfaceContainerLowest,
         borderRadius: BorderRadius.circular(18),
-        border: Border.all(color: colors.outlineVariant.withValues(alpha: .55)),
+        border: Border.all(
+          color: colors.outlineVariant.withValues(alpha: .55),
+        ),
         boxShadow: [
           BoxShadow(
             color: colors.shadow.withValues(alpha: .035),
@@ -500,7 +700,10 @@ class _CommentCardState extends State<_CommentCard> {
                           if (comment.level.isNotEmpty) ...[
                             const SizedBox(width: 6),
                             Container(
-                              padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 2),
+                              padding: const EdgeInsets.symmetric(
+                                horizontal: 6,
+                                vertical: 2,
+                              ),
                               decoration: BoxDecoration(
                                 color: colors.secondaryContainer,
                                 borderRadius: BorderRadius.circular(7),
@@ -546,11 +749,13 @@ class _CommentCardState extends State<_CommentCard> {
             ],
           ),
           const SizedBox(height: 11),
-          Container(height: 1, color: colors.outlineVariant.withValues(alpha: .35)),
+          Container(
+            height: 1,
+            color: colors.outlineVariant.withValues(alpha: .35),
+          ),
           const SizedBox(height: 10),
           NativePostContent(html: comment.bodyHtml),
           if (showReplyToggle) ...[
-            const SizedBox(height: 2),
             Align(
               alignment: Alignment.centerLeft,
               child: TextButton.icon(
@@ -593,7 +798,11 @@ class _CommentCardState extends State<_CommentCard> {
                 ),
                 child: Column(
                   children: [
-                    for (final reply in replies) _FloorReplyTile(reply: reply),
+                    for (final reply in replies)
+                      _FloorReplyTile(
+                        reply: reply,
+                        onReply: () => _replyNested(reply),
+                      ),
                   ],
                 ),
               ),
@@ -613,11 +822,15 @@ class _CommentCardState extends State<_CommentCard> {
 }
 
 class _FloorReply {
+  final int pid;
+  final int uid;
   final String author;
   final String time;
   final String bodyHtml;
 
   const _FloorReply({
+    required this.pid,
+    required this.uid,
     required this.author,
     required this.time,
     required this.bodyHtml,
@@ -626,17 +839,41 @@ class _FloorReply {
 
 class _FloorReplyTile extends StatelessWidget {
   final _FloorReply reply;
+  final VoidCallback onReply;
 
-  const _FloorReplyTile({required this.reply});
+  const _FloorReplyTile({
+    required this.reply,
+    required this.onReply,
+  });
+
+  List<String> _imageHtml() {
+    final doc = parser.parseFragment(reply.bodyHtml);
+    return doc.querySelectorAll('img').map((e) => e.outerHtml).toList();
+  }
+
+  String _textHtmlWithoutImages() {
+    final doc = parser.parseFragment(reply.bodyHtml);
+    for (final img in doc.querySelectorAll('img').toList()) {
+      img.remove();
+    }
+    return doc.nodes
+        .map((e) => e is dom.Element ? e.outerHtml : (e.text ?? ''))
+        .join();
+  }
 
   @override
   Widget build(BuildContext context) {
     final colors = Theme.of(context).colorScheme;
+    final images = _imageHtml();
+    final textHtml = _textHtmlWithoutImages();
+
     return Container(
       padding: const EdgeInsets.symmetric(vertical: 8),
       decoration: BoxDecoration(
         border: Border(
-          bottom: BorderSide(color: colors.outlineVariant.withValues(alpha: .3)),
+          bottom: BorderSide(
+            color: colors.outlineVariant.withValues(alpha: .3),
+          ),
         ),
       ),
       child: Column(
@@ -647,18 +884,39 @@ class _FloorReplyTile extends StatelessWidget {
               Expanded(
                 child: Text(
                   reply.author.isEmpty ? '楼中楼回复' : reply.author,
-                  style: const TextStyle(fontSize: 12.5, fontWeight: FontWeight.w700),
+                  style: const TextStyle(
+                    fontSize: 12.5,
+                    fontWeight: FontWeight.w700,
+                  ),
                 ),
               ),
               if (reply.time.isNotEmpty)
                 Text(
                   reply.time,
-                  style: TextStyle(fontSize: 10, color: colors.onSurfaceVariant),
+                  style: TextStyle(
+                    fontSize: 10,
+                    color: colors.onSurfaceVariant,
+                  ),
                 ),
             ],
           ),
-          const SizedBox(height: 4),
-          NativePostContent(html: reply.bodyHtml),
+          if (textHtml.trim().isNotEmpty) ...[
+            const SizedBox(height: 4),
+            NativePostContent(html: textHtml),
+          ],
+          for (final image in images) NativePostContent(html: image),
+          Align(
+            alignment: Alignment.centerRight,
+            child: TextButton.icon(
+              onPressed: onReply,
+              style: TextButton.styleFrom(
+                visualDensity: VisualDensity.compact,
+                tapTargetSize: MaterialTapTargetSize.shrinkWrap,
+              ),
+              icon: const Icon(Icons.reply_rounded, size: 15),
+              label: const Text('回复'),
+            ),
+          ),
         ],
       ),
     );
