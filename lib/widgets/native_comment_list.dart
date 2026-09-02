@@ -351,6 +351,11 @@ class _CommentCardState extends State<_CommentCard> {
       RegExp(r'''\brepquote\s*[:=]\s*["']?(\d+)''', caseSensitive: false),
       // replyfloor_reply('123') 直接携带 PID
       RegExp(r'''replyfloor_reply\s*\(\s*["']?(\d+)''', caseSensitive: false),
+      // Comiis mobile: 楼中楼 li 的 id="replyfloor_content_li_<PID>"，id 后缀即该条回复真正的 PID
+      RegExp(r'replyfloor_content_li_(\d+)', caseSensitive: false),
+      // Comiis mobile: 回复按钮 onclick="replyfloor_editor('<postPid>', <PID>, ...)"，
+      // 举报按钮 replyfloor_report('<postPid>', <PID>)，第二个整型参数即是楼中楼回复 PID
+      RegExp(r'''replyfloor_(?:editor|report)\s*\(\s*["']?\d+["']?\s*,\s*["']?(\d+)''', caseSensitive: false),
     ];
     for (final element in elements) {
       for (final value in element.attributes.values) {
