@@ -366,9 +366,13 @@ class _CommentCardState extends State<_CommentCard> {
   }
 
   static String _extractReplyBody(dom.Element node) {
+    // 楼中楼正文: 优先取正文容器 .replyfloor_content_main, 它同时包住文字
+    // (.replyfloor_content_text) 与该楼附带的图片 (.replyfloor_content_image)。
+    // 若只取 .replyfloor_content_text, 会丢掉同级的图片容器, 导致楼中楼不显示图片。
     final body = node.querySelector(
-      '.replyfloor_content_text, .replyfloor_msg, .replyfloor_message, '
-      '.replyfloor_body, .replyfloor_text, .reply_content',
+      '.replyfloor_content_main, .replyfloor_msg, .replyfloor_message, '
+      '.replyfloor_body, .replyfloor_text, .reply_content, '
+      '.replyfloor_content_text',
     );
     if (body != null) {
       if (body.querySelector('img') != null || body.text.trim().isNotEmpty) return body.innerHtml;
