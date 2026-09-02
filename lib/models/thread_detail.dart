@@ -15,14 +15,7 @@ class ThreadDetail {
   final String _bodyHtml;
   final String _commentsHtml;
 
-  String get bodyHtml {
-    final sanitized = _sanitizeForumHtml(_bodyHtml);
-    if (tid <= 0) return sanitized;
-    final marker = '<p class="ycoo-attachment-entry"><a href="attachment.php?tid=$tid&ycoo=all">📎 本帖附件</a></p>';
-    if (sanitized.contains('ycoo-attachment-entry')) return sanitized;
-    if (!_bodyHtmlContainsAttachment(_bodyHtml)) return sanitized;
-    return sanitized.isEmpty ? marker : '$sanitized$marker';
-  }
+  String get bodyHtml => _sanitizeForumHtml(_bodyHtml);
 
   String get commentsHtml {
     final sanitized = _sanitizeForumHtml(_commentsHtml);
@@ -113,15 +106,6 @@ String _sanitizeForumHtml(String html) {
   final hasMedia = root.querySelector('img,video,iframe,audio,table,pre') != null;
   if (text.isEmpty && !hasMedia) return '';
   return _stripTofu(root.innerHtml).trim();
-}
-
-bool _bodyHtmlContainsAttachment(String html) {
-  final lower = html.toLowerCase();
-  return lower.contains('attachment.php') ||
-      lower.contains('mod=attachment') ||
-      RegExp(r'aid=\d+').hasMatch(lower) ||
-      lower.contains('data/attachment/') ||
-      RegExp(r'(?:attach(?:img|tags?|list)|file_attr|downloadcode)').hasMatch(lower);
 }
 
 bool _isTofuCodePoint(int cp) {
