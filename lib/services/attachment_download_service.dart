@@ -1,6 +1,8 @@
+import 'dart:convert';
 import 'dart:io';
 
 import 'package:flutter/services.dart';
+import 'package:html/dom.dart' as dom;
 import 'package:html/parser.dart' as parser;
 
 import 'site_config.dart';
@@ -10,8 +12,23 @@ class ForumAttachmentInfo {
   final String url;
   final String name;
   final String size;
+  final String downloads;
 
-  const ForumAttachmentInfo({required this.url, required this.name, this.size = ''});
+  const ForumAttachmentInfo({
+    required this.url,
+    required this.name,
+    this.size = '',
+    this.downloads = '',
+  });
+}
+
+/// 从 Discuz 隐藏 tip 菜单(id="aid<aid>_menu")解析到的附件元信息。
+class _AttachMeta {
+  final String aid;
+  final String title;
+  final String size;
+  final String downloads;
+  const _AttachMeta({required this.aid, this.title = '', this.size = '', this.downloads = ''});
 }
 
 /// 原生附件下载桥接。
@@ -89,6 +106,13 @@ class AttachmentDownloadService {
     if (html.trim().isEmpty) return result;
     final source = html.replaceAll('&amp;', '&').replaceAll('\\/', '/').replaceAll('&#x2F;', '/');
     final doc = parser.parse(source);
+    // Discuz 把文件名/大小/下载次数/上传时间放在隐藏的 tip 菜单 id="aid<aid>_menu" 里,
+    // 先索引出来, 供下面按 aid 匹配补充元信息。
+    final tipInfo = <String, _AttachMeta>{};
+    for (final tip in doc.querySelectorAll('div[id^="aid"][id$="_menu"], div[id^="aimg"][id$="_menu"]')) {
+      final aux = _parseTipMeta(tip);
+      if (aux != null) tipInfo[aux.aid] = aux;
+    }
     for (final anchor in doc.querySelectorAll('a[href]')) {
       final href = (anchor.attributes['href'] ?? '').trim();
       if (href.isEmpty) continue;
@@ -99,7 +123,16 @@ class AttachmentDownloadService {
       if (_looksLikeImageFile(name, uri)) continue;
       final key = uri.queryParameters['aid']?.trim() ?? url;
       if (!seen.add(key)) continue;
-      result.add(ForumAttachmentInfo(url: url, name: name, size: _findAttachmentSize(anchor)));
+      // URL 的 aid 是 base64 串, tip 菜单按数字 aid(id="aid152006_menu")索引,
+      // 用链接自身 id(aid152006 / aimg152013)或 base64 解码首段得到数字 aid 去匹配。
+      final numAid = _anchorNumericAid(anchor, uri);
+      final meta = numAid.isEmpty ? null : tipInfo[numAid];
+      result.add(ForumAttachmentInfo(
+        url: url,
+        name: meta?.title.isNotEmpty == true ? meta!.title : name,
+        size: meta?.size ?? _findAttachmentSize(anchor),
+        downloads: meta?.downloads ?? '',
+      ));
     }
     final attachRe = RegExp(r'\[attach(?:ment)?\]\s*(https?://[^\s\[\]<>]+)\s*\[/attach(?:ment)?\]', caseSensitive: false);
     for (final m in attachRe.allMatches(source)) {
@@ -171,6 +204,47 @@ class AttachmentDownloadService {
         final match = RegExp(r'(\d+(?:\.\d+)?\s*(?:B|KB|MB|GB))', caseSensitive: false).firstMatch(_cleanFileName(e.text ?? ''));
         if (match != null) return match.group(1)!;
       }
+    } catch (_) {}
+    return '';
+  }
+
+  /// 解析隐藏 tip 菜单(如 id="aid152006_menu")里的附件元信息:
+  /// <p><strong>文件名</strong><em>(大小, 下载次数: N)</em></p>
+  _AttachMeta? _parseTipMeta(dom.Element tip) {
+    final id = tip.id ?? '';
+    final idMatch = RegExp(r'(?:aid_?|aimg_?)(\d+)_menu').firstMatch(id);
+    if (idMatch == null) return null;
+    final aid = idMatch.group(1)!;
+    String title = '';
+    final strong = tip.querySelector('strong');
+    if (strong != null) title = _cleanFileName(strong.text);
+    String size = '';
+    String downloads = '';
+    final em = tip.querySelector('em');
+    final emText = _cleanFileName(em?.text ?? '');
+    final sizeMatch = RegExp(r'(\d+(?:\.\d+)?\s*(?:B|KB|MB|GB))', caseSensitive: false).firstMatch(emText);
+    if (sizeMatch != null) size = sizeMatch.group(1)!;
+    final dlMatch = RegExp(r'下载次数[:：]?\s*(\d+)').firstMatch(emText);
+    if (dlMatch != null) downloads = '下载 ${dlMatch.group(1)!} 次';
+    return _AttachMeta(aid: aid, title: title, size: size, downloads: downloads);
+  }
+
+  /// 附件链接对应的数字 aid, 优先取链接自身 id(aid152006/aimg152013),
+  /// 否则把 URL 里 base64 的 aid(首段为数字)解码。
+  String _anchorNumericAid(dom.Element anchor, Uri uri) {
+    final idMatch = RegExp(r'(?:aid_?|aimg_?)(\d+)').firstMatch(anchor.id ?? '');
+    if (idMatch != null) return idMatch.group(1)!;
+    final raw = uri.queryParameters['aid'] ?? '';
+    if (raw.isEmpty) return '';
+    String padded = raw;
+    while (padded.length % 4 != 0) {
+      padded += '=';
+    }
+    try {
+      final bytes = base64.decode(padded);
+      final text = utf8.decode(bytes);
+      final seg = text.split('|').first;
+      if (int.tryParse(seg) != null) return seg;
     } catch (_) {}
     return '';
   }

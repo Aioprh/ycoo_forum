@@ -75,7 +75,11 @@ class _Tile extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final c = Theme.of(context).colorScheme;
-    final meta = [if (item.size.isNotEmpty) item.size, if (item.name.contains('.')) item.name.split('.').last.toUpperCase()].join(' · ');
+    final meta = [
+      if (item.size.isNotEmpty) item.size,
+      if (item.downloads.isNotEmpty) item.downloads,
+      if (item.name.contains('.')) item.name.split('.').last.toUpperCase(),
+    ].join(' · ');
     return Padding(
       padding: const EdgeInsets.only(bottom: 9),
       child: Material(
