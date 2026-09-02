@@ -22,7 +22,6 @@ class ForumAttachmentInfo {
   });
 }
 
-/// 从 Discuz 隐藏 tip 菜单(id="aid<aid>_menu")解析到的附件元信息。
 class _AttachMeta {
   final String aid;
   final String title;
@@ -31,7 +30,6 @@ class _AttachMeta {
   const _AttachMeta({required this.aid, this.title = '', this.size = '', this.downloads = ''});
 }
 
-/// 原生附件下载桥接。
 class AttachmentDownloadService {
   AttachmentDownloadService._();
   static final instance = AttachmentDownloadService._();
@@ -107,8 +105,6 @@ class AttachmentDownloadService {
     final source = html.replaceAll('&amp;', '&').replaceAll('\\/', '/').replaceAll('&#x2F;', '/');
     final doc = parser.parse(source);
 
-    // Discuz 的附件信息不一定是 div，且不同模板的 tip 结构不同。
-    // 不再依赖 CSS 的 $= 选择器，直接扫描所有带 id 的元素，避免模板差异导致文件名丢失。
     final tipInfo = <String, _AttachMeta>{};
     for (final element in doc.querySelectorAll('[id]')) {
       final id = element.id ?? '';
@@ -188,8 +184,14 @@ class AttachmentDownloadService {
       final value = uri.queryParameters[key]?.trim() ?? '';
       if (value.isNotEmpty) return _cleanFileName(value);
     }
-    final f = uri.queryParameters['_f']?.trim() ?? '';
-    if (f.startsWith('.') && f.length <= 12) return '论坛附件$f';
+    final f = _cleanFileName(uri.queryParameters['_f']?.trim() ?? '');
+    if (f.isNotEmpty) {
+      // Discuz 不同版本可能传“json”、“.json”或直接传完整文件名。
+      if (_hasKnownFileExtension(f) || f.startsWith('.')) {
+        return f.startsWith('.') ? '论坛附件$f' : f;
+      }
+      if (RegExp(r'^[A-Za-z0-9]{1,12}$').hasMatch(f)) return '论坛附件.$f';
+    }
     final segments = uri.pathSegments.where((e) => e.trim().isNotEmpty).toList();
     if (segments.isNotEmpty) {
       final last = _cleanFileName(Uri.decodeComponent(segments.last));
@@ -202,9 +204,14 @@ class AttachmentDownloadService {
     var value = _cleanFileName(name);
     if (value.isEmpty) value = '论坛附件';
     if (_hasKnownFileExtension(value)) return value;
-    final f = uri.queryParameters['_f']?.trim() ?? '';
-    if (f.startsWith('.') && f.length <= 12 && RegExp(r'^\.[A-Za-z0-9]+$').hasMatch(f)) {
-      return '$value$f';
+    final f = _cleanFileName(uri.queryParameters['_f']?.trim() ?? '');
+    if (f.isNotEmpty) {
+      if (_hasKnownFileExtension(f) && !f.startsWith('.')) {
+        if (value == '论坛附件') return f;
+        if (!value.toLowerCase().endsWith(f.toLowerCase())) return '$value.${f.split('.').last}';
+      }
+      if (f.startsWith('.') && f.length <= 12 && RegExp(r'^\.[A-Za-z0-9]+$').hasMatch(f)) return '$value$f';
+      if (RegExp(r'^[A-Za-z0-9]{1,12}$').hasMatch(f)) return '$value.$f';
     }
     return value;
   }
@@ -220,7 +227,6 @@ class AttachmentDownloadService {
     return '';
   }
 
-  /// 解析不同 Discuz 模板里的隐藏附件 tip 元信息。
   _AttachMeta? _parseTipMeta(dom.Element tip) {
     final id = tip.id ?? '';
     final idMatch = RegExp(r'(?:aid|aimg)_?(\d+)_menu').firstMatch(id);
@@ -249,7 +255,6 @@ class AttachmentDownloadService {
     final dlMatch = RegExp(r'下载次数[:：]?\s*(\d+)').firstMatch(text);
     if (dlMatch != null) downloads = '下载 ${dlMatch.group(1)!} 次';
 
-    // 有些模板没有 strong/a，文件名直接作为 tip 文本的第一段出现。
     if (title.isEmpty && text.isNotEmpty) {
       var candidate = text
           .replaceFirst(RegExp(r'\s*\(?\s*\d+(?:\.\d+)?\s*(?:B|KB|MB|GB).*$', caseSensitive: false), '')
@@ -275,9 +280,7 @@ class AttachmentDownloadService {
     final raw = uri.queryParameters['aid'] ?? '';
     if (raw.isEmpty) return '';
     String padded = raw;
-    while (padded.length % 4 != 0) {
-      padded += '=';
-    }
+    while (padded.length % 4 != 0) padded += '=';
     try {
       final bytes = base64.decode(padded);
       final text = utf8.decode(bytes);
