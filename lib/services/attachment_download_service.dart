@@ -53,8 +53,8 @@ class AttachmentDownloadService {
       if ((cookie ?? '').isNotEmpty) 'Cookie': cookie!,
     };
     final candidates = <Uri>[
-      Uri.parse('${SiteConfig.base}forum.php').replace(queryParameters: {'mod': 'viewthread', 'tid': '$tid', 'page': '1', '_ycoo_attachment_list': DateTime.now().millisecondsSinceEpoch.toString()}),
-      Uri.parse('${SiteConfig.base}thread-$tid-1-1.html').replace(queryParameters: {'_ycoo_attachment_list': DateTime.now().millisecondsSinceEpoch.toString()}),
+      Uri.parse('${SiteConfig.base}forum.php').replace(queryParameters: {'mobile': '2', 'mod': 'viewthread', 'tid': '$tid', 'page': '1', '_ycoo_attachment_list': DateTime.now().millisecondsSinceEpoch.toString()}),
+      Uri.parse('${SiteConfig.base}thread-$tid-1-1.html').replace(queryParameters: {'mobile': '2', '_ycoo_attachment_list': DateTime.now().millisecondsSinceEpoch.toString()}),
     ];
     for (final pageUrl in candidates) {
       try {
@@ -128,6 +128,10 @@ class AttachmentDownloadService {
     final f = query['_f']?.trim() ?? '';
     if (f.isNotEmpty) return true;
     if (query.containsKey('filename') || query.containsKey('file') || query.containsKey('name')) return true;
+    // Discuz 附件以 aid 定位(如 forum.php?mod=attachment&aid=123&noupdate=yes),
+    // 路径本身为 forum.php 无扩展名, 这里直接判定为文件附件候选,
+    // 图片附件交由后续 _looksLikeImageFile 按文件名过滤。
+    if (aid.isNotEmpty) return true;
     return _hasKnownFileExtension(path);
   }
 

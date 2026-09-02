@@ -457,23 +457,22 @@ class _DetailPageState extends State<DetailPage> {
   }
 
   /// 判断 URL 是否为可预览的正文图片。
-  /// 兼容直接图片路径(*.jpg/png/webp...)与 Discuz 图片附件(/forum.php?mod=attachment&aid=...)。
-  /// 图片一律进入大图预览, 不触发下载。
+  /// 兼容直接图片路径(*.jpg/png/webp...)与 Discuz 图片放大接口(mod=image)。
+  /// 其余 attachment.php、/attachment/、aid= 等一律视为文件附件, 走原生下载。
   static bool _isImageFileUrl(Uri uri) {
+    final query = uri.query.toLowerCase();
+    // 显式下载标记不当作图片预览。
+    if (query.contains('down=1') ||
+        query.contains('download=1') ||
+        query.contains('dl=1')) {
+      return false;
+    }
     final path = uri.path.toLowerCase();
     if (RegExp(r'\.(jpe?g|png|gif|webp|bmp|svg|heic|heif|avif)$').hasMatch(path)) {
       return true;
     }
-    if (path.contains('attachment.php') ||
-        path.contains('/attachment/') ||
-        uri.query.toLowerCase().contains('mod=attachment') ||
-        uri.query.toLowerCase().contains('aid=')) {
-      // 显式下载标记才视为文件下载, 否则按图片预览处理,
-      // 避免把正文图片误当作文件附件直接下载。
-      final query = uri.query.toLowerCase();
-      return !query.contains('down=1') && !query.contains('download=1') && !query.contains('dl=1');
-    }
-    return false;
+    // Comicis/Discuz 图片放大查看走 mod=image, 文件附件走 mod=attachment。
+    return query.contains('mod=image');
   }
 
   Widget _errorView(BuildContext context) {
