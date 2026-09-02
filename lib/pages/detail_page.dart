@@ -31,6 +31,7 @@ class _DetailPageState extends State<DetailPage> {
   final _replyCtrl = TextEditingController();
   final _replyFocus = FocusNode();
   bool _loading = true, _sending = false, _buying = false, _rewarding = false;
+  bool _fetching = false;
   bool _loggedIn = false,
       _favorited = false,
       _liked = false,
@@ -63,9 +64,12 @@ class _DetailPageState extends State<DetailPage> {
   }
 
   Future<void> _fetch() async {
+    // 防重入: 快速连点刷新不会产生互相覆盖的竞态。
+    if (_fetching) return;
     final hadDetail = _detail != null;
     if (mounted)
       setState(() {
+        _fetching = true;
         _loading = !hadDetail;
         _error = null;
       });
@@ -83,8 +87,16 @@ class _DetailPageState extends State<DetailPage> {
       });
       if (_loggedIn) await _loadInteractionState();
     } catch (e) {
-      if (mounted) setState(() => _error = '$e');
+      if (mounted) {
+        setState(() {
+          // 已有内容的场景只是静默保留旧数据, 不整页替换成错误视图,
+          // 并给出轻量提示, 避免"点了刷新没反应"。
+          _error = hadDetail ? null : '$e';
+        });
+        if (hadDetail) _snack('刷新失败：$e');
+      }
     } finally {
+      if (mounted) setState(() => _fetching = false);
       if (mounted) setState(() => _loading = false);
     }
   }
@@ -325,8 +337,12 @@ class _DetailPageState extends State<DetailPage> {
         ),
         actions: [
           IconButton(
-            onPressed: _fetch,
-            icon: const Icon(Icons.refresh_rounded),
+            onPressed: _fetching ? null : _fetch,
+            icon: _fetching
+                ? const SizedBox(
+                    width: 20, height: 20,
+                    child: CircularProgressIndicator(strokeWidth: 2))
+                : const Icon(Icons.refresh_rounded),
           ),
         ],
         backgroundColor: colors.surfaceContainerLowest,
