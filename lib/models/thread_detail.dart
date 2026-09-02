@@ -5,14 +5,14 @@ import 'package:html/parser.dart' as parser;
 class ThreadDetail {
   final int tid;
   final String title;
-  final String author;
-  final String avatar;
-  final String level;
+  String author;
+  String avatar;
+  String level;
   final String time;
   final int fid;
   final String boardName;
 
-  final String _bodyHtml;
+  String _bodyHtml;
   final String _commentsHtml;
 
   String get bodyHtml => _sanitizeForumHtml(_bodyHtml);
@@ -40,18 +40,20 @@ class ThreadDetail {
   final bool likedByMe;
   final int commentPage;
   final int commentTotalPages;
-  final int authorUid;
+  int authorUid;
+
+  static final Map<int, ThreadDetail> _firstPageCache = <int, ThreadDetail>{};
 
   ThreadDetail({
     required this.tid,
     required this.title,
-    required this.author,
-    required this.avatar,
-    required this.level,
+    required String bodyHtml,
+    required String author,
+    required String avatar,
+    required String level,
     required this.time,
     required this.fid,
     required this.boardName,
-    required String bodyHtml,
     String commentsHtml = '',
     bool isPaid = false,
     this.price,
@@ -62,10 +64,29 @@ class ThreadDetail {
     this.likedByMe = false,
     this.commentPage = 1,
     this.commentTotalPages = 1,
-    this.authorUid = 0,
+    int authorUid = 0,
   })  : _bodyHtml = bodyHtml,
+        author = author,
+        avatar = avatar,
+        level = level,
         _commentsHtml = commentsHtml,
-        _paid = isPaid;
+        this.authorUid = authorUid,
+        _paid = isPaid {
+    // Discuz 的分页页码是评论分页：第 2 页开始通常只包含回帖。
+    // 因此不能用当前页第一条回帖覆盖楼主头像、昵称和正文。
+    if (commentPage <= 1) {
+      _firstPageCache[tid] = this;
+    } else {
+      final firstPage = _firstPageCache[tid];
+      if (firstPage != null) {
+        author = firstPage.author;
+        avatar = firstPage.avatar;
+        level = firstPage.level;
+        _bodyHtml = firstPage._bodyHtml;
+        authorUid = firstPage.authorUid;
+      }
+    }
+  }
 }
 
 String _sanitizeForumHtml(String html) {
