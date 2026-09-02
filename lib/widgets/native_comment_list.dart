@@ -15,12 +15,14 @@ import 'resolved_user_avatar.dart';
 /// 使用自己的 PID，因此可以直接回复任意一条回复。
 class NativeCommentList extends StatelessWidget {
   final String html;
+  final int commentPage;
   final void Function(int pid, String author)? onReply;
   final Future<void> Function(int pid, String author)? onReplySent;
 
   const NativeCommentList({
     super.key,
     required this.html,
+    this.commentPage = 1,
     this.onReply,
     this.onReplySent,
   });
@@ -112,6 +114,7 @@ class NativeCommentList extends StatelessWidget {
           index: index,
           tid: tid,
           fid: fid,
+          page: commentPage,
           onReply: () => _handleReply(context, tid, fid, index, comment),
           onProfile: () => _openProfile(context, comment),
         );
@@ -124,7 +127,7 @@ class NativeCommentList extends StatelessWidget {
     var pid = comment.pid;
     if (pid <= 0 && tid > 0) {
       pid = await CommentReplyResolver.instance.resolvePid(
-        tid: tid, commentIndex: index, author: comment.author, floor: comment.floor,
+        tid: tid, commentIndex: index, page: commentPage, author: comment.author, floor: comment.floor,
       );
     }
     await _replyByPid(context, tid, fid, pid, comment.author);
@@ -224,11 +227,11 @@ class _CommentFloor {
 
 class _CommentCard extends StatefulWidget {
   final _CommentFloor comment;
-  final int index, tid, fid;
+  final int index, tid, fid, page;
   final Future<void> Function() onReply;
   final VoidCallback onProfile;
   const _CommentCard({
-    required this.comment, required this.index, required this.tid, required this.fid,
+    required this.comment, required this.index, required this.tid, required this.fid, required this.page,
     required this.onReply, required this.onProfile,
   });
   @override
@@ -256,7 +259,7 @@ class _CommentCardState extends State<_CommentCard> {
     try {
       if (_pid <= 0 || force) {
         _pid = await CommentReplyResolver.instance.resolvePid(
-          tid: widget.tid, commentIndex: widget.index,
+          tid: widget.tid, commentIndex: widget.index, page: widget.page,
           author: widget.comment.author, floor: widget.comment.floor,
         );
       }
@@ -308,27 +311,35 @@ class _CommentCardState extends State<_CommentCard> {
       '.replyfloor_content_ul > li', '.replyfloor_content_li',
       '.replyfloor_content li', 'li.replyfloor_li', '.replyfloor_box li',
       '.replyfloor_reply', '.replyfloor_item',
+      'li[id*="replyfloor_content_li"]', 'div[class*="replyfloor_content_li"]',
     ];
     for (final selector in selectors) {
       for (final node in doc.querySelectorAll(selector)) {
         if (!nodes.contains(node)) nodes.add(node);
       }
     }
-    if (nodes.isEmpty) {
-      for (final root in doc.querySelectorAll(
-          '.replyfloor_content_ul, .replyfloor_content, .replyfloor_box, .replyfloor')) {
-        for (final child in root.children) {
-          if (child.text.trim().isNotEmpty && !nodes.contains(child)) nodes.add(child);
-        }
-      }
+    // 必须是"具体一条楼中楼回复"的节点：要么有
+    // replyfloor_content_li 的 id/class，要么有
+    // replyfloor_content_text(正文容器)，要么有
+    // replyfloor_editor/report 的双参数 onclick（表示这是一条可再回复的回复）。
+    // 否则把 replyfloor_box 的 hd / bd / fd 骨架节点、空占位容器也当楼中楼了。
+    bool looksLikeFloorReply(dom.Element node) {
+      if (node.attributes['id']?.contains('replyfloor_content_li') ?? false) return true;
+      if ((node.attributes['class'] ?? '').contains('replyfloor_content_li')) return true;
+      if (node.querySelector('.replyfloor_content_text') != null) return true;
+      final any = '${node.attributes['onclick'] ?? ''} ${node.attributes.values.join(' ')} '
+          '${node.innerHtml}';
+      if (RegExp(r'replyfloor_(?:editor|report)\s*\(\s*["\']?\d+["\']?\s*,\s*\d+', caseSensitive: false).hasMatch(any)) return true;
+      return false;
     }
+    nodes.retainWhere(looksLikeFloorReply);
     if (nodes.isEmpty) {
       final decoded = doc.text?.trim() ?? '';
       if (decoded.contains('replyfloor') || decoded.contains('回复 举报')) {
         doc = parser.parseFragment(decoded);
         for (final selector in selectors) {
           for (final node in doc.querySelectorAll(selector)) {
-            if (!nodes.contains(node)) nodes.add(node);
+            if (looksLikeFloorReply(node) && !nodes.contains(node)) nodes.add(node);
           }
         }
       }

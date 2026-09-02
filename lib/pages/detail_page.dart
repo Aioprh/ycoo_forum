@@ -965,7 +965,7 @@ class _DetailPageState extends State<DetailPage> {
           ),
           if (_commentsExpanded) ...[
             Divider(height: 1, color: c.outlineVariant.withValues(alpha: .35)),
-            NativeCommentList(html: d.commentsHtml),
+            NativeCommentList(html: d.commentsHtml, commentPage: _commentPage),
             _commentPager(context, d),
           ],
         ],

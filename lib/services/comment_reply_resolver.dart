@@ -22,15 +22,16 @@ class CommentReplyResolver {
           'Cookie': AuthService.instance.authCookie!,
       };
 
-  Future<String> _fetchThreadHtml(int tid) async {
+  Future<String> _fetchThreadHtml(int tid, {int page = 1}) async {
     if (tid <= 0) return '';
     final client = await NetClient.instance.client;
     final stamp = DateTime.now().millisecondsSinceEpoch.toString();
+    final p = page < 1 ? 1 : page;
     final urls = <Uri>[
       Uri.parse('${_base}forum.php').replace(queryParameters: {
-        'mod': 'viewthread', 'tid': '$tid', 'page': '1', '_ycoo_reply_page': stamp,
+        'mod': 'viewthread', 'tid': '$tid', 'page': '$p', '_ycoo_reply_page': stamp,
       }),
-      Uri.parse('${_base}thread-$tid-1-1.html').replace(queryParameters: {
+      Uri.parse('${_base}thread-$tid-$p-1.html').replace(queryParameters: {
         '_ycoo_reply_page': stamp,
       }),
     ];
@@ -51,11 +52,12 @@ class CommentReplyResolver {
   Future<int> resolvePid({
     required int tid,
     required int commentIndex,
+    int page = 1,
     String author = '',
     String floor = '',
   }) async {
     if (tid <= 0 || commentIndex < 0) return 0;
-    final html = await _fetchThreadHtml(tid);
+    final html = await _fetchThreadHtml(tid, page: page);
     if (html.isEmpty) return 0;
     final posts = _collectPosts(parser.parse(html));
     if (posts.isEmpty) return 0;
