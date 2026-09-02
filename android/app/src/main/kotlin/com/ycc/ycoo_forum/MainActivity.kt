@@ -145,7 +145,7 @@ class MainActivity : FlutterActivity() {
     }
 
     private fun guessNameFromUrl(url: String): String {
-        return try {
+        try {
             val uri = Uri.parse(url)
             for (key in listOf("filename", "file", "name")) {
                 val value = uri.getQueryParameter(key)?.trim().orEmpty()
@@ -158,7 +158,9 @@ class MainActivity : FlutterActivity() {
             }
             val f = uri.getQueryParameter("_f")?.trim().orEmpty()
             if (f.startsWith(".") && f.length <= 12) return "论坛附件$f"
-        } catch (_: Exception) {}
+        } catch (_: Exception) {
+            return "论坛附件_${System.currentTimeMillis()}"
+        }
         return "论坛附件_${System.currentTimeMillis()}"
     }
 
