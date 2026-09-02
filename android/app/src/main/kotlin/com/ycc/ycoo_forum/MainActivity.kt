@@ -114,14 +114,24 @@ class MainActivity : FlutterActivity() {
                 return null
             }
 
-            if (requestedFilename.isEmpty()) {
-                val serverName = resolveResponseFileName(
-                    connection.getHeaderField("Content-Disposition"),
-                    connection.url.toString(),
-                    contentType,
-                )
-                if (serverName.isNotBlank() && !looksGeneric(serverName)) {
-                    target = uniqueFile(initialTarget.parentFile ?: return null, sanitizeFileName(serverName))
+            // 不要盲目相信 Flutter 传来的文件名：论坛页面可能只有“论坛附件”，
+            // 或者文件名没有扩展名。下载响应才是最终的真实文件来源。
+            val responseName = resolveResponseFileName(
+                connection.getHeaderField("Content-Disposition"),
+                connection.url.toString(),
+                contentType,
+            )
+            val requestedIsGeneric = requestedFilename.isBlank() || looksGeneric(requestedFilename)
+            val requestedHasExtension = hasFileExtension(requestedFilename)
+
+            if (responseName.isNotBlank() && !looksGeneric(responseName) &&
+                (requestedIsGeneric || !requestedHasExtension || looksGeneric(target.name))) {
+                target = uniqueFile(initialTarget.parentFile ?: return null, sanitizeFileName(responseName))
+            } else if (!hasFileExtension(target.name)) {
+                val mimeExtension = extensionForMime(contentType)
+                if (mimeExtension.isNotEmpty()) {
+                    val withExtension = sanitizeFileName("${target.name}$mimeExtension")
+                    target = uniqueFile(initialTarget.parentFile ?: return null, withExtension)
                 }
             }
 
@@ -176,12 +186,42 @@ class MainActivity : FlutterActivity() {
             val guessed = URLUtil.guessFileName(finalUrl, disposition, mime)
             if (guessed.isNotBlank() && !looksGeneric(guessed)) return guessed
         }
+        val guessed = URLUtil.guessFileName(finalUrl, null, mime)
+        if (guessed.isNotBlank() && !looksGeneric(guessed) && hasFileExtension(guessed)) return guessed
         return guessNameFromUrl(finalUrl)
+    }
+
+    private fun hasFileExtension(name: String): Boolean {
+        val clean = name.substringBefore('?').substringBefore('#').trim()
+        return Regex(".+\\.[A-Za-z0-9]{1,12}$").matches(clean)
+    }
+
+    private fun extensionForMime(mime: String): String = when {
+        mime.contains("application/json") -> ".json"
+        mime.contains("application/zip") -> ".zip"
+        mime.contains("application/x-rar") -> ".rar"
+        mime.contains("application/x-7z") -> ".7z"
+        mime.contains("application/pdf") -> ".pdf"
+        mime.contains("application/epub") -> ".epub"
+        mime.contains("application/vnd.android.package-archive") -> ".apk"
+        mime.contains("text/plain") -> ".txt"
+        mime.contains("text/xml") || mime.contains("application/xml") -> ".xml"
+        mime.contains("text/csv") -> ".csv"
+        mime.contains("audio/mpeg") -> ".mp3"
+        mime.contains("audio/wav") || mime.contains("audio/x-wav") -> ".wav"
+        mime.contains("audio/flac") -> ".flac"
+        mime.contains("video/mp4") -> ".mp4"
+        mime.contains("image/jpeg") -> ".jpg"
+        mime.contains("image/png") -> ".png"
+        mime.contains("image/gif") -> ".gif"
+        mime.contains("image/webp") -> ".webp"
+        else -> ""
     }
 
     private fun looksGeneric(name: String): Boolean {
         val n = name.trim().lowercase()
-        return n.isEmpty() || n == "attachment.php" || n == "download" || n == "download.php"
+        return n.isEmpty() || n == "论坛附件" || n.startsWith("论坛附件_") ||
+            n == "attachment.php" || n == "download" || n == "download.php"
     }
 
     private fun decodeFileName(value: String): String = try {
