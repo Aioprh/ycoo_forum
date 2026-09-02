@@ -1,8 +1,5 @@
 name: 一次性附件 UI 修复
-on:
-  push:
-    paths:
-      - '.github/workflows/patch_attachment_ui_once.yml'
+on: push
 permissions:
   contents: write
 jobs:
@@ -11,79 +8,103 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
-      - name: Patch attachment UI
-        shell: python
+      - name: Patch Flutter files
         run: |
+          python3 <<'PY'
           from pathlib import Path
-          import re
 
-          detail = Path('lib/pages/detail_page.dart')
-          s = detail.read_text(encoding='utf-8')
-
+          p = Path('lib/widgets/native_post_content.dart')
+          s = p.read_text(encoding='utf-8')
+          imp = "import '../services/site_config.dart';"
           if "../widgets/forum_attachment_section.dart" not in s:
-              marker = "import '../widgets/native_post_content.dart';"
-              if marker in s:
-                  s = s.replace(marker, marker + "\nimport '../widgets/forum_attachment_section.dart';", 1)
-              else:
-                  raise SystemExit('detail_page import marker not found')
+              s = s.replace(imp, imp + "\nimport 'forum_attachment_section.dart';", 1)
 
-          if 'ForumAttachmentSection(' not in s:
-              body_marker = "if (d.commentsHtml.trim().isNotEmpty) _commentsSection(context, d),"
-              insert = "if (d.tid > 0)\n                  ForumAttachmentSection(\n                    tid: d.tid,\n                    cookie: AuthService.instance.authCookie,\n                    referer: SiteConfig.base,\n                  ),\n                "
-              if body_marker in s:
-                  s = s.replace(body_marker, insert + body_marker, 1)
-              else:
-                  raise SystemExit('detail_page body marker not found')
+          start = s.find('class _AttachmentCard extends StatelessWidget {')
+          if start < 0:
+              raise SystemExit('attachment card class not found')
+          brace = s.find('{', start)
+          depth = 0
+          end = -1
+          for i in range(brace, len(s)):
+              if s[i] == '{': depth += 1
+              elif s[i] == '}':
+                  depth -= 1
+                  if depth == 0:
+                      end = i + 1
+                      break
+          if end < 0:
+              raise SystemExit('attachment card end not found')
 
-          detail.write_text(s, encoding='utf-8')
+          replacement = r'''class _AttachmentCard extends StatelessWidget {
+  final String href;
+  final String title;
+  final VoidCallback? onTap;
 
-          # Prevent attachment.php/mod=attachment URLs from being mistaken for image previews.
-          # Only actual image extensions are treated as images here.
-          s = detail.read_text(encoding='utf-8')
-          start = s.find('bool _isImageFileUrl(')
-          if start >= 0:
-              brace = s.find('{', start)
-              if brace < 0:
-                  raise SystemExit('image helper opening brace not found')
-              depth = 0
-              end = -1
-              for i in range(brace, len(s)):
-                  if s[i] == '{': depth += 1
-                  elif s[i] == '}':
-                      depth -= 1
-                      if depth == 0:
-                          end = i + 1
-                          break
-              if end < 0:
-                  raise SystemExit('image helper closing brace not found')
-              replacement = '''bool _isImageFileUrl(Uri uri) {
-  final path = uri.path.toLowerCase();
-  final query = uri.query.toLowerCase();
-  final value = '$path?$query';
-  if (value.contains('attachment.php') || value.contains('mod=attachment')) {
-    final f = RegExp(r'(?:^|[?&])_f=([^&]+)').firstMatch(query)?.group(1) ?? '';
-    final name = RegExp(r'(?:^|[?&])(?:filename|file|name)=([^&]+)').firstMatch(query)?.group(1) ?? '';
-    final candidate = (f.isNotEmpty ? f : name).toLowerCase();
-    return RegExp(r'\\.(?:jpe?g|png|gif|webp|bmp|svg|heic|heif|avif)$').hasMatch(candidate);
+  const _AttachmentCard({
+    required this.href,
+    required this.title,
+    this.onTap,
+  });
+
+  @override
+  Widget build(BuildContext context) {
+    final lower = href.toLowerCase();
+    if (lower.contains('ycoo=all')) {
+      final uri = Uri.tryParse(href);
+      final tid = int.tryParse(uri?.queryParameters['tid'] ?? '') ?? 0;
+      if (tid > 0) {
+        return ForumAttachmentSection(
+          tid: tid,
+          cookie: AuthService.instance.authCookie,
+          referer: SiteConfig.base,
+        );
+      }
+    }
+
+    final c = Theme.of(context).colorScheme;
+    final label = title.isNotEmpty ? title : '下载附件';
+    return Padding(
+      padding: const EdgeInsets.only(bottom: 13),
+      child: Material(
+        color: c.secondaryContainer.withValues(alpha: .45),
+        borderRadius: BorderRadius.circular(12),
+        child: InkWell(
+          borderRadius: BorderRadius.circular(12),
+          onTap: onTap,
+          child: Padding(
+            padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 12),
+            child: Row(
+              children: [
+                Icon(Icons.attach_file_rounded, color: c.primary, size: 24),
+                const SizedBox(width: 12),
+                Expanded(
+                  child: Text(
+                    label,
+                    maxLines: 2,
+                    overflow: TextOverflow.ellipsis,
+                    style: const TextStyle(fontSize: 14.5, height: 1.3),
+                  ),
+                ),
+                const SizedBox(width: 8),
+                Icon(Icons.download_rounded, color: c.primary, size: 20),
+              ],
+            ),
+          ),
+        ),
+      ),
+    );
   }
-  return RegExp(r'\\.(?:jpe?g|png|gif|webp|bmp|svg|heic|heif|avif)(?:$|[?#])').hasMatch(value);
 }'''
-              s = s[:start] + replacement + s[end:]
-              detail.write_text(s, encoding='utf-8')
+          s = s[:start] + replacement + s[end:]
+          p.write_text(s, encoding='utf-8')
 
-          # The renderer no longer needs to display the removed generic marker.
-          # Keep the existing renderer untouched so normal post HTML remains stable.
-
-      - name: Commit and remove one-shot workflow
-        shell: bash
+          # Keep the one-shot workflow itself out of the final repository.
+          PY
+      - name: Commit patch and remove workflow
         run: |
           git config user.name 'github-actions[bot]'
           git config user.email '41898282+github-actions[bot]@users.noreply.github.com'
-          git add lib/pages/detail_page.dart
+          git add lib/widgets/native_post_content.dart
           git rm .github/workflows/patch_attachment_ui_once.yml
-          if git diff --cached --quiet; then
-            echo 'No changes to commit'
-            exit 0
-          fi
-          git commit -m 'fix: show real thread attachments'
+          git commit -m 'fix: render real attachment cards in posts'
           git push
