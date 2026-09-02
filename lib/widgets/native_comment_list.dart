@@ -342,14 +342,23 @@ class _CommentCardState extends State<_CommentCard> {
     // 必须优先读取 repquote，否则同一个回复节点里同时存在父楼 PID 时，
     // 会错误地把父楼 PID 当成当前楼中楼 PID。
     final elements = <dom.Element>[node, ...node.querySelectorAll('*')];
+    // Comiis 手机版模板的回复按钮常常是 onclick="replyfloor_reply('repquote=123')"，
+    // 此时 repquote 前后没有 ?/& 分隔符，必须同时匹配裸格式与直接携带 PID 的形式。
+    final pidPatterns = <RegExp>[
+      // 带 query 前缀: &repquote=123 / ?repquote=123 / 编码形式
+      RegExp(r'(?:[?&]|%3F|%26|&amp;)repquote(?:=|%3D)(\d+)', caseSensitive: false),
+      // 裸 repquote=123 / repquote:"123" / repquote:123 (常见于 onclick 内)
+      RegExp(r'\brepquote\s*[:=]\s*["\']?(\d+)', caseSensitive: false),
+      // replyfloor_reply('123') 直接携带 PID
+      RegExp(r'''replyfloor_reply\s*\(\s*["']?(\d+)''', caseSensitive: false),
+    ];
     for (final element in elements) {
       for (final value in element.attributes.values) {
-        final match = RegExp(
-          r'(?:[?&]|%3F|%26|&amp;)repquote(?:=|%3D)(\d+)',
-          caseSensitive: false,
-        ).firstMatch(value);
-        final pid = int.tryParse(match?.group(1) ?? '');
-        if (pid != null && pid > 0) return pid;
+        for (final pattern in pidPatterns) {
+          final match = pattern.firstMatch(value);
+          final pid = int.tryParse(match?.group(1) ?? '');
+          if (pid != null && pid > 0) return pid;
+        }
       }
     }
 

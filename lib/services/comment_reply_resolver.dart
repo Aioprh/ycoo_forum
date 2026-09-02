@@ -180,6 +180,7 @@ class CommentReplyResolver {
         RegExp(r'(?:[?&]|%3F|%26|&amp;)repquote(?:=|%3D)(\d+)', caseSensitive: false),
         RegExp(r'''\brepquote\s*[:=]\s*["']?(\d+)''', caseSensitive: false),
         RegExp(r'\brepquote[^0-9]{0,30}(\d+)', caseSensitive: false),
+        RegExp(r'''replyfloor_reply\s*\(\s*["']?(\d+)''', caseSensitive: false),
       ]) {
         final match = pattern.firstMatch(raw);
         final value = int.tryParse(match?.group(1) ?? '');
