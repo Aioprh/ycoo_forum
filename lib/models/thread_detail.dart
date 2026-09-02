@@ -19,9 +19,8 @@ class ThreadDetail {
     final sanitized = _sanitizeForumHtml(_bodyHtml);
     if (tid <= 0) return sanitized;
     // Discuz 的附件块经常位于正文容器之外，直接取正文 HTML 会把它漏掉。
-    // 这里增加一个内部附件入口，由 AttachmentDownloadService 用当前 Cookie
-    // 重新读取帖子并解析真实 attachment.php/aid= 地址，再交给系统下载器。
-    final marker = '<div class="ycoo-attachment-entry"><a href="attachment.php?tid=$tid&ycoo=all">📎 查看并下载本帖全部附件</a></div>';
+    // 增加一个标准 attachment.php 入口，让 NativePostContent 将其渲染为附件卡片。
+    final marker = '<p class="ycoo-attachment-entry"><a href="attachment.php?tid=$tid&ycoo=all">📎 查看并下载本帖全部附件</a></p>';
     if (sanitized.contains('ycoo-attachment-entry')) return sanitized;
     return sanitized.isEmpty ? marker : '$sanitized$marker';
   }
@@ -38,7 +37,6 @@ class ThreadDetail {
     return '<div class="comments-section" data-tid="$tid" data-fid="$fid">$sanitized</div>';
   }
 
-  /// Discuz 付费主题可能仍提供一部分免费预览内容。
   final bool _paid;
   bool get isPaid => _paid;
   final int? price;
@@ -90,8 +88,6 @@ String _sanitizeForumHtml(String html) {
     if (RegExp(r'(^|[-_])(pay|paid|buy|purchase|locked|lock|price)([-_]|$)').hasMatch(attrs)) return true;
     final text = e.text.replaceAll(RegExp(r'\s+'), ' ').trim();
     if (text.contains('本主题需向作者支付') || text.contains('购买后查看完整内容')) return true;
-    // Discuz 网页图标字体(<i class="comiis_font">&#xe679;</i>): 内容只有私有区(PUA)字形,
-    // 无配套字体时会被渲染成方块乱码, 当作装饰图标整体移除。
     final iconOnly = (tag == 'i' || tag == 'span' || tag == 'em' || tag == 'b' || tag == 'font') &&
         text.isNotEmpty &&
         text.replaceAll(RegExp(r'[\uE000-\uF8FF]'), '').isEmpty;
