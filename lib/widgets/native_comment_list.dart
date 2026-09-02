@@ -332,7 +332,7 @@ class _CommentCardState extends State<_CommentCard> {
       }
     }
     if (nodes.isEmpty) {
-      final text = doc.text.replaceAll(RegExp(r'\s+'), ' ').trim();
+      final text = (doc.text ?? '').replaceAll(RegExp(r'\s+'), ' ').trim();
       if (text.isNotEmpty && !text.contains('回复 举报')) {
         return [_FloorReply(author: '', time: '', bodyHtml: _replyHtml)];
       }
