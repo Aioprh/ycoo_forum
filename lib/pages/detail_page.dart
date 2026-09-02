@@ -14,6 +14,7 @@ import '../widgets/resolved_user_avatar.dart';
 import '../services/comment_profile_resolver.dart';
 import 'native_profile_page.dart';
 import '../widgets/native_post_content.dart';
+import '../widgets/forum_attachment_section.dart';
 import 'login_page.dart';
 import 'thread_list_page.dart';
 
@@ -355,6 +356,12 @@ class _DetailPageState extends State<DetailPage> {
               : (d.bodyHtml.trim().isEmpty
                     ? _empty(context, '暂无正文内容')
                     : _nativeBodyCard(context, d.bodyHtml)),
+          if (d.tid > 0)
+              ForumAttachmentSection(
+                tid: d.tid,
+                cookie: AuthService.instance.authCookie,
+                referer: SiteConfig.base,
+              ),
           if (d.commentsHtml.trim().isNotEmpty) _commentsSection(context, d),
         ],
       ),
