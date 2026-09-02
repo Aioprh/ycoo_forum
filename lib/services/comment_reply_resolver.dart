@@ -210,9 +210,7 @@ class CommentReplyResolver {
         null;
   }
 
-  /// Comiis/replyfloor 的“回复”按钮可能把真实 PID 放在
-  /// href、data-url、onclick 或自定义 repquote 属性中。
-  /// 统一提升到楼中楼节点的 data-pid，供原生 UI 稳定读取。
+  /// 将 Comiis/replyfloor 的真实 PID 提升到楼中楼节点，供原生 UI 使用。
   String _normalizeReplyPidHtml(String html) {
     if (html.trim().isEmpty) return html;
     final doc = parser.parseFragment(html);
@@ -237,7 +235,7 @@ class CommentReplyResolver {
       if (raw.isEmpty) return null;
       final patterns = <RegExp>[
         RegExp(r'(?:[?&]|%3F|%26|&amp;)repquote(?:=|%3D)(\d+)', caseSensitive: false),
-        RegExp(r'\brepquote\s*[:=]\s*["\']?(\d+)', caseSensitive: false),
+        RegExp(r"\brepquote\s*[:=]\s*[\"']?(\d+)", caseSensitive: false),
         RegExp(r'\brepquote[^0-9]{0,12}(\d+)', caseSensitive: false),
       ];
       for (final pattern in patterns) {
@@ -248,9 +246,8 @@ class CommentReplyResolver {
       return null;
     }
 
-    // 第一阶段：从每条“回复”节点自身及其后代按钮提取 PID。
     for (final node in replyNodes) {
-      int pid = 0;
+      var pid = 0;
       final selfRaw = [
         node.id,
         node.attributes['name'] ?? '',
@@ -278,13 +275,9 @@ class CommentReplyResolver {
           if (pid > 0) break;
         }
       }
-      if (pid > 0) {
-        node.attributes['data-pid'] = '$pid';
-      }
+      if (pid > 0) node.attributes['data-pid'] = '$pid';
     }
 
-    // 第二阶段：某些模板把“回复”按钮放在 li 外层，
-    // 此时按 DOM 顺序将按钮 PID 绑定到最接近的楼中楼节点。
     final loosePids = <int>[];
     for (final element in doc.querySelectorAll('[href], [data-url], [onclick], [repquote]')) {
       final raw = [
