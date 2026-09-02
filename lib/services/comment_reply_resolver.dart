@@ -9,7 +9,6 @@ import 'net_client.dart';
 class CommentReplyResolver {
   CommentReplyResolver._();
   static final instance = CommentReplyResolver._();
-
   static String get _base => SiteConfig.base;
 
   Map<String, String> _headers({String? referer}) => {
@@ -29,10 +28,7 @@ class CommentReplyResolver {
     final stamp = DateTime.now().millisecondsSinceEpoch.toString();
     final urls = <Uri>[
       Uri.parse('${_base}forum.php').replace(queryParameters: {
-        'mod': 'viewthread',
-        'tid': '$tid',
-        'page': '1',
-        '_ycoo_reply_page': stamp,
+        'mod': 'viewthread', 'tid': '$tid', 'page': '1', '_ycoo_reply_page': stamp,
       }),
       Uri.parse('${_base}thread-$tid-1-1.html').replace(queryParameters: {
         '_ycoo_reply_page': stamp,
@@ -61,40 +57,29 @@ class CommentReplyResolver {
     if (tid <= 0 || commentIndex < 0) return 0;
     final html = await _fetchThreadHtml(tid);
     if (html.isEmpty) return 0;
-
-    final doc = parser.parse(html);
-    final posts = _collectPosts(doc);
+    final posts = _collectPosts(parser.parse(html));
     if (posts.isEmpty) return 0;
-
-    final normalizedAuthor = _normalize(author);
-    final floorNumber = _firstInt(floor);
-
-    if (floorNumber != null || normalizedAuthor.isNotEmpty) {
+    final wantedAuthor = _normalize(author);
+    final wantedFloor = _firstInt(floor);
+    if (wantedAuthor.isNotEmpty || wantedFloor != null) {
       for (final post in posts) {
         final pid = _postPid(post);
         if (pid <= 0) continue;
-        final postAuthor = _normalize(_postAuthor(post));
-        final postFloor = _postFloor(post);
-        final authorMatches = normalizedAuthor.isEmpty || postAuthor == normalizedAuthor;
-        final floorMatches = floorNumber == null || postFloor == floorNumber;
-        if (authorMatches && floorMatches) return pid;
+        final authorOk = wantedAuthor.isEmpty || _normalize(_postAuthor(post)) == wantedAuthor;
+        final floorOk = wantedFloor == null || _postFloor(post) == wantedFloor;
+        if (authorOk && floorOk) return pid;
       }
     }
-
-    final candidates = posts.where((p) => _postPid(p) > 0).toList();
-    if (commentIndex < candidates.length) return _postPid(candidates[commentIndex]);
-    return 0;
+    final candidates = posts.where((post) => _postPid(post) > 0).toList();
+    return commentIndex < candidates.length ? _postPid(candidates[commentIndex]) : 0;
   }
 
   List<dom.Element> _collectPosts(dom.Document doc) {
     final result = <dom.Element>[];
     final seen = <int>{};
     for (final selector in [
-      '#postlist > div[id^="post_"]',
-      '.comiis_postli',
-      '#postlist .plhin',
-      '#postlist .plc',
-      'div[id^="postmessage_"]',
+      '#postlist > div[id^="post_"]', '.comiis_postli', '#postlist .plhin',
+      '#postlist .plc', 'div[id^="postmessage_"]',
     ]) {
       for (final post in doc.querySelectorAll(selector)) {
         final pid = _postPid(post);
@@ -109,12 +94,7 @@ class CommentReplyResolver {
   }
 
   String _postAuthor(dom.Element post) {
-    for (final selector in [
-      '.top_user',
-      '.authi .xw1',
-      '.authi a',
-      'a[href*="uid="]',
-    ]) {
+    for (final selector in ['.top_user', '.authi .xw1', '.authi a', 'a[href*="uid="]']) {
       final node = post.querySelector(selector);
       final text = node?.text.replaceAll(RegExp(r'\s+'), ' ').trim() ?? '';
       if (text.isNotEmpty) return text;
@@ -123,13 +103,8 @@ class CommentReplyResolver {
   }
 
   int? _postFloor(dom.Element post) {
-    for (final selector in [
-      '.f_d.y',
-      '.pi .authi em',
-      '.pls .authi em',
-    ]) {
-      final node = post.querySelector(selector);
-      final number = _firstInt(node?.text ?? '');
+    for (final selector in ['.f_d.y', '.pi .authi em', '.pls .authi em']) {
+      final number = _firstInt(post.querySelector(selector)?.text ?? '');
       if (number != null) return number;
     }
     final match = RegExp(r'(\d+)\s*#').firstMatch(post.text.replaceAll(RegExp(r'\s+'), ' '));
@@ -139,34 +114,25 @@ class CommentReplyResolver {
   Future<String> fetchReplies({required int tid, required int pid}) async {
     if (tid <= 0 || pid <= 0) return '';
     final client = await NetClient.instance.client;
-    final baseParams = <String, String>{
-      'id': 'replyfloor:index',
-      'tid': '$tid',
-      'pid': '$pid',
-      'inajax': '1',
-      'page': '1',
+    final params = <String, String>{
+      'id': 'replyfloor:index', 'tid': '$tid', 'pid': '$pid', 'inajax': '1', 'page': '1',
     };
-
     final urls = <Uri>[
       Uri.parse('${_base}plugin.php').replace(queryParameters: {
-        ...baseParams,
-        '_ycoo_replyfloor': DateTime.now().millisecondsSinceEpoch.toString(),
+        ...params, '_ycoo_replyfloor': DateTime.now().millisecondsSinceEpoch.toString(),
       }),
-      Uri.parse('${_base}plugin.php').replace(queryParameters: baseParams),
+      Uri.parse('${_base}plugin.php').replace(queryParameters: params),
     ];
-
     for (final uri in urls) {
       try {
         final response = await NetClient.retry(
           () => client.get(uri, headers: _headers(referer: '${_base}thread-$tid-1-1.html')).timeout(NetClient.timeout),
         );
         if (response.statusCode != 200) continue;
-        final body = NetClient.decode(response.bodyBytes).trim();
-        final parsed = _unwrapReplyResponse(body);
+        final parsed = _unwrapReplyResponse(NetClient.decode(response.bodyBytes).trim());
         if (_containsReplyNode(parsed)) return _normalizeReplyPidHtml(parsed);
       } catch (_) {}
     }
-
     final html = await _fetchThreadHtml(tid);
     if (html.isNotEmpty) {
       final doc = parser.parse(html);
@@ -184,49 +150,37 @@ class CommentReplyResolver {
     var raw = body;
     final cdata = RegExp(r'<!\[CDATA\[(.*?)\]\]>', dotAll: true).firstMatch(raw);
     if (cdata != null) raw = (cdata.group(1) ?? '').trim();
-
     final xmlDoc = parser.parse(raw);
     for (final selector in ['root', 'message', 'body']) {
       final node = xmlDoc.querySelector(selector);
       if (node != null && node.innerHtml.trim().isNotEmpty) raw = node.innerHtml.trim();
     }
-
-    raw = raw
-        .replaceAll('&lt;', '<')
-        .replaceAll('&gt;', '>')
-        .replaceAll('&quot;', '"')
-        .replaceAll('&#39;', "'")
-        .replaceAll('&amp;', '&');
-    return raw.trim();
+    return raw.replaceAll('&lt;', '<').replaceAll('&gt;', '>').replaceAll('&quot;', '"')
+        .replaceAll('&#39;', "'").replaceAll('&amp;', '&').trim();
   }
 
   bool _containsReplyNode(String html) {
     if (html.trim().isEmpty) return false;
-    final doc = parser.parseFragment(html);
-    return doc.querySelector(
+    return parser.parseFragment(html).querySelector(
           '.replyfloor_box, .replyfloor_content, .replyfloor_content_ul, '
           '.replyfloor_content_li, li.replyfloor_li, .replyfloor_reply, .replyfloor_item',
-        ) !=
-        null;
+        ) != null;
   }
 
-  /// 将 Comiis/replyfloor 的真实 PID 绑定到对应的楼中楼节点。
-  ///
-  /// Comiis 的回复按钮通常不把 PID 放在 li 本身，而是放在按钮的
-  /// `repquote` 参数里。因此这里从整个 DOM 扫描按钮，并沿父节点向上
-  /// 找到实际的回复 li，再写入 data-pid，避免原生 Flutter 层拿到 0。
+  /// Comiis 不同手机版样式会把目标 PID 放在 href、onclick、data-*、rel、
+  /// title 或其他自定义属性中的 repquote。这里扫描每个元素的全部属性，
+  /// 并同时绑定按钮、最近回复 li，避免 Flutter 层拿到 0。
   String _normalizeReplyPidHtml(String html) {
     if (html.trim().isEmpty) return html;
     final doc = parser.parseFragment(html);
 
     int? extractRepquote(String raw) {
       if (raw.isEmpty) return null;
-      final patterns = <RegExp>[
+      for (final pattern in <RegExp>[
         RegExp(r'(?:[?&]|%3F|%26|&amp;)repquote(?:=|%3D)(\d+)', caseSensitive: false),
-        RegExp(r'\brepquote\s*[:=]\s*[" ]?(\d+)', caseSensitive: false),
-        RegExp(r'\brepquote[^0-9]{0,20}(\d+)', caseSensitive: false),
-      ];
-      for (final pattern in patterns) {
+        RegExp(r'''\brepquote\s*[:=]\s*["']?(\d+)''', caseSensitive: false),
+        RegExp(r'\brepquote[^0-9]{0,30}(\d+)', caseSensitive: false),
+      ]) {
         final match = pattern.firstMatch(raw);
         final value = int.tryParse(match?.group(1) ?? '');
         if (value != null && value > 0) return value;
@@ -234,117 +188,69 @@ class CommentReplyResolver {
       return null;
     }
 
-    final replySelectors = <String>[
-      '.replyfloor_content_ul > .replyfloor_content_li',
-      '.replyfloor_content_ul > li',
-      '.replyfloor_content_li',
-      '.replyfloor_content li',
-      'li.replyfloor_li',
-      '.replyfloor_box li',
-      '.replyfloor_reply',
-      '.replyfloor_item',
-      'li[class*="replyfloor"]',
-      'li[id*="replyfloor"]',
-    ];
-
-    bool isReplyNode(dom.Element element) {
-      final className = element.attributes['class'] ?? '';
-      final id = element.id;
-      if (element.localName == 'li') return true;
-      if (className.toLowerCase().contains('replyfloor')) return true;
-      if (className.toLowerCase().contains('reply_floor')) return true;
-      if (className.toLowerCase().contains('replyfloor')) return true;
-      if (id.toLowerCase().contains('replyfloor')) return true;
-      if (id.toLowerCase().contains('reply_floor')) return true;
-      return false;
+    bool replyLike(dom.Element e) {
+      if (e.localName == 'li') return true;
+      final cls = (e.attributes['class'] ?? '').toLowerCase();
+      final id = (e.attributes['id'] ?? '').toLowerCase();
+      return cls.contains('replyfloor') || cls.contains('reply_floor') ||
+          id.contains('replyfloor') || id.contains('reply_floor');
     }
 
-    dom.Element? nearestReplyNode(dom.Element start) {
-      dom.Element? current = start;
-      while (current != null) {
-        if (isReplyNode(current)) return current;
+    void bind(dom.Element element, int pid) {
+      element.attributes['data-pid'] = '$pid';
+      dom.Element? current = element.parent;
+      var depth = 0;
+      while (current != null && depth++ < 20) {
+        if (replyLike(current)) {
+          current.attributes['data-pid'] = '$pid';
+          if (current.localName == 'li') break;
+        }
         current = current.parent;
       }
-      dom.Element? li = start.parent;
-      while (li != null) {
-        if (li.localName == 'li') return li;
-        li = li.parent;
-      }
-      return null;
     }
 
-    int? readPid(dom.Element element) {
-      for (final key in [
-        'data-pid', 'data-post-id', 'data-reply-id', 'data-reppid',
-        'pid', 'reppid', 'replypid', 'replyid', 'repquote', 'data-id',
-      ]) {
-        final value = element.attributes[key] ?? '';
-        final direct = int.tryParse(value);
-        if (direct != null && direct > 0) return direct;
-        final parsed = extractRepquote(value);
-        if (parsed != null) return parsed;
+    // 不再限定属性名：只要任意属性值里出现 repquote=PID 就绑定。
+    for (final element in doc.querySelectorAll('*')) {
+      int? pid;
+      for (final value in element.attributes.values) {
+        pid = extractRepquote(value);
+        if (pid != null) break;
       }
-      final raw = [
-        element.id,
-        element.attributes['name'] ?? '',
-        element.attributes['href'] ?? '',
-        element.attributes['data-url'] ?? '',
-        element.attributes['onclick'] ?? '',
-        element.attributes['repquote'] ?? '',
-      ].join(' ');
-      return extractRepquote(raw);
+      if (pid != null && pid > 0) bind(element, pid);
     }
 
-    // 第一阶段：每个带 repquote 的回复按钮，直接把真实 PID 写入最近的回复节点。
-    for (final element in doc.querySelectorAll('[href], [data-url], [onclick], [repquote]')) {
-      final raw = [
-        element.attributes['href'] ?? '',
-        element.attributes['data-url'] ?? '',
-        element.attributes['onclick'] ?? '',
-        element.attributes['repquote'] ?? '',
-      ].join(' ');
-      final pid = extractRepquote(raw) ?? readPid(element);
-      if (pid == null || pid <= 0) continue;
-      final replyNode = nearestReplyNode(element);
-      if (replyNode != null) {
-        replyNode.attributes['data-pid'] = '$pid';
-      }
-    }
-
-    // 第二阶段：回复节点自身没有按钮时，检查节点及其所有后代属性。
-    final replyNodes = <dom.Element>[];
-    for (final selector in replySelectors) {
+    // 如果按钮不在标准 li 内，再从标准楼中楼节点的全部后代属性补一次。
+    final selectors = <String>[
+      '.replyfloor_content_ul > .replyfloor_content_li', '.replyfloor_content_ul > li',
+      '.replyfloor_content_li', '.replyfloor_content li', 'li.replyfloor_li',
+      '.replyfloor_box li', '.replyfloor_reply', '.replyfloor_item',
+      'li[class*="replyfloor"]', 'li[id*="replyfloor"]',
+    ];
+    final nodes = <dom.Element>[];
+    for (final selector in selectors) {
       for (final node in doc.querySelectorAll(selector)) {
-        if (!replyNodes.contains(node)) replyNodes.add(node);
+        if (!nodes.contains(node)) nodes.add(node);
       }
     }
-    for (final node in replyNodes) {
-      final nodePid = readPid(node);
-      if (nodePid != null) {
-        node.attributes['data-pid'] = '$nodePid';
-        continue;
-      }
-      for (final child in node.querySelectorAll('[href], [data-url], [onclick], [repquote]')) {
-        final pid = readPid(child);
-        if (pid != null && pid > 0) {
-          node.attributes['data-pid'] = '$pid';
-          break;
+    for (final node in nodes) {
+      if ((node.attributes['data-pid'] ?? '').isNotEmpty) continue;
+      for (final child in node.querySelectorAll('*')) {
+        for (final value in child.attributes.values) {
+          final pid = extractRepquote(value);
+          if (pid != null && pid > 0) {
+            node.attributes['data-pid'] = '$pid';
+            break;
+          }
         }
+        if ((node.attributes['data-pid'] ?? '').isNotEmpty) break;
       }
     }
 
-    return doc.nodes
-        .map((node) => node is dom.Element ? node.outerHtml : (node.text ?? ''))
-        .join();
+    return doc.nodes.map((node) => node is dom.Element ? node.outerHtml : node.text).join();
   }
 
   dom.Element? _findPostByPid(dom.Document doc, int pid) {
-    for (final selector in [
-      '#post_$pid',
-      '#postmessage_$pid',
-      '[data-pid="$pid"]',
-      '[data-post-id="$pid"]',
-    ]) {
+    for (final selector in ['#post_$pid', '#postmessage_$pid', '[data-pid="$pid"]', '[data-post-id="$pid"]']) {
       final node = doc.querySelector(selector);
       if (node != null) return node;
     }
@@ -357,33 +263,23 @@ class CommentReplyResolver {
   String _extractNestedReplyHtml(dom.Element post) {
     final roots = <dom.Element>[];
     for (final selector in [
-      '.replyfloor_box',
-      '.replyfloor_content',
-      '.replyfloor_content_ul',
-      '[class*="replyfloor"]',
-      '[id*="replyfloor"]',
-      '[class*="reply_floor"]',
-      '[id*="reply_floor"]',
-      '[class*="replybox"]',
-      '[id*="replybox"]',
+      '.replyfloor_box', '.replyfloor_content', '.replyfloor_content_ul',
+      '[class*="replyfloor"]', '[id*="replyfloor"]', '[class*="reply_floor"]',
+      '[id*="reply_floor"]', '[class*="replybox"]', '[id*="replybox"]',
     ]) {
       for (final node in post.querySelectorAll(selector)) {
         if (!roots.contains(node)) roots.add(node);
       }
     }
-    if (roots.isEmpty) return '';
-    return roots.map((e) => e.outerHtml).join();
+    return roots.map((node) => node.outerHtml).join();
   }
 
   static int _postPid(dom.Element post) {
-    const attrs = ['data-pid', 'data-post-id', 'data-id', 'pid'];
-    for (final key in attrs) {
-      final value = post.attributes[key];
-      final pid = int.tryParse(value ?? '');
+    for (final key in ['data-pid', 'data-post-id', 'data-id', 'pid']) {
+      final pid = int.tryParse(post.attributes[key] ?? '');
       if (pid != null && pid > 0) return pid;
     }
-    final values = <String>[post.id, post.attributes['name'] ?? ''];
-    for (final value in values) {
+    for (final value in [post.id, post.attributes['name'] ?? '']) {
       final match = RegExp(r'(?:post_|pid)(\d+)', caseSensitive: false).firstMatch(value);
       final pid = int.tryParse(match?.group(1) ?? '');
       if (pid != null && pid > 0) return pid;
@@ -391,8 +287,7 @@ class CommentReplyResolver {
     return 0;
   }
 
-  static String _normalize(String value) =>
-      value.replaceAll(RegExp(r'\s+'), ' ').trim().toLowerCase();
+  static String _normalize(String value) => value.replaceAll(RegExp(r'\s+'), ' ').trim().toLowerCase();
 
   static int? _firstInt(String value) {
     final match = RegExp(r'\d+').firstMatch(value);
