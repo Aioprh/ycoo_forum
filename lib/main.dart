@@ -5,11 +5,14 @@ import 'pages/board_page.dart';
 import 'pages/home_page.dart';
 import 'pages/profile_page.dart';
 import 'services/site_config.dart';
+import 'services/theme_mode_controller.dart';
 
 Future<void> main() async {
   WidgetsFlutterBinding.ensureInitialized();
   // 加载站点域名配置(本地缓存 + 后台拉取远程配置)
   await SiteConfig.init();
+  // 恢复用户上次选择的主题模式(亮/暗/跟随系统)
+  await ThemeModeController.instance.init();
   runApp(const YcoForumApp());
 }
 
@@ -18,52 +21,57 @@ class YcoForumApp extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    return MaterialApp(
-      title: '源论坛',
-      debugShowCheckedModeBanner: false,
-      // 中文本地化：让文本选择菜单(复制/全选等)显示中文
-      localizationsDelegates: const [
-        GlobalMaterialLocalizations.delegate,
-        GlobalWidgetsLocalizations.delegate,
-        GlobalCupertinoLocalizations.delegate,
-      ],
-      supportedLocales: const [Locale('zh', 'CN'), Locale('en')],
-      locale: const Locale('zh', 'CN'),
-      theme: ThemeData(
-        useMaterial3: true,
-        // Android 系统 CJK/Emoji fallback，避免网页中文、扩展汉字和符号
-        // 因默认字体缺少 glyph 而显示成“方框 X”。
-        fontFamilyFallback: const <String>[
-          'Noto Sans CJK SC',
-          'Noto Sans CJK TC',
-          'Noto Sans CJK JP',
-          'Noto Sans Symbols 2',
-          'Noto Color Emoji',
-          'sans-serif',
+    // 主题模式变化时重建 MaterialApp, 实现亮/暗/跟随系统的即时切换。
+    return ValueListenableBuilder<ThemeMode>(
+      valueListenable: ThemeModeController.instance.mode,
+      builder: (context, themeMode, _) => MaterialApp(
+        title: '源论坛',
+        debugShowCheckedModeBanner: false,
+        // 中文本地化：让文本选择菜单(复制/全选等)显示中文
+        localizationsDelegates: const [
+          GlobalMaterialLocalizations.delegate,
+          GlobalWidgetsLocalizations.delegate,
+          GlobalCupertinoLocalizations.delegate,
         ],
-        colorScheme: ColorScheme.fromSeed(
-          seedColor: const Color(0xFF4E6EF2),
-          brightness: Brightness.light,
+        supportedLocales: const [Locale('zh', 'CN'), Locale('en')],
+        locale: const Locale('zh', 'CN'),
+        theme: ThemeData(
+          useMaterial3: true,
+          // Android 系统 CJK/Emoji fallback，避免网页中文、扩展汉字和符号
+          // 因默认字体缺少 glyph 而显示成“方框 X”。
+          fontFamilyFallback: const <String>[
+            'Noto Sans CJK SC',
+            'Noto Sans CJK TC',
+            'Noto Sans CJK JP',
+            'Noto Sans Symbols 2',
+            'Noto Color Emoji',
+            'sans-serif',
+          ],
+          colorScheme: ColorScheme.fromSeed(
+            seedColor: const Color(0xFF4E6EF2),
+            brightness: Brightness.light,
+          ),
         ),
-      ),
-      darkTheme: ThemeData(
-        useMaterial3: true,
-        fontFamilyFallback: const <String>[
-          'Noto Sans CJK SC',
-          'Noto Sans CJK TC',
-          'Noto Sans CJK JP',
-          'Noto Sans Symbols 2',
-          'Noto Color Emoji',
-          'sans-serif',
-        ],
-        colorScheme: ColorScheme.fromSeed(
-          seedColor: const Color(0xFF4E6EF2),
-          brightness: Brightness.dark,
+        darkTheme: ThemeData(
+          useMaterial3: true,
+          fontFamilyFallback: const <String>[
+            'Noto Sans CJK SC',
+            'Noto Sans CJK TC',
+            'Noto Sans CJK JP',
+            'Noto Sans Symbols 2',
+            'Noto Color Emoji',
+            'sans-serif',
+          ],
+          colorScheme: ColorScheme.fromSeed(
+            seedColor: const Color(0xFF4E6EF2),
+            brightness: Brightness.dark,
+          ),
         ),
+        // 跟随手机系统亮暗模式自动切换夜间/日间主题,
+        // 也支持用户在我的页手动指定亮/暗模式。
+        themeMode: themeMode,
+        home: const RootShell(),
       ),
-      // 跟随手机系统亮暗模式自动切换夜间/日间主题
-      themeMode: ThemeMode.system,
-      home: const RootShell(),
     );
   }
 }

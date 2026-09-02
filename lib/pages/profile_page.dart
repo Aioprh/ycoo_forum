@@ -3,6 +3,7 @@ import 'package:flutter/material.dart';
 import '../services/auth_service.dart';
 import '../services/checkin_service.dart';
 import '../services/profile_identity_service.dart';
+import '../services/theme_mode_controller.dart';
 import 'login_page.dart';
 import 'member_feature_page.dart';
 import 'native_notice_hub_page.dart';
@@ -162,6 +163,120 @@ class _ProfilePageState extends State<ProfilePage> {
           ),
         ),
       ),
+    );
+  }
+
+  String _modeLabel(ThemeMode mode) {
+    return switch (mode) {
+      ThemeMode.light => '浅色模式',
+      ThemeMode.dark => '夜间模式',
+      ThemeMode.system => '跟随系统',
+    };
+  }
+
+  Future<void> _pickAppearance() async {
+    final controller = ThemeModeController.instance;
+    final current = controller.mode.value;
+    final scheme = Theme.of(context).colorScheme;
+    final selected = await showModalBottomSheet<ThemeMode>(
+      context: context,
+      showDragHandle: true,
+      builder: (context) => SafeArea(
+        child: Column(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            Padding(
+              padding: const EdgeInsets.fromLTRB(20, 2, 20, 6),
+              child: Align(
+                alignment: Alignment.centerLeft,
+                child: Text('外观', style: TextStyle(fontSize: 16, fontWeight: FontWeight.w800, color: scheme.onSurface)),
+              ),
+            ),
+            _modeOption(context, ThemeMode.system, '跟随系统', '与手机系统亮暗模式保持一致', Icons.brightness_auto, current),
+            _modeOption(context, ThemeMode.light, '白天模式', '始终使用浅色主题', Icons.light_mode, current),
+            _modeOption(context, ThemeMode.dark, '夜间模式', '始终使用深色主题', Icons.dark_mode, current),
+            const SizedBox(height: 10),
+          ],
+        ),
+      ),
+    );
+    if (selected != null) await controller.set(selected);
+  }
+
+  Widget _modeOption(
+    BuildContext context,
+    ThemeMode value,
+    String title,
+    String subtitle,
+    IconData icon,
+    ThemeMode current,
+  ) {
+    final scheme = Theme.of(context).colorScheme;
+    final selected = value == current;
+    return ListTile(
+      leading: Icon(icon, color: selected ? scheme.primary : scheme.onSurfaceVariant),
+      title: Text(title, style: TextStyle(fontSize: 14, fontWeight: selected ? FontWeight.w800 : FontWeight.w500, color: selected ? scheme.primary : scheme.onSurface)),
+      subtitle: Text(subtitle, style: TextStyle(fontSize: 11.5, color: scheme.onSurfaceVariant)),
+      trailing: selected
+          ? Icon(Icons.check_circle_rounded, color: scheme.primary, size: 20)
+          : Icon(Icons.radio_button_unchecked, color: scheme.outlineVariant, size: 20),
+      onTap: () => Navigator.of(context).pop(value),
+    );
+  }
+
+  Widget _appearanceTile(BuildContext context, ThemeMode mode) {
+    final scheme = Theme.of(context).colorScheme;
+    return Card(
+      margin: EdgeInsets.zero,
+      clipBehavior: Clip.antiAlias,
+      child: InkWell(
+        onTap: _pickAppearance,
+        child: Padding(
+          padding: const EdgeInsets.all(13),
+          child: Row(
+            children: [
+              Container(
+                width: 42,
+                height: 42,
+                decoration: BoxDecoration(color: scheme.primaryContainer, borderRadius: BorderRadius.circular(13)),
+                child: Icon(switch (mode) {
+                  ThemeMode.light => Icons.light_mode,
+                  ThemeMode.dark => Icons.dark_mode,
+                  ThemeMode.system => Icons.brightness_auto,
+                }, size: 22),
+              ),
+              const SizedBox(width: 11),
+              Expanded(
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    const Text('外观', style: TextStyle(fontSize: 14, fontWeight: FontWeight.w700)),
+                    const SizedBox(height: 3),
+                    Text('白天 / 夜间 / 跟随系统', maxLines: 1, overflow: TextOverflow.ellipsis, style: TextStyle(fontSize: 11, color: scheme.onSurfaceVariant)),
+                    const SizedBox(height: 3),
+                    Text(_modeLabel(mode), maxLines: 1, overflow: TextOverflow.ellipsis, style: TextStyle(fontSize: 11, color: scheme.primary, fontWeight: FontWeight.w700)),
+                  ],
+                ),
+              ),
+              Icon(Icons.chevron_right_rounded, color: scheme.onSurfaceVariant),
+            ],
+          ),
+        ),
+      ),
+    );
+  }
+
+  Widget _appearanceSection(BuildContext context) {
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.stretch,
+      children: [
+        _sectionHeader(context, '外观'),
+        // 监听主题模式变化, 切换后即时刷新当前模式文案与图标。
+        ValueListenableBuilder<ThemeMode>(
+          valueListenable: ThemeModeController.instance.mode,
+          builder: (context, mode, _) => _appearanceTile(context, mode),
+        ),
+      ],
     );
   }
 
@@ -329,6 +444,7 @@ class _ProfilePageState extends State<ProfilePage> {
       _featureTile(icon: Icons.manage_accounts_outlined, title: '帐号设置', subtitle: '帐号资料与安全', onTap: _openEdit),
       const SizedBox(height: 10),
       _featureTile(icon: Icons.info_outline_rounded, title: '关于', subtitle: '项目地址、版本与更新', onTap: _openAbout),
+      _appearanceSection(context),
       const SizedBox(height: 8),
       ListTile(contentPadding: const EdgeInsets.symmetric(horizontal: 14), leading: const Icon(Icons.logout), title: const Text('退出登录'), trailing: const Icon(Icons.chevron_right), onTap: _logout),
     ];
@@ -352,6 +468,8 @@ class _ProfilePageState extends State<ProfilePage> {
         ),
       ),
       const SizedBox(height: 16),
+      _appearanceSection(context),
+      const SizedBox(height: 10),
       _featureTile(icon: Icons.info_outline_rounded, title: '关于', subtitle: '项目地址、版本与更新', onTap: _openAbout),
     ];
   }
