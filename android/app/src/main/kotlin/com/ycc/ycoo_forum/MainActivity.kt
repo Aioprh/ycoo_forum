@@ -55,11 +55,6 @@ class MainActivity : FlutterActivity() {
                         return@setMethodCallHandler
                     }
 
-                    // 不再使用 DownloadManager.setDestinationUri(Uri.fromFile(...))。
-                    // Android 10+ 对 DownloadManager 的自定义公共目录有额外限制，
-                    // 即使拥有 all-files 权限也可能回退/拒绝。这里直接以 HTTP GET
-                    // 写入用户指定的公共目录，确保最终路径就是：
-                    // /storage/emulated/0/源论坛/文件名
                     val guessedName = guessNameFromUrl(url)
                     val target = uniqueFile(forumDir, sanitizeFileName(guessedName))
 
@@ -110,14 +105,13 @@ class MainActivity : FlutterActivity() {
             if (code !in 200..299) return false
 
             val contentType = connection.contentType?.lowercase().orEmpty()
-            // 未登录/权限失效时 Discuz 可能返回 HTML 登录页，而不是附件本身。
             if (contentType.contains("text/html") && connection.contentLengthLong > 0L && connection.contentLengthLong < 1024 * 1024) {
                 return false
             }
 
             val serverName = resolveResponseFileName(
                 connection.getHeaderField("Content-Disposition"),
-                connection.url?.toString() ?: url,
+                connection.url.toString(),
                 contentType,
             )
             if (serverName.isNotBlank() && !looksGeneric(serverName)) {
