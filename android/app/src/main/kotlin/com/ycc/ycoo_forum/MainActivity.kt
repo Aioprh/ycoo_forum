@@ -14,6 +14,7 @@ import java.io.File
 import java.io.FileOutputStream
 import java.net.HttpURLConnection
 import java.net.URL
+import java.net.URLDecoder
 
 class MainActivity : FlutterActivity() {
     private val channelName = "ycoo/attachment_download"
@@ -72,10 +73,15 @@ class MainActivity : FlutterActivity() {
             val contentType = connection.contentType?.substringBefore(';')?.trim()?.lowercase().orEmpty()
             if (contentType == "text/html" && connection.contentLengthLong > 0L && connection.contentLengthLong < 1024 * 1024) return null
 
-            val responseName = resolveResponseFileName(connection.getHeaderField("Content-Disposition"), connection.url.toString(), contentType)
+            val responseName = resolveResponseFileName(
+                connection.getHeaderField("Content-Disposition"),
+                connection.url.toString(),
+                contentType,
+            )
             val requestedIsGeneric = requestedFilename.isBlank() || looksGeneric(requestedFilename) || isDownloadScript(requestedFilename)
             val requestedHasExtension = hasFileExtension(requestedFilename)
-            if (responseName.isNotBlank() && !looksGeneric(responseName) && (requestedIsGeneric || !requestedHasExtension || looksGeneric(target.name))) {
+            if (responseName.isNotBlank() && !looksGeneric(responseName) &&
+                (requestedIsGeneric || !requestedHasExtension || looksGeneric(target.name))) {
                 target = uniqueFile(initialTarget.parentFile ?: return null, sanitizeFileName(responseName))
             }
 
@@ -93,14 +99,11 @@ class MainActivity : FlutterActivity() {
                 }
             }
 
-            // 动态下载入口通常是 forum.php / attachment.php，没有可用扩展名。
-            // 此时必须根据实际响应内容识别格式，而不是把接口脚本名当成附件格式。
             val detectedExtension = detectFileExtension(temp, contentType)
             if (isDownloadScript(target.name) || !hasFileExtension(target.name)) {
                 if (detectedExtension.isNotEmpty()) {
                     val baseName = if (isDownloadScript(target.name)) "论坛附件" else target.name
-                    val renamed = uniqueFile(target.parentFile ?: return null, "$baseName$detectedExtension")
-                    target = renamed
+                    target = uniqueFile(target.parentFile ?: return null, "$baseName$detectedExtension")
                 }
             }
 
@@ -132,6 +135,8 @@ class MainActivity : FlutterActivity() {
     }
 
     private fun resolveResponseFileName(disposition: String?, finalUrl: String, mime: String): String {
+        val headerName = extractDispositionFileName(disposition)
+        if (headerName.isNotBlank() && !looksGeneric(headerName) && hasFileExtension(headerName)) return headerName
         if (!disposition.isNullOrBlank()) {
             val guessed = URLUtil.guessFileName(finalUrl, disposition, mime)
             if (guessed.isNotBlank() && !looksGeneric(guessed) && !isDownloadScript(guessed) && hasFileExtension(guessed)) return guessed
@@ -140,6 +145,22 @@ class MainActivity : FlutterActivity() {
         if (pathName.isNotBlank() && !isDownloadScript(pathName)) {
             val decoded = decodeFileName(pathName)
             if (hasFileExtension(decoded)) return decoded
+        }
+        return ""
+    }
+
+    private fun extractDispositionFileName(disposition: String?): String {
+        if (disposition.isNullOrBlank()) return ""
+        val star = Regex("(?:^|;)\\s*filename\\*\\s*=\\s*(?:UTF-8''|utf-8'')?([^;]+)", RegexOption.IGNORE_CASE).find(disposition)?.groupValues?.getOrNull(1)
+        if (!star.isNullOrBlank()) {
+            val decoded = try { URLDecoder.decode(star.trim().trim('"'), "UTF-8") } catch (_: Exception) { star.trim().trim('"') }
+            if (decoded.isNotBlank()) return sanitizeFileName(decoded)
+        }
+        val plain = Regex("(?:^|;)\\s*filename\\s*=\\s*\\\"([^\\\"]+)\\\"", RegexOption.IGNORE_CASE).find(disposition)?.groupValues?.getOrNull(1)
+            ?: Regex("(?:^|;)\\s*filename\\s*=\\s*([^;]+)", RegexOption.IGNORE_CASE).find(disposition)?.groupValues?.getOrNull(1)
+        if (!plain.isNullOrBlank()) {
+            val decoded = try { URLDecoder.decode(plain.trim(), "UTF-8") } catch (_: Exception) { plain.trim() }
+            return sanitizeFileName(decoded)
         }
         return ""
     }
