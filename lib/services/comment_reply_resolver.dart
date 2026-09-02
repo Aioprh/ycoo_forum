@@ -6,9 +6,6 @@ import 'auth_service.dart';
 import 'net_client.dart';
 
 /// 解析 Discuz/Comiis 的真实楼层 PID，并读取楼中楼。
-///
-/// ycoo 的标准 viewthread 页面会直接包含部分楼中楼，而 replyfloor 插件
-/// 又会按 PID 返回完整回复。两条路径都支持，避免只依赖某一种页面形态。
 class CommentReplyResolver {
   CommentReplyResolver._();
   static final instance = CommentReplyResolver._();
@@ -72,7 +69,6 @@ class CommentReplyResolver {
     final normalizedAuthor = _normalize(author);
     final floorNumber = _firstInt(floor);
 
-    // 楼层 + 作者是最可靠的映射方式，尤其是当前页含有楼主时。
     if (floorNumber != null || normalizedAuthor.isNotEmpty) {
       for (final post in posts) {
         final pid = _postPid(post);
@@ -140,8 +136,6 @@ class CommentReplyResolver {
     return int.tryParse(match?.group(1) ?? '');
   }
 
-  /// 读取 replyfloor 插件。不同版本可能返回 XML/CDDATA、纯 HTML 或转义 HTML，
-  /// 所以这里全部解包后再交给评论组件解析。
   Future<String> fetchReplies({required int tid, required int pid}) async {
     if (tid <= 0 || pid <= 0) return '';
     final client = await NetClient.instance.client;
@@ -173,8 +167,6 @@ class CommentReplyResolver {
       } catch (_) {}
     }
 
-    // 兜底：ycoo 的标准 viewthread 页面本身会把楼中楼输出到对应楼层，
-    // 例如网页端可直接看到“回复(1) 收起回复”及回复人/内容。
     final html = await _fetchThreadHtml(tid);
     if (html.isNotEmpty) {
       final doc = parser.parse(html);
@@ -190,17 +182,15 @@ class CommentReplyResolver {
   String _unwrapReplyResponse(String body) {
     if (body.isEmpty) return '';
     var raw = body;
-    final cdata = RegExp(r'(?s)<!\[CDATA\[(.*?)\]\]>').firstMatch(raw);
+    final cdata = RegExp(r'<!\[CDATA\[(.*?)\]\]>', dotAll: true).firstMatch(raw);
     if (cdata != null) raw = (cdata.group(1) ?? '').trim();
 
-    // Discuz AJAX 有时返回 <root>...</root> 或 <message>...</message>。
     final xmlDoc = parser.parse(raw);
     for (final selector in ['root', 'message', 'body']) {
       final node = xmlDoc.querySelector(selector);
       if (node != null && node.innerHtml.trim().isNotEmpty) raw = node.innerHtml.trim();
     }
 
-    // 再处理一次 HTML 实体/JS 转义。
     raw = raw
         .replaceAll('&lt;', '<')
         .replaceAll('&gt;', '>')
