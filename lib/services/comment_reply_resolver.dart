@@ -210,12 +210,31 @@ class CommentReplyResolver {
         null;
   }
 
-  /// 将 Comiis/replyfloor 的真实 PID 提升到楼中楼节点，供原生 UI 使用。
+  /// 将 Comiis/replyfloor 的真实 PID 绑定到对应的楼中楼节点。
+  ///
+  /// Comiis 的回复按钮通常不把 PID 放在 li 本身，而是放在按钮的
+  /// `repquote` 参数里。因此这里从整个 DOM 扫描按钮，并沿父节点向上
+  /// 找到实际的回复 li，再写入 data-pid，避免原生 Flutter 层拿到 0。
   String _normalizeReplyPidHtml(String html) {
     if (html.trim().isEmpty) return html;
     final doc = parser.parseFragment(html);
-    final replyNodes = <dom.Element>[];
-    const nodeSelectors = [
+
+    int? extractRepquote(String raw) {
+      if (raw.isEmpty) return null;
+      final patterns = <RegExp>[
+        RegExp(r'(?:[?&]|%3F|%26|&amp;)repquote(?:=|%3D)(\d+)', caseSensitive: false),
+        RegExp(r"\brepquote\s*[:=]\s*[\"']?(\d+)", caseSensitive: false),
+        RegExp(r'\brepquote[^0-9]{0,20}(\d+)', caseSensitive: false),
+      ];
+      for (final pattern in patterns) {
+        final match = pattern.firstMatch(raw);
+        final value = int.tryParse(match?.group(1) ?? '');
+        if (value != null && value > 0) return value;
+      }
+      return null;
+    }
+
+    final replySelectors = <String>[
       '.replyfloor_content_ul > .replyfloor_content_li',
       '.replyfloor_content_ul > li',
       '.replyfloor_content_li',
@@ -224,61 +243,54 @@ class CommentReplyResolver {
       '.replyfloor_box li',
       '.replyfloor_reply',
       '.replyfloor_item',
+      'li[class*="replyfloor"]',
+      'li[id*="replyfloor"]',
     ];
-    for (final selector in nodeSelectors) {
-      for (final node in doc.querySelectorAll(selector)) {
-        if (!replyNodes.contains(node)) replyNodes.add(node);
+
+    bool isReplyNode(dom.Element element) {
+      for (final selector in replySelectors) {
+        if (element.matches(selector)) return true;
       }
+      return false;
     }
 
-    int? extractRepquote(String raw) {
-      if (raw.isEmpty) return null;
-      final patterns = <RegExp>[
-        RegExp(r'(?:[?&]|%3F|%26|&amp;)repquote(?:=|%3D)(\d+)', caseSensitive: false),
-        RegExp(r'\brepquote\s*[:=]\s*[^0-9]{0,3}(\d+)', caseSensitive: false),
-        RegExp(r'\brepquote[^0-9]{0,12}(\d+)', caseSensitive: false),
-      ];
-      for (final pattern in patterns) {
-        final match = pattern.firstMatch(raw);
-        final pid = int.tryParse(match?.group(1) ?? '');
-        if (pid != null && pid > 0) return pid;
+    dom.Element? nearestReplyNode(dom.Element start) {
+      dom.Element? current = start;
+      while (current != null) {
+        if (isReplyNode(current)) return current;
+        current = current.parent;
+      }
+      dom.Element? li = start.parent;
+      while (li != null) {
+        if (li.localName == 'li') return li;
+        li = li.parent;
       }
       return null;
     }
 
-    for (final node in replyNodes) {
-      var pid = 0;
-      final selfRaw = [
-        node.id,
-        node.attributes['name'] ?? '',
-        node.attributes['repquote'] ?? '',
-        node.attributes['data-pid'] ?? '',
-        node.attributes['data-post-id'] ?? '',
-        node.attributes['data-url'] ?? '',
-        node.attributes['href'] ?? '',
-        node.attributes['onclick'] ?? '',
-      ].join(' ');
-      pid = extractRepquote(selfRaw) ??
-          int.tryParse(node.attributes['data-pid'] ?? '') ??
-          int.tryParse(node.attributes['data-post-id'] ?? '') ??
-          0;
-
-      if (pid <= 0) {
-        for (final link in node.querySelectorAll('[href], [data-url], [onclick], [repquote]')) {
-          final raw = [
-            link.attributes['href'] ?? '',
-            link.attributes['data-url'] ?? '',
-            link.attributes['onclick'] ?? '',
-            link.attributes['repquote'] ?? '',
-          ].join(' ');
-          pid = extractRepquote(raw) ?? 0;
-          if (pid > 0) break;
-        }
+    int? readPid(dom.Element element) {
+      for (final key in [
+        'data-pid', 'data-post-id', 'data-reply-id', 'data-reppid',
+        'pid', 'reppid', 'replypid', 'replyid', 'repquote', 'data-id',
+      ]) {
+        final value = element.attributes[key] ?? '';
+        final direct = int.tryParse(value);
+        if (direct != null && direct > 0) return direct;
+        final parsed = extractRepquote(value);
+        if (parsed != null) return parsed;
       }
-      if (pid > 0) node.attributes['data-pid'] = '$pid';
+      final raw = [
+        element.id,
+        element.attributes['name'] ?? '',
+        element.attributes['href'] ?? '',
+        element.attributes['data-url'] ?? '',
+        element.attributes['onclick'] ?? '',
+        element.attributes['repquote'] ?? '',
+      ].join(' ');
+      return extractRepquote(raw);
     }
 
-    final loosePids = <int>[];
+    // 第一阶段：每个带 repquote 的回复按钮，直接把真实 PID 写入最近的回复节点。
     for (final element in doc.querySelectorAll('[href], [data-url], [onclick], [repquote]')) {
       final raw = [
         element.attributes['href'] ?? '',
@@ -286,15 +298,32 @@ class CommentReplyResolver {
         element.attributes['onclick'] ?? '',
         element.attributes['repquote'] ?? '',
       ].join(' ');
-      final pid = extractRepquote(raw);
-      if (pid != null && pid > 0) loosePids.add(pid);
+      final pid = extractRepquote(raw) ?? readPid(element);
+      if (pid == null || pid <= 0) continue;
+      final replyNode = nearestReplyNode(element);
+      if (replyNode != null) {
+        replyNode.attributes['data-pid'] = '$pid';
+      }
     }
-    var looseIndex = 0;
+
+    // 第二阶段：回复节点自身没有按钮时，检查节点及其所有后代属性。
+    final replyNodes = <dom.Element>[];
+    for (final selector in replySelectors) {
+      for (final node in doc.querySelectorAll(selector)) {
+        if (!replyNodes.contains(node)) replyNodes.add(node);
+      }
+    }
     for (final node in replyNodes) {
-      final current = int.tryParse(node.attributes['data-pid'] ?? '') ?? 0;
-      if (current > 0) continue;
-      if (looseIndex < loosePids.length) {
-        node.attributes['data-pid'] = '${loosePids[looseIndex++]}';
+      if (readPid(node) != null) {
+        node.attributes['data-pid'] = '${readPid(node)}';
+        continue;
+      }
+      for (final child in node.querySelectorAll('[href], [data-url], [onclick], [repquote]')) {
+        final pid = readPid(child);
+        if (pid != null && pid > 0) {
+          node.attributes['data-pid'] = '$pid';
+          break;
+        }
       }
     }
 
