@@ -370,9 +370,9 @@ class SocialService {
       RegExp('name\\s*=\\s*["\\\']$escaped["\\\'][^>]*value\\s*=\\s*["\\\']([^"\\\']+)["\\\']', caseSensitive: false),
       RegExp('value\\s*=\\s*["\\\']([^"\\\']+)["\\\'][^>]*name\\s*=\\s*["\\\']$escaped["\\\']', caseSensitive: false),
       // Comiis 模板: formhash=ca6c6844 形式出现在链接/JS 字符串中。
-      RegExp('(?:^|[?&,;\\s\'"])' + escaped + r'\s*=\s*["\']?([a-zA-Z0-9]{4,})["\']?', caseSensitive: false),
-      RegExp(r'formhash=([a-zA-Z0-9]{4,})', caseSensitive: false),
-      RegExp(r'hash=([a-zA-Z0-9]{4,})', caseSensitive: false),
+      RegExp(r"(?:^|[?&,;\s'\"])" + escaped + r"\s*=\s*[\"\']?([a-zA-Z0-9]{4,})[\"\']?", caseSensitive: false),
+      RegExp(r"formhash=([a-zA-Z0-9]{4,})", caseSensitive: false),
+      RegExp(r"hash=([a-zA-Z0-9]{4,})", caseSensitive: false),
     ];
     for (final pattern in patterns) {
       final match = pattern.firstMatch(html);

@@ -1,3 +1,4 @@
+import 'package:html/dom.dart' as dom;
 import 'package:html/parser.dart' as parser;
 
 import 'auth_service.dart';
@@ -134,7 +135,7 @@ class FollowService {
       final v = input.attributes['value']?.trim() ?? '';
       if (v.isNotEmpty) return v;
     }
-    final hashRe = RegExp(r'(?:formhash|hash)\s*[=:]\s*["\']([a-zA-Z0-9]{6,})["\']', caseSensitive: false);
+    final hashRe = RegExp(r"(?:formhash|hash)\s*[=:]\s*[\"\']([a-zA-Z0-9]{6,})[\"\']", caseSensitive: false);
     final m = hashRe.firstMatch(html);
     return m?.group(1) ?? '';
   }
