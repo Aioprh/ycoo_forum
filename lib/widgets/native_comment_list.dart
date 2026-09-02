@@ -348,7 +348,7 @@ class _CommentCardState extends State<_CommentCard> {
       // 带 query 前缀: &repquote=123 / ?repquote=123 / 编码形式
       RegExp(r'(?:[?&]|%3F|%26|&amp;)repquote(?:=|%3D)(\d+)', caseSensitive: false),
       // 裸 repquote=123 / repquote:"123" / repquote:123 (常见于 onclick 内)
-      RegExp(r'\brepquote\s*[:=]\s*["\']?(\d+)', caseSensitive: false),
+      RegExp(r'''\brepquote\s*[:=]\s*["']?(\d+)''', caseSensitive: false),
       // replyfloor_reply('123') 直接携带 PID
       RegExp(r'''replyfloor_reply\s*\(\s*["']?(\d+)''', caseSensitive: false),
     ];
