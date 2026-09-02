@@ -107,7 +107,7 @@ class _LoginPageState extends State<LoginPage> {
                     ),
                     const Text('登录源论坛', textAlign: TextAlign.center, style: TextStyle(fontSize: 28, fontWeight: FontWeight.w800)),
                     const SizedBox(height: 8),
-                    Text('原生登录 · 登录后自动同步头像与个人资料', textAlign: TextAlign.center, style: TextStyle(color: Colors.grey.shade600)),
+                    Text('原生登录 · 登录后自动同步头像与个人资料', textAlign: TextAlign.center, style: TextStyle(color: scheme.onSurfaceVariant)),
                     const SizedBox(height: 30),
                     TextFormField(
                       controller: _usernameController,
@@ -236,7 +236,7 @@ class _LoginPageState extends State<LoginPage> {
                       label: const Text('需要验证码？使用网页验证'),
                     ),
                     const SizedBox(height: 14),
-                    Text('登录请求直接发送到源论坛，密码不会保存到应用配置或代码中。', textAlign: TextAlign.center, style: TextStyle(fontSize: 12, color: Colors.grey.shade600)),
+                    Text('登录请求直接发送到源论坛，密码不会保存到应用配置或代码中。', textAlign: TextAlign.center, style: TextStyle(fontSize: 12, color: scheme.onSurfaceVariant)),
                   ],
                 ),
               ),

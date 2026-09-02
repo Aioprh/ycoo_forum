@@ -183,10 +183,10 @@ class _NativeMessageListPageState extends State<NativeMessageListPage> {
     final scheme = Theme.of(context).colorScheme;
     final isPrivate = _filter == 'privatepm';
     return Scaffold(
-      backgroundColor: const Color(0xFFF4F4F4),
+      backgroundColor: scheme.surface,
       appBar: AppBar(title: const Text('消息'), actions: [IconButton(onPressed: load, icon: const Icon(Icons.refresh)), IconButton(onPressed: () {}, icon: const Icon(Icons.edit))]),
       body: Column(children: [
-        Container(height: 48, color: Colors.white, child: Row(children: [_tab('私人消息', 'privatepm'), _tab('公共消息', 'announcepm')])),
+        Container(height: 48, color: scheme.surface, child: Row(children: [_tab('私人消息', 'privatepm'), _tab('公共消息', 'announcepm')])),
         Expanded(child: loading ? const Center(child: CircularProgressIndicator()) : error != null
             ? Center(child: Column(mainAxisSize: MainAxisSize.min, children: [Text(error!, textAlign: TextAlign.center), const SizedBox(height: 12), FilledButton(onPressed: load, child: const Text('重试'))]))
             : items.isEmpty ? Center(child: Text(isPrivate ? '暂无私人消息' : '暂无公共消息'))

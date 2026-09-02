@@ -276,7 +276,7 @@ class _NativeChatPageState extends State<NativeChatPage> {
     final name = _clean(widget.username);
     final currentUid = AuthService.instance.uid ?? 0;
     return Scaffold(
-      backgroundColor: const Color(0xFFF5F5F5),
+      backgroundColor: scheme.surface,
       appBar: AppBar(titleSpacing: 0, title: Row(children: [_avatar(widget.uid), const SizedBox(width: 10), Text(name, style: const TextStyle(fontSize: 17, fontWeight: FontWeight.w600))]), actions: [IconButton(onPressed: _load, icon: const Icon(Icons.refresh_rounded))]),
       body: _loading ? const Center(child: CircularProgressIndicator()) : _error != null
           ? Center(child: Column(mainAxisSize: MainAxisSize.min, children: [Padding(padding: const EdgeInsets.symmetric(horizontal: 28), child: Text(_error!, textAlign: TextAlign.center)), const SizedBox(height: 12), FilledButton.icon(onPressed: _load, icon: const Icon(Icons.refresh), label: const Text('重试'))]))
@@ -286,16 +286,16 @@ class _NativeChatPageState extends State<NativeChatPage> {
                   : ListView.builder(controller: _scroll, padding: const EdgeInsets.fromLTRB(12, 14, 12, 18), itemCount: _messages.length, itemBuilder: (context, index) {
                       final message = _messages[index];
                       if (message.isDate) {
-                        return Padding(padding: const EdgeInsets.only(bottom: 10), child: Center(child: Container(padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 4), decoration: BoxDecoration(color: const Color(0x14000000), borderRadius: BorderRadius.circular(10)), child: Text(message.body, style: TextStyle(fontSize: 11, color: scheme.onSurfaceVariant)))));
+                        return Padding(padding: const EdgeInsets.only(bottom: 10), child: Center(child: Container(padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 4), decoration: BoxDecoration(color: scheme.onSurface.withValues(alpha: .08), borderRadius: BorderRadius.circular(10)), child: Text(message.body, style: TextStyle(fontSize: 11, color: scheme.onSurfaceVariant)))));
                       }
                       final mine = _isMine(message);
                       return Padding(padding: const EdgeInsets.only(bottom: 10), child: Row(crossAxisAlignment: CrossAxisAlignment.end, mainAxisAlignment: mine ? MainAxisAlignment.end : MainAxisAlignment.start, children: [
                         if (!mine) ...[_avatar(message.uid > 0 ? message.uid : widget.uid), const SizedBox(width: 8)],
-                        Flexible(child: Container(constraints: const BoxConstraints(maxWidth: 320), padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 10), decoration: BoxDecoration(color: mine ? scheme.primaryContainer : Colors.white, borderRadius: BorderRadius.only(topLeft: const Radius.circular(16), topRight: const Radius.circular(16), bottomLeft: Radius.circular(mine ? 16 : 4), bottomRight: Radius.circular(mine ? 4 : 16))), child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [Text(message.body, style: const TextStyle(fontSize: 15, height: 1.45)), if (message.time.isNotEmpty) ...[const SizedBox(height: 4), Align(alignment: Alignment.centerRight, child: Text(message.time, style: TextStyle(fontSize: 10, color: scheme.onSurfaceVariant)))]]))),
+                        Flexible(child: Container(constraints: const BoxConstraints(maxWidth: 320), padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 10), decoration: BoxDecoration(color: mine ? scheme.primaryContainer : scheme.surfaceContainerHigh, borderRadius: BorderRadius.only(topLeft: const Radius.circular(16), topRight: const Radius.circular(16), bottomLeft: Radius.circular(mine ? 16 : 4), bottomRight: Radius.circular(mine ? 4 : 16))), child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [Text(message.body, style: const TextStyle(fontSize: 15, height: 1.45)), if (message.time.isNotEmpty) ...[const SizedBox(height: 4), Align(alignment: Alignment.centerRight, child: Text(message.time, style: TextStyle(fontSize: 10, color: scheme.onSurfaceVariant)))]]))),
                         if (mine) ...[const SizedBox(width: 8), _avatar(currentUid)],
                       ]));
                     })),
-              SafeArea(top: false, child: Container(padding: const EdgeInsets.fromLTRB(12, 8, 12, 10), color: Colors.white, child: Column(mainAxisSize: MainAxisSize.min, children: [
+              SafeArea(top: false, child: Container(padding: const EdgeInsets.fromLTRB(12, 8, 12, 10), color: scheme.surface, child: Column(mainAxisSize: MainAxisSize.min, children: [
                 if (_emojiOpen) ...[
                   Wrap(spacing: 4, runSpacing: 4, alignment: WrapAlignment.start, children: [
                     for (final e in _emoji)
@@ -306,7 +306,7 @@ class _NativeChatPageState extends State<NativeChatPage> {
                 Row(children: [
                   IconButton(onPressed: _toggleEmoji, icon: Icon(_emojiOpen ? Icons.keyboard_rounded : Icons.emoji_emotions_outlined), color: scheme.onSurfaceVariant, tooltip: '表情'),
                   const SizedBox(width: 2),
-                  Expanded(child: TextField(controller: _controller, focusNode: _inputFocus, minLines: 1, maxLines: 5, textInputAction: TextInputAction.newline, decoration: InputDecoration(hintText: '发送给 $name', filled: true, fillColor: const Color(0xFFF0F0F4), border: OutlineInputBorder(borderRadius: BorderRadius.circular(22), borderSide: BorderSide.none)))),
+                  Expanded(child: TextField(controller: _controller, focusNode: _inputFocus, minLines: 1, maxLines: 5, textInputAction: TextInputAction.newline, decoration: InputDecoration(hintText: '发送给 $name', filled: true, fillColor: scheme.surfaceContainerHighest, border: OutlineInputBorder(borderRadius: BorderRadius.circular(22), borderSide: BorderSide.none)))),
                   const SizedBox(width: 8),
                   IconButton.filled(onPressed: _sending ? null : _send, icon: _sending ? const SizedBox(width: 18, height: 18, child: CircularProgressIndicator(strokeWidth: 2)) : const Icon(Icons.send_rounded)),
                 ]),

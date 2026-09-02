@@ -14,7 +14,7 @@ class ThreadCard extends StatelessWidget {
     final theme = Theme.of(context);
     final scheme = theme.colorScheme;
     return Material(
-      color: Colors.white,
+      color: scheme.surface,
       borderRadius: BorderRadius.circular(18),
       clipBehavior: Clip.antiAlias,
       child: InkWell(
@@ -92,22 +92,23 @@ class ThreadCard extends StatelessWidget {
                 ),
                 child: Text(item.boardName, style: TextStyle(fontSize: 10.5, color: scheme.primary, fontWeight: FontWeight.w600)),
               ),
-            _meta(item.author, Icons.person_outline),
-            if (item.time.isNotEmpty) _meta(item.time, Icons.schedule_outlined),
-            _meta(item.replyCount.toString(), Icons.chat_bubble_outline_rounded),
+            _meta(context, item.author, Icons.person_outline),
+            if (item.time.isNotEmpty) _meta(context, item.time, Icons.schedule_outlined),
+            _meta(context, item.replyCount.toString(), Icons.chat_bubble_outline_rounded),
           ],
         ),
       ],
     );
   }
 
-  Widget _meta(String text, IconData icon) {
+  Widget _meta(BuildContext context, String text, IconData icon) {
+    final hint = Theme.of(context).colorScheme.onSurfaceVariant;
     return Row(
       mainAxisSize: MainAxisSize.min,
       children: [
-        Icon(icon, size: 13, color: Colors.grey.shade500),
+        Icon(icon, size: 13, color: hint),
         const SizedBox(width: 3),
-        Text(text, style: TextStyle(fontSize: 11, color: Colors.grey.shade600)),
+        Text(text, style: TextStyle(fontSize: 11, color: hint)),
       ],
     );
   }

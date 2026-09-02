@@ -194,6 +194,7 @@ class _InlineContent extends StatelessWidget {
   Widget build(BuildContext context) {
     final children = <Widget>[];
     final spans = <InlineSpan>[];
+    final scheme = Theme.of(context).colorScheme;
 
     void flushText() {
       if (spans.isEmpty) return;
@@ -241,6 +242,7 @@ class _InlineContent extends StatelessWidget {
         DefaultTextStyle.of(context)
             .style
             .copyWith(fontSize: 16, height: 1.62),
+        scheme,
       );
     }
     flushText();
@@ -251,7 +253,8 @@ class _InlineContent extends StatelessWidget {
     );
   }
 
-  void _appendSpan(List<InlineSpan> spans, dom.Node node, TextStyle style) {
+  void _appendSpan(
+      List<InlineSpan> spans, dom.Node node, TextStyle style, ColorScheme scheme) {
     if (node is dom.Text) {
       final text = _nodeText(node);
       if (text.isNotEmpty) spans.add(TextSpan(text: text, style: style));
@@ -276,7 +279,7 @@ class _InlineContent extends StatelessWidget {
     if (tag == 'code') {
       next = style.copyWith(
         fontFamily: 'monospace',
-        backgroundColor: const Color(0xfff0f2f6),
+        backgroundColor: scheme.surfaceContainerHighest,
       );
     }
     if (tag == 'a') {
@@ -287,7 +290,7 @@ class _InlineContent extends StatelessWidget {
         TextSpan(
           text: e.text,
           style: style.copyWith(
-            color: const Color(0xff4d63d8),
+            color: scheme.primary,
             decoration: TextDecoration.underline,
           ),
           recognizer: recognizer,

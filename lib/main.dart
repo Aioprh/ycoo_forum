@@ -46,6 +46,23 @@ class YcoForumApp extends StatelessWidget {
           brightness: Brightness.light,
         ),
       ),
+      darkTheme: ThemeData(
+        useMaterial3: true,
+        fontFamilyFallback: const <String>[
+          'Noto Sans CJK SC',
+          'Noto Sans CJK TC',
+          'Noto Sans CJK JP',
+          'Noto Sans Symbols 2',
+          'Noto Color Emoji',
+          'sans-serif',
+        ],
+        colorScheme: ColorScheme.fromSeed(
+          seedColor: const Color(0xFF4E6EF2),
+          brightness: Brightness.dark,
+        ),
+      ),
+      // 跟随手机系统亮暗模式自动切换夜间/日间主题
+      themeMode: ThemeMode.system,
       home: const RootShell(),
     );
   }

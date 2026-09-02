@@ -92,9 +92,10 @@ class NativeCommentList extends StatelessWidget {
   Widget build(BuildContext context) {
     final comments = _parse();
     if (comments.isEmpty) {
-      return const Padding(
-        padding: EdgeInsets.all(24),
-        child: Center(child: Text('暂无评论', style: TextStyle(color: Colors.grey))),
+      final hint = Theme.of(context).colorScheme.onSurfaceVariant;
+      return Padding(
+        padding: const EdgeInsets.all(24),
+        child: Center(child: Text('暂无评论', style: TextStyle(color: hint))),
       );
     }
     final root = parser.parseFragment(html);

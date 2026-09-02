@@ -96,7 +96,13 @@ class _WebViewPageState extends State<WebViewPage> {
       }
       final controller = WebViewController()
         ..setJavaScriptMode(JavaScriptMode.unrestricted)
-        ..setBackgroundColor(const Color(0xFFFFFFFF))
+        // 跟随系统亮暗模式设置 WebView 初始背景色，避免暗色模式下白闪。
+        ..setBackgroundColor(
+          WidgetsBinding.instance.platformDispatcher.platformBrightness ==
+                  Brightness.dark
+              ? const Color(0xFF121212)
+              : const Color(0xFFFFFFFF),
+        )
         ..setNavigationDelegate(NavigationDelegate(
           onPageStarted: (url) {
             if (mounted) setState(() { _loading = true; _error = false; });

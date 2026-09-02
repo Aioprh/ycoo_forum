@@ -163,7 +163,7 @@ class _BoardPageState extends State<BoardPage> {
                     b.today,
                     maxLines: 1,
                     overflow: TextOverflow.ellipsis,
-                    style: const TextStyle(fontSize: 10.5, color: Colors.grey),
+                    style: TextStyle(fontSize: 10.5, color: theme.colorScheme.onSurfaceVariant),
                   ),
               ],
             ),

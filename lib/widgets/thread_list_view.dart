@@ -115,7 +115,7 @@ class _ThreadListViewState extends State<ThreadListView> {
         itemCount: _items.length + 1,
         separatorBuilder: (_, _) => const SizedBox(height: 10),
         itemBuilder: (context, i) {
-          if (i >= _items.length) return _footer();
+          if (i >= _items.length) return _footer(context);
           final item = _items[i];
           return ThreadCard(item: item, onTap: () => _openDetail(item));
         },
@@ -123,7 +123,8 @@ class _ThreadListViewState extends State<ThreadListView> {
     );
   }
 
-  Widget _footer() {
+  Widget _footer(BuildContext context) {
+    final hint = Theme.of(context).colorScheme.onSurfaceVariant;
     if (_loading) {
       return const Padding(
         padding: EdgeInsets.all(14),
@@ -137,15 +138,15 @@ class _ThreadListViewState extends State<ThreadListView> {
       );
     }
     if (_error != null) {
-      return const Padding(
-        padding: EdgeInsets.all(14),
-        child: Center(child: Text('加载失败，点击下拉重试', style: TextStyle(color: Colors.grey))),
+      return Padding(
+        padding: const EdgeInsets.all(14),
+        child: Center(child: Text('加载失败，点击下拉重试', style: TextStyle(color: hint))),
       );
     }
     if (_items.isEmpty) {
-      return const Padding(
-        padding: EdgeInsets.all(28),
-        child: Center(child: Text('暂无帖子', style: TextStyle(color: Colors.grey))),
+      return Padding(
+        padding: const EdgeInsets.all(28),
+        child: Center(child: Text('暂无帖子', style: TextStyle(color: hint))),
       );
     }
     return const SizedBox(height: 8);
@@ -159,17 +160,18 @@ class _ErrorView extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    final hint = Theme.of(context).colorScheme.onSurfaceVariant;
     return Center(
       child: Column(
         mainAxisSize: MainAxisSize.min,
         children: [
-          const Icon(Icons.cloud_off, size: 42, color: Colors.grey),
+          Icon(Icons.cloud_off, size: 42, color: hint),
           const SizedBox(height: 10),
           const Text('数据加载失败', style: TextStyle(fontSize: 15)),
           const SizedBox(height: 4),
           Padding(
             padding: const EdgeInsets.symmetric(horizontal: 32),
-            child: Text(error, textAlign: TextAlign.center, maxLines: 3, overflow: TextOverflow.ellipsis, style: const TextStyle(fontSize: 12, color: Colors.grey)),
+            child: Text(error, textAlign: TextAlign.center, maxLines: 3, overflow: TextOverflow.ellipsis, style: TextStyle(fontSize: 12, color: hint)),
           ),
           const SizedBox(height: 12),
           FilledButton(onPressed: onRetry, child: const Text('重试')),
