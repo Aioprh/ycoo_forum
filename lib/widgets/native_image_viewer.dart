@@ -4,8 +4,12 @@ import '../services/attachment_download_service.dart';
 import '../services/auth_service.dart';
 import '../services/site_config.dart';
 
-/// 打开全屏图片预览页：支持双指缩放、点击右上角下载保存。
-/// ycoo=all 是正文注入的“全部附件”内部入口，不应当作为图片预览。
+/// 打开全屏图片预览页。
+///
+/// 这里虽然由帖子正文的链接统一入口调用，但必须严格区分：
+/// - 图片：进入图片预览
+/// - 非图片附件：进入附件下载卡片
+/// - ycoo=all：进入本帖全部附件页面
 Future<void> openImageViewer(
   BuildContext context, {
   required String url,
@@ -21,10 +25,73 @@ class NativeImageViewer extends StatelessWidget {
   final String url;
   const NativeImageViewer({super.key, required this.url});
 
+  static const _imageExtensions = <String>{
+    'jpg',
+    'jpeg',
+    'png',
+    'gif',
+    'webp',
+    'bmp',
+    'svg',
+    'heic',
+    'heif',
+    'avif',
+  };
+
+  Uri? get _uri => Uri.tryParse(url);
+
   bool get _isAllAttachmentRequest {
-    final uri = Uri.tryParse(url);
+    final uri = _uri;
     return uri?.queryParameters['ycoo']?.toLowerCase() == 'all' &&
         int.tryParse(uri?.queryParameters['tid'] ?? '') != null;
+  }
+
+  bool get _isAttachmentRequest {
+    if (_isAllAttachmentRequest) return false;
+    return AttachmentDownloadService.instance.isAttachmentUrl(url);
+  }
+
+  /// Discuz 的附件链接通常会通过 `_f=.mp4`、`_f=.jpg` 等参数携带真实
+  /// 文件类型。只有明确知道是图片时才允许进入图片预览，不能因为
+  /// `attachment.php` / `aid=` 就把 mp4、zip、apk 等当成图片。
+  String? get _attachmentExtension {
+    final uri = _uri;
+    if (uri == null) return null;
+
+    final candidates = <String?>[
+      uri.queryParameters['_f'],
+      uri.queryParameters['filename'],
+      uri.queryParameters['file'],
+      uri.queryParameters['name'],
+      uri.path,
+    ];
+
+    for (final raw in candidates) {
+      if (raw == null || raw.trim().isEmpty) continue;
+      var value = raw.trim().toLowerCase();
+      if (value.startsWith('.')) value = value.substring(1);
+      final dot = value.lastIndexOf('.');
+      if (dot >= 0 && dot < value.length - 1) {
+        final ext = value.substring(dot + 1).split('?').first.split('#').first;
+        if (ext.isNotEmpty) return ext;
+      }
+    }
+    return null;
+  }
+
+  bool get _isImageAttachment {
+    if (!_isAttachmentRequest) return false;
+    final ext = _attachmentExtension;
+    return ext != null && _imageExtensions.contains(ext);
+  }
+
+  bool get _shouldShowAttachmentPage =>
+      _isAttachmentRequest && !_isImageAttachment;
+
+  String get _attachmentLabel {
+    final ext = _attachmentExtension;
+    if (ext == null || ext.isEmpty) return '文件附件';
+    return '${ext.toUpperCase()} 附件';
   }
 
   Future<void> _download(BuildContext context) async {
@@ -40,7 +107,9 @@ class NativeImageViewer extends StatelessWidget {
           content: Text(
             _isAllAttachmentRequest
                 ? (ok ? '已开始下载本帖全部附件' : '未找到可下载的附件')
-                : (ok ? '已开始下载图片' : '当前平台暂不支持原生图片保存'),
+                : _shouldShowAttachmentPage
+                    ? (ok ? '已开始下载附件' : '当前平台暂不支持原生附件下载')
+                    : (ok ? '已开始下载图片' : '当前平台暂不支持原生图片保存'),
           ),
         ),
       );
@@ -54,6 +123,17 @@ class NativeImageViewer extends StatelessWidget {
     if (_isAllAttachmentRequest) {
       return _AllAttachmentsPage(
         url: url,
+        onDownload: () => _download(context),
+      );
+    }
+
+    // 非图片附件绝不能交给 Image.network，否则会出现“图片加载失败”。
+    // 即使上游帖子链接分类器误把 attachment.php 交到了这里，也在最后
+    // 一层再次兜底，保证附件仍然以附件的方式展示和下载。
+    if (_shouldShowAttachmentPage) {
+      return _AttachmentPage(
+        url: url,
+        label: _attachmentLabel,
         onDownload: () => _download(context),
       );
     }
@@ -91,7 +171,7 @@ class NativeImageViewer extends StatelessWidget {
               filterQuality: FilterQuality.high,
               loadingBuilder: (context, child, progress) => progress == null
                   ? child
-                  : Center(
+                  : const Center(
                       child: CircularProgressIndicator(
                         strokeWidth: 2.5,
                         color: Colors.white,
@@ -120,6 +200,92 @@ class NativeImageViewer extends StatelessWidget {
             ),
             icon: const Icon(Icons.download_rounded),
             label: const Text('点击下载图片', style: TextStyle(fontSize: 15)),
+          ),
+        ),
+      ),
+    );
+  }
+}
+
+class _AttachmentPage extends StatelessWidget {
+  final String url;
+  final String label;
+  final VoidCallback onDownload;
+
+  const _AttachmentPage({
+    required this.url,
+    required this.label,
+    required this.onDownload,
+  });
+
+  @override
+  Widget build(BuildContext context) {
+    final c = Theme.of(context).colorScheme;
+
+    return Scaffold(
+      appBar: AppBar(
+        title: const Text('附件'),
+        actions: [
+          IconButton(
+            onPressed: onDownload,
+            icon: const Icon(Icons.download_rounded),
+            tooltip: '下载附件',
+          ),
+        ],
+      ),
+      body: Center(
+        child: Padding(
+          padding: const EdgeInsets.all(28),
+          child: Container(
+            width: double.infinity,
+            padding: const EdgeInsets.fromLTRB(22, 28, 22, 24),
+            decoration: BoxDecoration(
+              color: c.surfaceContainerHighest.withValues(alpha: .48),
+              borderRadius: BorderRadius.circular(24),
+              border: Border.all(color: c.outlineVariant.withValues(alpha: .55)),
+            ),
+            child: Column(
+              mainAxisSize: MainAxisSize.min,
+              children: [
+                Container(
+                  width: 68,
+                  height: 68,
+                  decoration: BoxDecoration(
+                    color: c.secondaryContainer,
+                    shape: BoxShape.circle,
+                  ),
+                  child: Icon(
+                    Icons.insert_drive_file_rounded,
+                    size: 34,
+                    color: c.secondary,
+                  ),
+                ),
+                const SizedBox(height: 18),
+                const Text(
+                  '帖子附件',
+                  style: TextStyle(fontSize: 19, fontWeight: FontWeight.w800),
+                ),
+                const SizedBox(height: 7),
+                Text(
+                  label,
+                  style: TextStyle(color: c.onSurfaceVariant, height: 1.45),
+                ),
+                const SizedBox(height: 22),
+                SizedBox(
+                  width: double.infinity,
+                  child: FilledButton.icon(
+                    onPressed: onDownload,
+                    icon: const Icon(Icons.download_rounded),
+                    label: const Text('点击下载附件'),
+                  ),
+                ),
+                const SizedBox(height: 9),
+                TextButton(
+                  onPressed: () => Navigator.of(context).pop(),
+                  child: const Text('返回帖子'),
+                ),
+              ],
+            ),
           ),
         ),
       ),
