@@ -223,7 +223,7 @@ class CommentReplyResolver {
       if (raw.isEmpty) return null;
       final patterns = <RegExp>[
         RegExp(r'(?:[?&]|%3F|%26|&amp;)repquote(?:=|%3D)(\d+)', caseSensitive: false),
-        RegExp(r"\brepquote\s*[:=]\s*[\"']?(\d+)", caseSensitive: false),
+        RegExp(r'\brepquote\s*[:=]\s*[" ]?(\d+)', caseSensitive: false),
         RegExp(r'\brepquote[^0-9]{0,20}(\d+)', caseSensitive: false),
       ];
       for (final pattern in patterns) {
@@ -248,9 +248,14 @@ class CommentReplyResolver {
     ];
 
     bool isReplyNode(dom.Element element) {
-      for (final selector in replySelectors) {
-        if (element.matches(selector)) return true;
-      }
+      final className = element.attributes['class'] ?? '';
+      final id = element.id;
+      if (element.localName == 'li') return true;
+      if (className.toLowerCase().contains('replyfloor')) return true;
+      if (className.toLowerCase().contains('reply_floor')) return true;
+      if (className.toLowerCase().contains('replyfloor')) return true;
+      if (id.toLowerCase().contains('replyfloor')) return true;
+      if (id.toLowerCase().contains('reply_floor')) return true;
       return false;
     }
 
@@ -314,8 +319,9 @@ class CommentReplyResolver {
       }
     }
     for (final node in replyNodes) {
-      if (readPid(node) != null) {
-        node.attributes['data-pid'] = '${readPid(node)}';
+      final nodePid = readPid(node);
+      if (nodePid != null) {
+        node.attributes['data-pid'] = '$nodePid';
         continue;
       }
       for (final child in node.querySelectorAll('[href], [data-url], [onclick], [repquote]')) {
