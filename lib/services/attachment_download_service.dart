@@ -6,10 +6,6 @@ import 'site_config.dart';
 import 'net_client.dart';
 
 /// 原生附件下载桥接。
-///
-/// 帖子附件并不一定直接出现在正文节点里：Discuz/Comiis 可能把附件渲染成
-/// attachment.php、forum.php?mod=attachment、onclick/data-url，甚至保留
-/// [attach] 短标签。因此“下载全部附件”不能只扫描 a[href]。
 class AttachmentDownloadService {
   AttachmentDownloadService._();
   static final instance = AttachmentDownloadService._();
@@ -137,13 +133,18 @@ class AttachmentDownloadService {
       }
     }
 
-    // 某些附件正文最终只留下 URL 字符串或 [attach]URL[/attach]。
-    final urlPattern = RegExp(
-      r"(?:\[attach(?:ment)?\]\s*)?((?:https?:)?//[^\s<>\[\]\"']+|(?:forum\.php|attachment\.php)\?[^\s<>\[\]\"']*(?:aid=|mod=attachment)[^\s<>\[\]\"']*)(?:\s*\[/attach(?:ment)?\])?",
+    // 兼容 [attach]URL[/attach]、绝对 URL 和 Discuz 附件 URL。
+    final absolutePattern = RegExp(r'(?:https?:)?//[^\s<>]+', caseSensitive: false);
+    for (final match in absolutePattern.allMatches(source)) {
+      _addCandidate(result, match.group(0) ?? '');
+    }
+
+    final attachmentPattern = RegExp(
+      r'(?:forum\.php|attachment\.php)\?[^\s<>]+',
       caseSensitive: false,
     );
-    for (final match in urlPattern.allMatches(source)) {
-      _addCandidate(result, match.group(1) ?? '');
+    for (final match in attachmentPattern.allMatches(source)) {
+      _addCandidate(result, match.group(0) ?? '');
     }
 
     return result;
@@ -153,28 +154,44 @@ class AttachmentDownloadService {
     var value = raw.trim();
     if (value.isEmpty) return;
 
-    // onclick 常见形式：download('forum.php?mod=attachment&aid=...')。
-    final urlPattern = RegExp(
-      r'''((?:https?:)?//[^\s<>"']+|(?:forum\.php|attachment\.php)\?[^\s<>"']+)''',
+    // onclick 常见形式会把 URL 放在单/双引号中；先从属性值中抽取 URL。
+    final absolutePattern = RegExp(r'(?:https?:)?//[^\s<>]+', caseSensitive: false);
+    final attachmentPattern = RegExp(
+      r'(?:forum\.php|attachment\.php)\?[^\s<>]+',
       caseSensitive: false,
     );
-    final matches = urlPattern.allMatches(value);
+    final matches = <String>{};
+    for (final match in absolutePattern.allMatches(value)) {
+      matches.add(match.group(0) ?? '');
+    }
+    for (final match in attachmentPattern.allMatches(value)) {
+      matches.add(match.group(0) ?? '');
+    }
+
     if (matches.isEmpty) {
       _addNormalized(out, value);
       return;
     }
-    for (final m in matches) {
-      _addNormalized(out, m.group(1) ?? '');
+    for (final match in matches) {
+      _addNormalized(out, match);
     }
   }
 
   void _addNormalized(Set<String> out, String raw) {
     var value = raw.trim();
     if (value.isEmpty) return;
-    value = value.replaceAll('&amp;', '&').replaceAll('\\/', '/');
+
+    value = value
+        .replaceAll('&amp;', '&')
+        .replaceAll('\\/', '/')
+        .replaceFirst(RegExp(r'^javascript:\s*', caseSensitive: false), '');
+
+    // URL 被 onclick 包裹时，去掉尾部引号、括号和分号。
+    value = value.replaceAll(RegExp(r'[\"\'\)\];,]+$'), '');
     try {
       value = Uri.decodeFull(value);
     } catch (_) {}
+
     if (value.startsWith('//')) value = 'https:$value';
     if (!(value.startsWith('http://') || value.startsWith('https://'))) {
       if (value.startsWith('/')) {
@@ -183,6 +200,7 @@ class AttachmentDownloadService {
         value = SiteConfig.resolve(value);
       }
     }
+
     final uri = Uri.tryParse(value);
     if (uri == null) return;
     final path = uri.path.toLowerCase();
