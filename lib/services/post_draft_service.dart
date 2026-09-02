@@ -2,7 +2,7 @@ import 'dart:convert';
 
 import 'package:shared_preferences/shared_preferences.dart';
 
-/// 本地发帖草稿：只保存文本和发帖选项，不保存附件文件本身。
+/// 本地发帖草稿：保存文本、发帖选项和定时发布时间，不保存附件文件本身。
 class PostDraft {
   final String title;
   final String body;
@@ -12,6 +12,10 @@ class PostDraft {
   final int readperm;
   final bool usesig;
   final bool allownoticeauthor;
+  final bool hiddenreplies;
+  final bool descviewdefault;
+  final bool addfeed;
+  final DateTime? scheduledAt;
 
   const PostDraft({
     required this.title,
@@ -22,6 +26,10 @@ class PostDraft {
     required this.readperm,
     required this.usesig,
     required this.allownoticeauthor,
+    this.hiddenreplies = false,
+    this.descviewdefault = false,
+    this.addfeed = true,
+    this.scheduledAt,
   });
 
   Map<String, dynamic> toJson() => {
@@ -33,6 +41,10 @@ class PostDraft {
         'readperm': readperm,
         'usesig': usesig,
         'allownoticeauthor': allownoticeauthor,
+        'hiddenreplies': hiddenreplies,
+        'descviewdefault': descviewdefault,
+        'addfeed': addfeed,
+        'scheduledAt': scheduledAt?.toIso8601String(),
       };
 
   factory PostDraft.fromJson(Map<String, dynamic> json) => PostDraft(
@@ -44,6 +56,10 @@ class PostDraft {
         readperm: int.tryParse('${json['readperm'] ?? 0}') ?? 0,
         usesig: json['usesig'] != false,
         allownoticeauthor: json['allownoticeauthor'] != false,
+        hiddenreplies: json['hiddenreplies'] == true,
+        descviewdefault: json['descviewdefault'] == true,
+        addfeed: json['addfeed'] != false,
+        scheduledAt: DateTime.tryParse('${json['scheduledAt'] ?? ''}'),
       );
 }
 
