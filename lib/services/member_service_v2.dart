@@ -1,3 +1,4 @@
+import 'package:html/dom.dart' as dom;
 import 'package:html/parser.dart' as parser;
 
 import '../models/thread_item.dart';
@@ -91,9 +92,65 @@ class MemberServiceV2 {
       final title = _cleanNodeText(a);
       if (tid <= 0 || title.length < 2 || !seen.add(tid) || _looksLikeNavigation(title)) continue;
       final parent = _cleanNodeText(a.parent);
-      result.add(ThreadItem(tid: tid, title: title, author: '', avatar: '', fid: 0, boardName: '', level: '', time: '', subtitle: parent == title ? '' : parent.replaceFirst(title, '').trim(), cover: '', likeCount: 0, replyCount: 0, viewCount: 0));
+      // Comiis 个人主页主题列表: 回复/浏览数藏在 li.forumlist_li 容器内的
+      // span.comiis_tm 数字集合末尾两个；板名在祖先的 forum-N 链接里。
+      final counts = _findThreadCounts(a);
+      var boardName = '';
+      dom.Element? cur = a.parent;
+      while (cur != null) {
+        final forumLink = cur.querySelector('a[href*="forum-"]');
+        if (forumLink != null && _cleanNodeText(forumLink).isNotEmpty) {
+          boardName = _cleanNodeText(forumLink);
+          break;
+        }
+        cur = cur.parent;
+      }
+      result.add(ThreadItem(
+        tid: tid, title: title, author: '', avatar: '',
+        fid: int.tryParse(RegExp(r'(?:forum-|[?&]fid=)(\d+)').firstMatch(a.parent?.outerHtml ?? '')?.group(1) ?? '') ?? 0,
+        boardName: boardName, level: '', time: '',
+        subtitle: parent == title ? '' : parent.replaceFirst(title, '').trim(),
+        cover: '', likeCount: counts.$1, replyCount: counts.$2, viewCount: counts.$3,
+      ));
     }
     return result;
+  }
+
+  /// 在 a 的祖先容器里找 comiis_tm 数值 spans，返回 (点赞, 回复, 浏览)。
+  /// 找不到时 fallback: 用正则扫祖先文本里的"回复 N / 浏览 N"。
+  (int, int, int) _findThreadCounts(dom.Element a) {
+    dom.Element? cur = a;
+    while (cur != null) {
+      final spans = cur.querySelectorAll('span[class*="comiis_tm"]');
+      final nums = <int>[];
+      for (final s in spans) {
+        final v = int.tryParse(_cleanNodeText(s));
+        if (v != null) nums.add(v);
+      }
+      if (nums.length >= 2) {
+        final views = nums.last;
+        final replies = nums[nums.length - 2];
+        final likes = nums.length >= 3 ? nums[nums.length - 3] : 0;
+        return (likes, replies, views);
+      }
+      cur = cur.parent;
+    }
+    var text = '';
+    cur = a.parent;
+    while (cur != null) {
+      final t = _cleanNodeText(cur);
+      if (t.length > text.length) text = t;
+      cur = cur.parent;
+    }
+    if (text.isEmpty) return (0, 0, 0);
+    int? grab(List<String> keys) {
+      for (final k in keys) {
+        final mm = RegExp('$k\\s*[:：]?\\s*(\\d+)').firstMatch(text);
+        if (mm != null) return int.tryParse(mm.group(1)!);
+      }
+      return null;
+    }
+    return (0, grab(const ['回复', '评论', '回帖']) ?? 0, grab(const ['浏览', '查看', '人气']) ?? 0);
   }
 
   Future<List<NativeNotice>> fetchNotices({String view = 'all'}) async {

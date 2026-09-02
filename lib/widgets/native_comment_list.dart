@@ -225,7 +225,8 @@ class _CommentFloor {
 class _CommentCard extends StatefulWidget {
   final _CommentFloor comment;
   final int index, tid, fid;
-  final VoidCallback onReply, onProfile;
+  final Future<void> Function() onReply;
+  final VoidCallback onProfile;
   const _CommentCard({
     required this.comment, required this.index, required this.tid, required this.fid,
     required this.onReply, required this.onProfile,
@@ -503,6 +504,8 @@ class _CommentCardState extends State<_CommentCard> {
     );
     if (!mounted) return;
     ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text(error ?? '已回复 $author')));
+    // 回复成功立即重拉楼中楼，这样刚发出的回复马上可见，无需手动刷新。
+    if (error == null) await _loadReplies(force: true);
   }
 
   @override
@@ -565,7 +568,11 @@ class _CommentCardState extends State<_CommentCard> {
               child: Column(children: [for (final reply in replies) _FloorReplyTile(reply: reply, onReply: () => _replyNested(reply))])),
         ],
         Align(alignment: Alignment.centerRight, child: TextButton.icon(
-          onPressed: widget.onReply,
+          onPressed: () async {
+            await widget.onReply();
+            // 回复本楼成功也会产生新的楼中楼，重拉一次确保即时可见。
+            if (mounted) await _loadReplies(force: true);
+          },
           icon: const Icon(Icons.reply_rounded, size: 17),
           label: const Text('回复本楼'),
         )),
