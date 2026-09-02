@@ -338,29 +338,45 @@ class _CommentCardState extends State<_CommentCard> {
   }
 
   static int _extractReplyPid(dom.Element node) {
+    // Discuz replyfloor 的“回复”按钮通常把目标楼层放在 repquote 中。
+    // 必须优先读取 repquote，否则同一个回复节点里同时存在父楼 PID 时，
+    // 会错误地把父楼 PID 当成当前楼中楼 PID。
+    final elements = <dom.Element>[node, ...node.querySelectorAll('*')];
+    for (final element in elements) {
+      for (final value in element.attributes.values) {
+        final match = RegExp(
+          r'(?:[?&]|%3F|%26|&amp;)repquote(?:=|%3D)(\d+)',
+          caseSensitive: false,
+        ).firstMatch(value);
+        final pid = int.tryParse(match?.group(1) ?? '');
+        if (pid != null && pid > 0) return pid;
+      }
+    }
+
     const keys = [
       'data-pid', 'data-post-id', 'data-reply-id', 'data-reppid',
-      'pid', 'reppid', 'replypid', 'replyid', 'data-id',
+      'pid', 'reppid', 'replypid', 'replyid', 'repquote', 'data-id',
     ];
     for (final key in keys) {
       final pid = int.tryParse(node.attributes[key] ?? '');
       if (pid != null && pid > 0) return pid;
     }
-    final rawValues = <String>[
-      node.id, node.attributes['name'] ?? '', node.attributes['href'] ?? '',
-      ...node.querySelectorAll('[id], [name], [href], [data-pid], [data-post-id], [data-reppid], [reppid], [replypid], [replyid]')
-          .map((e) => '${e.id} ${e.attributes['name'] ?? ''} ${e.attributes['href'] ?? ''} ${e.attributes['data-pid'] ?? ''} ${e.attributes['data-post-id'] ?? ''} ${e.attributes['data-reppid'] ?? ''} ${e.attributes['reppid'] ?? ''} ${e.attributes['replypid'] ?? ''} ${e.attributes['replyid'] ?? ''}'),
-    ];
-    for (final raw in rawValues) {
-      final direct = RegExp(
-        r'(?:[?&]|%3F|%26)(?:reppid|replypid|replyid|pid)(?:=|%3D)(\d+)',
-        caseSensitive: false,
-      ).firstMatch(raw);
-      final directPid = int.tryParse(direct?.group(1) ?? '');
-      if (directPid != null && directPid > 0) return directPid;
-      final named = RegExp(r'(?:reply(?:floor)?|post|pid)[_-]?(\d+)', caseSensitive: false).firstMatch(raw);
-      final namedPid = int.tryParse(named?.group(1) ?? '');
-      if (namedPid != null && namedPid > 0) return namedPid;
+
+    for (final element in elements) {
+      for (final value in element.attributes.values) {
+        final direct = RegExp(
+          r'(?:[?&]|%3F|%26|&amp;)(?:reppid|replypid|replyid|pid)(?:=|%3D)(\d+)',
+          caseSensitive: false,
+        ).firstMatch(value);
+        final directPid = int.tryParse(direct?.group(1) ?? '');
+        if (directPid != null && directPid > 0) return directPid;
+        final named = RegExp(
+          r'(?:reply(?:floor)?|post|pid)[_-]?(\d+)',
+          caseSensitive: false,
+        ).firstMatch(value);
+        final namedPid = int.tryParse(named?.group(1) ?? '');
+        if (namedPid != null && namedPid > 0) return namedPid;
+      }
     }
     return 0;
   }
