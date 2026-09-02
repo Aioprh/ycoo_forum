@@ -276,17 +276,15 @@ class _CommentCardState extends State<_CommentCard> {
         );
       }
       if (_pid > 0) {
-        _replyHtml = await CommentReplyResolver.instance.fetchReplies(
-          tid: widget.tid,
-          pid: _pid,
-        );
+        _replyHtml = await CommentReplyResolver.instance.fetchReplies(tid: widget.tid, pid: _pid);
       }
       if (!mounted) return;
+      final parsed = _parseReplies();
       setState(() {
         _loadingReplies = false;
-        _repliesExpanded = expandWhenDone && _parseReplies().isNotEmpty;
+        _repliesExpanded = expandWhenDone && parsed.isNotEmpty;
         if (_pid <= 0) _replyError = '未取得评论楼层';
-        else if (_replyHtml.trim().isEmpty) _replyError = '暂时没有取得楼中楼内容';
+        else if (parsed.isEmpty) _replyError = '暂时没有取得楼中楼内容';
       });
     } catch (e) {
       if (!mounted) return;
@@ -327,8 +325,7 @@ class _CommentCardState extends State<_CommentCard> {
       }
     }
     if (nodes.isEmpty) {
-      final roots = doc.querySelectorAll('.replyfloor_content, .replyfloor_box, .replyfloor');
-      for (final root in roots) {
+      for (final root in doc.querySelectorAll('.replyfloor_content, .replyfloor_box, .replyfloor')) {
         for (final child in root.children) {
           if (child.text.trim().isNotEmpty && !nodes.contains(child)) nodes.add(child);
         }
@@ -337,7 +334,7 @@ class _CommentCardState extends State<_CommentCard> {
     if (nodes.isEmpty) {
       final text = doc.text.replaceAll(RegExp(r'\s+'), ' ').trim();
       if (text.isNotEmpty && !text.contains('回复 举报')) {
-        return [_FloorReply(author: '', time: '', bodyHtml: doc.body?.innerHtml ?? _replyHtml)];
+        return [_FloorReply(author: '', time: '', bodyHtml: _replyHtml)];
       }
       return const [];
     }
@@ -352,8 +349,7 @@ class _CommentCardState extends State<_CommentCard> {
       final bodyNode = node.querySelector(
         '.replyfloor_msg, .replyfloor_message, .replyfloor_body, .replyfloor_text, .replyfloor_content, .reply_content',
       );
-      final body = bodyNode?.innerHtml ?? node.innerHtml;
-      return _FloorReply(author: author, time: time, bodyHtml: body);
+      return _FloorReply(author: author, time: time, bodyHtml: bodyNode?.innerHtml ?? node.innerHtml);
     }).toList();
   }
 
@@ -430,20 +426,13 @@ class _CommentCardState extends State<_CommentCard> {
               width: double.infinity,
               margin: const EdgeInsets.only(bottom: 4),
               padding: const EdgeInsets.fromLTRB(10, 8, 10, 4),
-              decoration: BoxDecoration(
-                color: s.primaryContainer.withValues(alpha: .22),
-                borderRadius: BorderRadius.circular(14),
-              ),
+              decoration: BoxDecoration(color: s.primaryContainer.withValues(alpha: .22), borderRadius: BorderRadius.circular(14)),
               child: Column(children: replies.map((reply) => _FloorReplyTile(reply: reply)).toList()),
             ),
         ],
         Align(
           alignment: Alignment.centerRight,
-          child: TextButton.icon(
-            onPressed: widget.onReply,
-            icon: const Icon(Icons.reply_rounded, size: 17),
-            label: const Text('回复本楼'),
-          ),
+          child: TextButton.icon(onPressed: widget.onReply, icon: const Icon(Icons.reply_rounded, size: 17), label: const Text('回复本楼')),
         ),
       ]),
     );
@@ -451,9 +440,7 @@ class _CommentCardState extends State<_CommentCard> {
 }
 
 class _FloorReply {
-  final String author;
-  final String time;
-  final String bodyHtml;
+  final String author, time, bodyHtml;
   const _FloorReply({required this.author, required this.time, required this.bodyHtml});
 }
 
