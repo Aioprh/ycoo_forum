@@ -2,66 +2,131 @@ name: Fix real attachment parsing
 on:
   push:
     branches: [main]
+
+permissions:
+  contents: write
+
 jobs:
   fix:
     runs-on: ubuntu-latest
-    permissions:
-      contents: write
     steps:
       - uses: actions/checkout@v4
+        with:
+          fetch-depth: 1
       - name: Patch attachment parsing
+        shell: python
         run: |
-          python3 - <<'PY'
           from pathlib import Path
 
           p = Path('lib/services/attachment_download_service.dart')
-          s = p.read_text()
+          s = p.read_text(encoding='utf-8')
 
-          s = s.replace(
-              "  Set<String> _extractAttachmentUrls(String html) =>\n      _extractAttachmentInfos(html).map((e) => e.url).toSet();\n\n  List<ForumAttachmentInfo> _extractAttachmentInfos(String html) {",
-              "  List<ForumAttachmentInfo> extractAttachmentInfos(String html) =>\n      _extractAttachmentInfos(html);\n\n  Set<String> _extractAttachmentUrls(String html) =>\n      _extractAttachmentInfos(html).map((e) => e.url).toSet();\n\n  List<ForumAttachmentInfo> _extractAttachmentInfos(String html) {"
-          )
+          public_marker = "  Set<String> _extractAttachmentUrls(String html) =>"
+          if public_marker not in s:
+              s = s.replace(
+                  public_marker,
+                  "  List<ForumAttachmentInfo> extractAttachmentInfos(String html) => _extractAttachmentInfos(html);\n\n" + public_marker,
+                  1,
+              )
 
-          old = """    // 关键修复：只读取真正的 <a href=\\\"...attachment...\\\"> 附件链接。\n    // 绝不能扫描页面所有 http(s) URL，否则正文图片、头像、脚本等也会被误当成附件下载。\n    for (final anchor in doc.querySelectorAll('a[href]')) {\n      final href = (anchor.attributes['href'] ?? '').trim();\n      if (href.isEmpty) continue;\n      final url = _normalizeUrl(href);\n      final uri = Uri.tryParse(url);\n      if (uri == null || !_isRealFileAttachment(uri)) continue;\n\n      final anchorText = _cleanFileName(anchor.text);\n      final name = _bestFileName(anchorText, uri);\n      if (_looksLikeImageFile(name, uri)) continue;\n\n      // Discuz 页面中同一个附件可能出现下载链接和附件卡片两个入口，按 aid 去重。\n      final key = uri.queryParameters['aid']?.trim() ?? url;\n      if (!seen.add(key)) continue;\n\n      final size = _findAttachmentSize(anchor);\n      result.add(ForumAttachmentInfo(url: url, name: name, size: size));\n    }\n    return result;"""
+          anchor = "    return result;\n  }\n\n  bool _isRealFileAttachment(Uri uri) {"
+          if anchor not in s:
+              raise SystemExit('attachment parser return anchor not found')
 
-          new = """    // 1) 标准 Discuz/ycoo 页面里的真实附件 <a href=...>。\n    for (final anchor in doc.querySelectorAll('a[href]')) {\n      final href = (anchor.attributes['href'] ?? '').trim();\n      if (href.isEmpty) continue;\n      final url = _normalizeUrl(href);\n      final uri = Uri.tryParse(url);\n      if (uri == null || !_isRealFileAttachment(uri)) continue;\n\n      final anchorText = _cleanFileName(anchor.text);\n      final name = _bestFileName(anchorText, uri);\n      if (_looksLikeImageFile(name, uri)) continue;\n      final key = uri.queryParameters['aid']?.trim() ?? url;\n      if (!seen.add(key)) continue;\n      final size = _findAttachmentSize(anchor);\n      result.add(ForumAttachmentInfo(url: url, name: name, size: size));\n    }\n\n    // 2) 某些 ycoo/Discuz 返回正文中的 [attach]URL[/attach]，不是 <a>。\n    final attachRe = RegExp(r'\\[attach(?:ment)?\\]\\s*(https?://[^\\s\\[\\]]+)\\s*\\[/attach(?:ment)?\\]', caseSensitive: false);\n    for (final m in attachRe.allMatches(source)) {\n      final url = _normalizeUrl(m.group(1)!);\n      final uri = Uri.tryParse(url);\n      if (uri == null || !_isRealFileAttachment(uri)) continue;\n      final name = _bestFileName('', uri);\n      if (_looksLikeImageFile(name, uri)) continue;\n      final key = uri.queryParameters['aid']?.trim() ?? url;\n      if (!seen.add(key)) continue;\n      result.add(ForumAttachmentInfo(url: url, name: name));\n    }\n\n    // 3) 页面可能把 [attach] 转成 HTML 实体或 JSON 字符串，统一再扫一次 attachment URL。\n    final urlRe = RegExp(r'(?:https?:)?//[^\\s\\\"\\\'<>]+(?:attachment\\.php|mod=attachment)[^\\s\\\"\\'<>]*', caseSensitive: false);\n    for (final m in urlRe.allMatches(source)) {\n      final raw = m.group(0)!;\n      final url = _normalizeUrl(raw);\n      final uri = Uri.tryParse(url);\n      if (uri == null || !_isRealFileAttachment(uri)) continue;\n      final name = _bestFileName('', uri);\n      if (_looksLikeImageFile(name, uri)) continue;\n      final key = uri.queryParameters['aid']?.trim() ?? url;\n      if (!seen.add(key)) continue;\n      result.add(ForumAttachmentInfo(url: url, name: name));\n    }\n    return result;"""
+          insertion = r'''    // ycoo/Discuz 可能保留 BBCode [attach]URL[/attach]，而不是渲染成 <a>。
+    final attachRe = RegExp(r'\[attach(?:ment)?\]\s*(https?://[^\s\[\]<>]+)\s*\[/attach(?:ment)?\]', caseSensitive: false);
+    for (final m in attachRe.allMatches(source)) {
+      final url = _normalizeUrl(m.group(1)!);
+      final uri = Uri.tryParse(url);
+      if (uri == null || !_isRealFileAttachment(uri)) continue;
+      final name = _bestFileName('', uri);
+      if (_looksLikeImageFile(name, uri)) continue;
+      final key = uri.queryParameters['aid']?.trim() ?? url;
+      if (!seen.add(key)) continue;
+      result.add(ForumAttachmentInfo(url: url, name: name));
+    }
 
-          if old not in s:
-              raise SystemExit('attachment parser target not found')
-          s = s.replace(old, new)
-          p.write_text(s)
+    // 有些页面把附件 URL 放在属性/脚本/JSON 中，没有可点击的 <a>。
+    final attachmentUrlRe = RegExp(r'https?://[^\s\"\'<>]+(?:attachment\.php|forum\.php\?[^\s\"\'<>]*mod=attachment)[^\s\"\'<>]*', caseSensitive: false);
+    for (final m in attachmentUrlRe.allMatches(source)) {
+      final url = _normalizeUrl(m.group(0)!);
+      final uri = Uri.tryParse(url);
+      if (uri == null || !_isRealFileAttachment(uri)) continue;
+      final name = _bestFileName('', uri);
+      if (_looksLikeImageFile(name, uri)) continue;
+      final key = uri.queryParameters['aid']?.trim() ?? url;
+      if (!seen.add(key)) continue;
+      result.add(ForumAttachmentInfo(url: url, name: name));
+    }
 
+'''
+          s = s.replace(anchor, insertion + anchor, 1)
+          p.write_text(s, encoding='utf-8')
+
+          # 让附件区域优先从已经解析出来的正文 HTML 取真实附件，避免再次请求时拿到不同的移动端页面。
           p = Path('lib/widgets/forum_attachment_section.dart')
-          s = p.read_text()
-          s = s.replace("  final String? referer;\n\n  const ForumAttachmentSection({", "  final String? referer;\n  final String bodyHtml;\n\n  const ForumAttachmentSection({")
-          s = s.replace("    this.referer,\n  });", "    this.referer,\n    this.bodyHtml = '',\n  });")
-          old = """      future: AttachmentDownloadService.instance.fetchAttachments(\n        tid: tid,\n        cookie: cookie,\n        referer: referer ?? SiteConfig.base,\n      ),"""
-          new = """      future: _loadAttachments(),"""
-          if old not in s:
-              raise SystemExit('widget future target not found')
-          s = s.replace(old, new)
-          marker = "  @override\n  Widget build(BuildContext context) {"
-          helper = """  Future<List<ForumAttachmentInfo>> _loadAttachments() async {\n    if (bodyHtml.trim().isNotEmpty) {\n      final fromBody = AttachmentDownloadService.instance.extractAttachmentInfos(bodyHtml);\n      if (fromBody.isNotEmpty) return fromBody;\n    }\n    return AttachmentDownloadService.instance.fetchAttachments(\n      tid: tid,\n      cookie: cookie,\n      referer: referer ?? SiteConfig.base,\n    );\n  }\n\n"""
-          if marker not in s:
-              raise SystemExit('widget build marker not found')
-          s = s.replace(marker, helper + marker, 1)
-          p.write_text(s)
+          s = p.read_text(encoding='utf-8')
+          if 'final String bodyHtml;' not in s:
+              s = s.replace('  final String? referer;\n', '  final String? referer;\n  final String bodyHtml;\n', 1)
+              s = s.replace('    this.referer,\n  });', '    this.referer,\n    this.bodyHtml = \'\',\n  });', 1)
+          if 'Future<List<ForumAttachmentInfo>> _loadAttachments()' not in s:
+              s = s.replace(
+                  "  @override\n  Widget build(BuildContext context) {",
+                  """  Future<List<ForumAttachmentInfo>> _loadAttachments() async {
+    if (bodyHtml.trim().isNotEmpty) {
+      final local = AttachmentDownloadService.instance.extractAttachmentInfos(bodyHtml);
+      if (local.isNotEmpty) return local;
+    }
+    return AttachmentDownloadService.instance.fetchAttachments(
+      tid: tid,
+      cookie: cookie,
+      referer: referer ?? SiteConfig.base,
+    );
+  }
+
+  @override
+  Widget build(BuildContext context) {""",
+                  1,
+              )
+          s = s.replace(
+              """      future: AttachmentDownloadService.instance.fetchAttachments(
+        tid: tid,
+        cookie: cookie,
+        referer: referer ?? SiteConfig.base,
+      ),""",
+              "      future: _loadAttachments(),",
+              1,
+          )
+          p.write_text(s, encoding='utf-8')
 
           p = Path('lib/pages/detail_page.dart')
-          s = p.read_text()
-          old = """                tid: d.tid,\n                cookie: AuthService.instance.authCookie,\n                referer: SiteConfig.base,\n              ),"""
-          new = """                tid: d.tid,\n                cookie: AuthService.instance.authCookie,\n                referer: SiteConfig.base,\n                bodyHtml: d.bodyHtml,\n              ),"""
-          if old not in s:
-              raise SystemExit('detail attachment section target not found')
-          s = s.replace(old, new, 1)
-          p.write_text(s)
-          PY
-      - name: Commit and remove one-shot workflow
+          s = p.read_text(encoding='utf-8')
+          if 'bodyHtml: d.bodyHtml,' not in s:
+              target = """                tid: d.tid,
+                cookie: AuthService.instance.authCookie,
+                referer: SiteConfig.base,
+              ),"""
+              replacement = """                tid: d.tid,
+                cookie: AuthService.instance.authCookie,
+                referer: SiteConfig.base,
+                bodyHtml: d.bodyHtml,
+              ),"""
+              if target not in s:
+                  raise SystemExit('detail attachment section target not found')
+              s = s.replace(target, replacement, 1)
+          p.write_text(s, encoding='utf-8')
+      - name: Verify changes
+        shell: bash
+        run: |
+          grep -n "extractAttachmentInfos\|attachRe\|bodyHtml: d.bodyHtml" lib/services/attachment_download_service.dart lib/widgets/forum_attachment_section.dart lib/pages/detail_page.dart
+      - name: Commit and remove one-shot workflows
+        shell: bash
         run: |
           git config user.name 'github-actions[bot]'
           git config user.email '41898282+github-actions[bot]@users.noreply.github.com'
           git add lib/services/attachment_download_service.dart lib/widgets/forum_attachment_section.dart lib/pages/detail_page.dart
           git commit -m 'fix: parse real attachment links from post content'
-          git rm .github/workflows/fix_real_attachments_once.yml
-          git commit -m 'chore: remove one-shot attachment workflow'
-          git push
+          git rm -f .github/workflows/fix_real_attachments_once.yml .github/workflows/fix_attachment_parser_once.yml || true
+          git add -A
+          git commit -m 'chore: remove temporary attachment workflows' || true
+          git push origin HEAD:main
