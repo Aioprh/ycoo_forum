@@ -116,12 +116,21 @@ class ThreadInteractionService {
       if (resp.statusCode != 200) return (false, 0);
       final doc = parser.parse(NetClient.decode(resp.bodyBytes));
       final needle = 'thread-$tid-';
+      // 收藏项结构: <li class="mysclist_li"><a ...op=delete&favid=xxx><h2><a href="thread-tid-1">标题</a></h2></li>
+      // 必须用解码后的 attributes['href'] 读取 favid: 页面经 html 包解析后 outerHtml 会把 & 转义成 &amp;,
+      // 正则若要匹配 outerHtml 会因 &amp; 中的分号而失败。
       for (final link in doc.querySelectorAll('a[href]')) {
         final href = link.attributes['href'] ?? '';
         if (!href.contains(needle)) continue;
         for (var node = link.parent; node != null; node = node.parent) {
-          final m = RegExp(r'[?&]favid=(\d+)').firstMatch(node.outerHtml);
-          if (m != null) return (true, int.tryParse(m.group(1)!) ?? 0);
+          final deleteLink = node.querySelector('a[href*="favorite"][href*="delete"]');
+          if (deleteLink != null) {
+            final m = RegExp(r'[?&]favid=(\d+)').firstMatch(deleteLink.attributes['href'] ?? '');
+            if (m != null) return (true, int.tryParse(m.group(1)!) ?? 0);
+          }
+          // 再兜底: 在容器文本(原样, 未解码)中匹配带分号的形式
+          final m2 = RegExp(r'[?&]favid=(\d+)').firstMatch(node.outerHtml);
+          if (m2 != null) return (true, int.tryParse(m2.group(1)!) ?? 0);
           if (node.localName == 'li' || node.localName == 'tr') break;
         }
       }
