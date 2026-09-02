@@ -195,7 +195,12 @@ class MemberService {
     return CreditSummary(balance: balanceMatch?.group(1) ?? '—', records: records.take(30).toList());
   }
 
-  static String _clean(String text) => text.replaceAll(RegExp(r'\s+'), ' ').trim();
+  static String _clean(String text) =>
+      text
+          .replaceAll('\uFFFD', '')
+          // 过滤 iconfont 私有区码点(方块乱码来源, PUA U+E000-U+F8FF)
+          .replaceAll(RegExp(r'[\uE000-\uF8FF]'), '')
+          .replaceAll(RegExp(r'\s+'), ' ').trim();
 
   static bool _looksLikeLogin(String html) {
     final t = _clean(parser.parse(html).body?.text ?? '');

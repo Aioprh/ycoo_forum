@@ -510,7 +510,11 @@ class MemberServiceV2 {
     if (node == null) return '';
     try {
       final clone = node.clone(true);
-      for (final icon in clone.querySelectorAll('i.iconfont,i.comiis-icon,i.comiis_icon,.iconfont,.comiis-icon,[class*="iconfont"],[class*="comiis-icon"],[class*="icon-"]')) {
+      // Comiis 模板用 i.comiis_font / i.comiis-icon 渲染图标字体(如板名前的小图标)。
+      // 除了常规 iconfont 类外，必须显式移除 comiis_font，否则其私有区码点会被
+      // 当正文文字渲染成方块乱码。
+      for (final icon in clone.querySelectorAll(
+          'i.iconfont,i.comiis-icon,i.comiis_icon,i.comiis_font,.iconfont,.comiis-icon,.comiis_font,[class*="iconfont"],[class*="comiis-icon"],[class*="comiis_font"],[class*="icon-"]')) {
         icon.remove();
       }
       for (final el in clone.querySelectorAll('svg')) { el.remove(); }
@@ -520,7 +524,13 @@ class MemberServiceV2 {
     }
   }
 
-  static String _clean(String text) => text.replaceAll('\uFFFD', '').replaceAll(RegExp(r'\s+'), ' ').trim();
+  static String _clean(String text) =>
+      text
+          .replaceAll('\uFFFD', '')
+          // 过滤 iconfont 私有区码点(方块乱码的来源之一, PUA U+E000-U+F8FF)
+          .replaceAll(RegExp(r'[\uE000-\uF8FF]'), '')
+          .replaceAll(RegExp(r'\s+'), ' ')
+          .trim();
 
   static bool _looksLikeLogin(String html) {
     final doc = parser.parse(html);
