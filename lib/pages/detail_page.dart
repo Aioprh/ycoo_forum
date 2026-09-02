@@ -424,10 +424,8 @@ class _DetailPageState extends State<DetailPage> {
       return;
     }
     // 正文图片: 打开大图预览页, 支持双指缩放与保存下载。
-    if (_isImageFileUrl(uri) &&
-        !AttachmentDownloadService.instance.isAttachmentUrl(uri.toString())) {
-      if (!mounted) return;
-      await openImageViewer(context, url: uri.toString());
+    if (_isImageFileUrl(uri)) {
+      if (mounted) await openImageViewer(context, url: uri.toString());
       return;
     }
     // 文件附件(attachment.php、/attachment/ 等): 直接原生下载。
@@ -451,10 +449,24 @@ class _DetailPageState extends State<DetailPage> {
     _snack('链接：${uri.toString()}');
   }
 
-  /// 正文图片类附件(常走 CDN, 不含 attachment 特征), 也归入可下载附件。
+  /// 判断 URL 是否为可预览的正文图片。
+  /// 兼容直接图片路径(*.jpg/png/webp...)与 Discuz 图片附件(/forum.php?mod=attachment&aid=...)。
+  /// 图片一律进入大图预览, 不触发下载。
   static bool _isImageFileUrl(Uri uri) {
     final path = uri.path.toLowerCase();
-    return RegExp(r'\.(jpe?g|png|gif|webp|bmp|svg|heic|heif)$').hasMatch(path);
+    if (RegExp(r'\.(jpe?g|png|gif|webp|bmp|svg|heic|heif|avif)$').hasMatch(path)) {
+      return true;
+    }
+    if (path.contains('attachment.php') ||
+        path.contains('/attachment/') ||
+        uri.query.toLowerCase().contains('mod=attachment') ||
+        uri.query.toLowerCase().contains('aid=')) {
+      // 显式下载标记才视为文件下载, 否则按图片预览处理,
+      // 避免把正文图片误当作文件附件直接下载。
+      final query = uri.query.toLowerCase();
+      return !query.contains('down=1') && !query.contains('download=1') && !query.contains('dl=1');
+    }
+    return false;
   }
 
   Widget _errorView(BuildContext context) {
