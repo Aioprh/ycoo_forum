@@ -55,11 +55,7 @@ class MainActivity : FlutterActivity() {
                         return@setMethodCallHandler
                     }
 
-                    val guessedName = if (requestedFilename.isNotEmpty()) {
-                        requestedFilename
-                    } else {
-                        guessNameFromUrl(url)
-                    }
+                    val guessedName = if (requestedFilename.isNotEmpty()) requestedFilename else guessNameFromUrl(url)
                     val target = uniqueFile(forumDir, sanitizeFileName(guessedName))
 
                     Thread {
@@ -114,8 +110,8 @@ class MainActivity : FlutterActivity() {
                 return null
             }
 
-            // 不要盲目相信 Flutter 传来的文件名：论坛页面可能只有“论坛附件”，
-            // 或者文件名没有扩展名。下载响应才是最终的真实文件来源。
+            // forum.php / attachment.php 是下载接口本身，不是附件文件名。
+            // 只有 Content-Disposition 中明确给出的真实文件名才允许覆盖请求名。
             val responseName = resolveResponseFileName(
                 connection.getHeaderField("Content-Disposition"),
                 connection.url.toString(),
@@ -130,8 +126,7 @@ class MainActivity : FlutterActivity() {
             } else if (!hasFileExtension(target.name)) {
                 val mimeExtension = extensionForMime(contentType)
                 if (mimeExtension.isNotEmpty()) {
-                    val withExtension = sanitizeFileName("${target.name}$mimeExtension")
-                    target = uniqueFile(initialTarget.parentFile ?: return null, withExtension)
+                    target = uniqueFile(initialTarget.parentFile ?: return null, sanitizeFileName("${target.name}$mimeExtension"))
                 }
             }
 
@@ -148,6 +143,18 @@ class MainActivity : FlutterActivity() {
                     output.flush()
                 }
             }
+
+            // 有些 Discuz 下载接口返回 application/octet-stream，URL 仍然是 forum.php。
+            // 此时根据实际文件内容识别格式，避免把接口脚本名保存成 forum.php。
+            if (!hasFileExtension(target.name)) {
+                val detectedExtension = detectFileExtension(temp, contentType)
+                if (detectedExtension.isNotEmpty()) {
+                    val baseName = sanitizeFileName(target.name)
+                    val renamed = uniqueFile(target.parentFile ?: return null, "$baseName$detectedExtension")
+                    if (renamed.absolutePath != target.absolutePath) target = renamed
+                }
+            }
+
             if (target.exists()) target.delete()
             if (!temp.renameTo(target)) {
                 temp.copyTo(target, overwrite = true)
@@ -169,7 +176,7 @@ class MainActivity : FlutterActivity() {
                 if (value.isNotEmpty()) return decodeFileName(value)
             }
             val pathName = uri.lastPathSegment?.trim().orEmpty()
-            if (pathName.isNotEmpty() && !pathName.equals("attachment.php", true)) {
+            if (pathName.isNotEmpty() && !isDownloadScript(pathName)) {
                 val decoded = decodeFileName(pathName)
                 if (decoded.isNotEmpty()) return decoded
             }
@@ -184,16 +191,63 @@ class MainActivity : FlutterActivity() {
     private fun resolveResponseFileName(disposition: String?, finalUrl: String, mime: String): String {
         if (!disposition.isNullOrBlank()) {
             val guessed = URLUtil.guessFileName(finalUrl, disposition, mime)
-            if (guessed.isNotBlank() && !looksGeneric(guessed)) return guessed
+            if (guessed.isNotBlank() && !looksGeneric(guessed) && !isDownloadScript(guessed)) return guessed
         }
-        val guessed = URLUtil.guessFileName(finalUrl, null, mime)
-        if (guessed.isNotBlank() && !looksGeneric(guessed) && hasFileExtension(guessed)) return guessed
-        return guessNameFromUrl(finalUrl)
+
+        // 没有 Content-Disposition 时，不能使用 attachment.php/forum.php/download.php
+        // 作为文件名；这些只是 Discuz 的动态下载入口。
+        val pathName = try { Uri.parse(finalUrl).lastPathSegment.orEmpty() } catch (_: Exception) { "" }
+        if (pathName.isNotBlank() && !isDownloadScript(pathName)) {
+            val decoded = decodeFileName(pathName)
+            if (hasFileExtension(decoded)) return decoded
+        }
+        return ""
+    }
+
+    private fun detectFileExtension(file: File, mime: String): String {
+        try {
+            FileInputStreamCompat(file).use { input ->
+                val header = ByteArray(32)
+                val count = input.read(header)
+                if (count > 0) {
+                    if (startsWith(header, count, byteArrayOf(0x25, 0x50, 0x44, 0x46))) return ".pdf"
+                    if (startsWith(header, count, byteArrayOf(0x50, 0x4B, 0x03, 0x04)) ||
+                        startsWith(header, count, byteArrayOf(0x50, 0x4B, 0x05, 0x06))) {
+                        return extensionForMime(mime).ifEmpty { ".zip" }
+                    }
+                    if (startsWith(header, count, byteArrayOf(0x1F, 0x8B.toByte()))) return ".gz"
+                    if (startsWith(header, count, byteArrayOf(0x89.toByte(), 0x50, 0x4E, 0x47))) return ".png"
+                    if (startsWith(header, count, byteArrayOf(0xFF.toByte(), 0xD8.toByte(), 0xFF.toByte()))) return ".jpg"
+                    if (startsWith(header, count, byteArrayOf(0x47, 0x49, 0x46, 0x38))) return ".gif"
+                    if (count >= 12 && String(header, 0, 4, Charsets.US_ASCII) == "RIFF" &&
+                        String(header, 8, 4, Charsets.US_ASCII) == "WEBP") return ".webp"
+                }
+            }
+
+            val bytes = file.inputStream().use { it.readNBytes(minOf(file.length().toInt(), 128 * 1024)) }
+            val text = bytes.toString(Charsets.UTF_8).trimStart('\uFEFF', ' ', '\t', '\r', '\n')
+            if (text.startsWith("{") || text.startsWith("[")) {
+                return ".json"
+            }
+        } catch (_: Exception) {
+        }
+        return extensionForMime(mime)
+    }
+
+    private fun startsWith(data: ByteArray, count: Int, prefix: ByteArray): Boolean {
+        if (count < prefix.size) return false
+        for (i in prefix.indices) if (data[i] != prefix[i]) return false
+        return true
+    }
+
+    private fun isDownloadScript(name: String): Boolean {
+        val n = name.substringBefore('?').substringBefore('#').trim().lowercase()
+        return n == "forum.php" || n == "attachment.php" || n == "download.php" || n == "download"
     }
 
     private fun hasFileExtension(name: String): Boolean {
         val clean = name.substringBefore('?').substringBefore('#').trim()
-        return Regex(".+\\.[A-Za-z0-9]{1,12}$").matches(clean)
+        return Regex(".+\\.[A-Za-z0-9]{1,12}$").matches(clean) && !isDownloadScript(clean)
     }
 
     private fun extensionForMime(mime: String): String = when {
@@ -220,8 +274,7 @@ class MainActivity : FlutterActivity() {
 
     private fun looksGeneric(name: String): Boolean {
         val n = name.trim().lowercase()
-        return n.isEmpty() || n == "论坛附件" || n.startsWith("论坛附件_") ||
-            n == "attachment.php" || n == "download" || n == "download.php"
+        return n.isEmpty() || n == "论坛附件" || n.startsWith("论坛附件_") || isDownloadScript(n)
     }
 
     private fun decodeFileName(value: String): String = try {
@@ -236,9 +289,7 @@ class MainActivity : FlutterActivity() {
             .replace("\\", "_")
             .replace(Regex("[\\u0000-\\u001F]"), "")
             .trim()
-        if (name.isEmpty() || name == "." || name == "..") {
-            name = "论坛附件_${System.currentTimeMillis()}"
-        }
+        if (name.isEmpty() || name == "." || name == "..") name = "论坛附件_${System.currentTimeMillis()}"
         if (name.length > 180) name = name.take(180)
         return name
     }
@@ -256,4 +307,12 @@ class MainActivity : FlutterActivity() {
         }
         return target
     }
+}
+
+private class FileInputStreamCompat(private val file: File) : java.io.InputStream() {
+    private val delegate = file.inputStream()
+    override fun read(): Int = delegate.read()
+    override fun read(b: ByteArray): Int = delegate.read(b)
+    override fun read(b: ByteArray, off: Int, len: Int): Int = delegate.read(b, off, len)
+    override fun close() = delegate.close()
 }
