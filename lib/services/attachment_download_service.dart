@@ -172,14 +172,38 @@ class AttachmentDownloadService {
     final query = uri.queryParameters;
     final mod = (query['mod'] ?? '').toLowerCase();
     final aid = query['aid']?.trim() ?? '';
-    if (aid.isEmpty) return false;
-    if (!(path.endsWith('attachment.php') || mod == 'attachment' || path.contains('/attachment/'))) {
+    final isAttachmentPath =
+        path.endsWith('attachment.php') ||
+        mod == 'attachment' ||
+        path.contains('/attachment/');
+    final isDownloadPath = path.contains('/download/');
+    if (!isAttachmentPath && !isDownloadPath) return false;
+
+    // Discuz 的 attachment.php / mod=attachment 通常必须带 aid；
+    // 但部分页面会直接给 /attachment/.../file.txt 这类真实文件地址，
+    // 这时没有 aid 也应识别为附件。
+    if (aid.isEmpty && !(path.contains('/attachment/') || isDownloadPath)) {
       return false;
     }
+
     if ((query['request'] ?? '').toLowerCase() == 'yes') return true;
     final f = query['_f']?.trim() ?? '';
     if (f.isNotEmpty) return true;
-    return query.containsKey('filename') || query.containsKey('file') || query.containsKey('name');
+    if (query.containsKey('filename') ||
+        query.containsKey('file') ||
+        query.containsKey('name')) {
+      return true;
+    }
+
+    // 兼容没有 _f/request 标记、但路径本身已经明确带有文件扩展名的附件。
+    return _hasKnownFileExtension(path);
+  }
+
+  bool _hasKnownFileExtension(String path) {
+    return RegExp(
+      r'\.(?:txt|json|xml|csv|md|log|zip|rar|7z|tar|gz|bz2|xz|apk|xapk|apks|ipa|pdf|epub|mobi|azw|azw3|doc|docx|xls|xlsx|ppt|pptx|rtf|mp3|wav|flac|m4a|ogg|mp4|m4v|mkv|avi|mov|webm)(?:$|[?#])',
+      caseSensitive: false,
+    ).hasMatch(path);
   }
 
   String _normalizeUrl(String raw) {
@@ -217,7 +241,22 @@ class AttachmentDownloadService {
     }
     final f = uri.queryParameters['_f']?.trim() ?? '';
     if (f.startsWith('.') && f.length <= 12) return '论坛附件$f';
+
+    // 直接 /attachment/.../小说目录.txt 形式没有查询参数时，
+    // 从 URL 最后一段取得真实文件名，保留 .txt/.json/.zip 等扩展名。
+    final segments = uri.pathSegments.where((e) => e.trim().isNotEmpty).toList();
+    if (segments.isNotEmpty) {
+      final last = _cleanFileName(Uri.decodeComponent(segments.last));
+      if (_hasKnownFileExtension(last) && !_looksLikeGenericAttachmentName(last)) {
+        return last;
+      }
+    }
     return '论坛附件';
+  }
+
+  bool _looksLikeGenericAttachmentName(String value) {
+    final lower = value.toLowerCase();
+    return lower == 'attachment' || lower == 'download' || lower == 'attachment.php';
   }
 
   String _findAttachmentSize(dynamic anchor) {
