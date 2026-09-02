@@ -30,21 +30,15 @@ class AttachmentDownloadService {
     if (!Platform.isAndroid) return false;
     final uri = Uri.tryParse(url);
     if (uri == null) return false;
-
     if (uri.queryParameters['ycoo'] == 'all') {
       final tid = int.tryParse(uri.queryParameters['tid'] ?? '') ?? 0;
       if (tid <= 0) return false;
       return downloadAllFromThread(tid: tid, cookie: cookie, referer: referer);
     }
-
     return _enqueue(url: url, cookie: cookie, referer: referer);
   }
 
-  Future<bool> downloadAllFromThread({
-    required int tid,
-    String? cookie,
-    String? referer,
-  }) async {
+  Future<bool> downloadAllFromThread({required int tid, String? cookie, String? referer}) async {
     if (!Platform.isAndroid || tid <= 0) return false;
     final client = await NetClient.instance.client;
     final headers = <String, String>{
@@ -82,16 +76,11 @@ class AttachmentDownloadService {
           if (links.isNotEmpty) break;
         } catch (_) {}
       }
-
       if (links.isEmpty) return false;
       var started = false;
       for (final url in links) {
         try {
-          final ok = await _enqueue(
-            url: url,
-            cookie: cookie,
-            referer: referer ?? SiteConfig.base,
-          );
+          final ok = await _enqueue(url: url, cookie: cookie, referer: referer ?? SiteConfig.base);
           started = started || ok;
         } catch (_) {}
       }
@@ -104,7 +93,6 @@ class AttachmentDownloadService {
   Set<String> _extractAttachmentUrls(String html) {
     final result = <String>{};
     if (html.trim().isEmpty) return result;
-
     final source = html
         .replaceAll('&amp;', '&')
         .replaceAll('&quot;', '"')
@@ -114,52 +102,32 @@ class AttachmentDownloadService {
 
     final doc = parser.parse(source);
     final elements = doc.querySelectorAll(
-      'a[href], [href], [data-url], [data-href], [data-src], '
-      '[onclick], [comiis_loadimages], [src]',
+      'a[href], [href], [data-url], [data-href], [data-src], [onclick], [comiis_loadimages], [src]',
     );
     for (final e in elements) {
-      for (final key in const [
-        'href',
-        'data-url',
-        'data-href',
-        'data-src',
-        'src',
-        'onclick',
-        'comiis_loadimages',
-      ]) {
+      for (final key in const ['href', 'data-url', 'data-href', 'data-src', 'src', 'onclick', 'comiis_loadimages']) {
         final value = e.attributes[key];
         if (value == null || value.trim().isEmpty) continue;
         _addCandidate(result, value);
       }
     }
 
-    // 兼容 [attach]URL[/attach]、绝对 URL 和 Discuz 附件 URL。
     final absolutePattern = RegExp(r'(?:https?:)?//[^\s<>]+', caseSensitive: false);
     for (final match in absolutePattern.allMatches(source)) {
       _addCandidate(result, match.group(0) ?? '');
     }
-
-    final attachmentPattern = RegExp(
-      r'(?:forum\.php|attachment\.php)\?[^\s<>]+',
-      caseSensitive: false,
-    );
+    final attachmentPattern = RegExp(r'(?:forum\.php|attachment\.php)\?[^\s<>]+', caseSensitive: false);
     for (final match in attachmentPattern.allMatches(source)) {
       _addCandidate(result, match.group(0) ?? '');
     }
-
     return result;
   }
 
   void _addCandidate(Set<String> out, String raw) {
-    var value = raw.trim();
+    final value = raw.trim();
     if (value.isEmpty) return;
-
-    // onclick 常见形式会把 URL 放在单/双引号中；先从属性值中抽取 URL。
     final absolutePattern = RegExp(r'(?:https?:)?//[^\s<>]+', caseSensitive: false);
-    final attachmentPattern = RegExp(
-      r'(?:forum\.php|attachment\.php)\?[^\s<>]+',
-      caseSensitive: false,
-    );
+    final attachmentPattern = RegExp(r'(?:forum\.php|attachment\.php)\?[^\s<>]+', caseSensitive: false);
     final matches = <String>{};
     for (final match in absolutePattern.allMatches(value)) {
       matches.add(match.group(0) ?? '');
@@ -167,7 +135,6 @@ class AttachmentDownloadService {
     for (final match in attachmentPattern.allMatches(value)) {
       matches.add(match.group(0) ?? '');
     }
-
     if (matches.isEmpty) {
       _addNormalized(out, value);
       return;
@@ -180,18 +147,15 @@ class AttachmentDownloadService {
   void _addNormalized(Set<String> out, String raw) {
     var value = raw.trim();
     if (value.isEmpty) return;
-
     value = value
         .replaceAll('&amp;', '&')
         .replaceAll('\\/', '/')
         .replaceFirst(RegExp(r'^javascript:\s*', caseSensitive: false), '');
-
-    // URL 被 onclick 包裹时，去掉尾部引号、括号和分号。
-    value = value.replaceAll(RegExp(r'[\"\'\)\];,]+$'), '');
+    value = value.replaceAll(RegExp(r'[\)\];,]+$'), '');
+    value = value.replaceAll('"', '').replaceAll("'", '');
     try {
       value = Uri.decodeFull(value);
     } catch (_) {}
-
     if (value.startsWith('//')) value = 'https:$value';
     if (!(value.startsWith('http://') || value.startsWith('https://'))) {
       if (value.startsWith('/')) {
@@ -200,7 +164,6 @@ class AttachmentDownloadService {
         value = SiteConfig.resolve(value);
       }
     }
-
     final uri = Uri.tryParse(value);
     if (uri == null) return;
     final path = uri.path.toLowerCase();
@@ -215,11 +178,7 @@ class AttachmentDownloadService {
     }
   }
 
-  Future<bool> _enqueue({
-    required String url,
-    String? cookie,
-    String? referer,
-  }) async {
+  Future<bool> _enqueue({required String url, String? cookie, String? referer}) async {
     try {
       final result = await _channel.invokeMethod<bool>('download', {
         'url': url,
