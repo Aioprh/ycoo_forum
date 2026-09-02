@@ -235,7 +235,7 @@ class CommentReplyResolver {
       if (raw.isEmpty) return null;
       final patterns = <RegExp>[
         RegExp(r'(?:[?&]|%3F|%26|&amp;)repquote(?:=|%3D)(\d+)', caseSensitive: false),
-        RegExp(r"\brepquote\s*[:=]\s*[\"']?(\d+)", caseSensitive: false),
+        RegExp(r'\brepquote\s*[:=]\s*[^0-9]{0,3}(\d+)', caseSensitive: false),
         RegExp(r'\brepquote[^0-9]{0,12}(\d+)', caseSensitive: false),
       ];
       for (final pattern in patterns) {
