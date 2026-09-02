@@ -3,7 +3,6 @@ import 'package:flutter/services.dart';
 import 'package:html/parser.dart' as parser;
 
 import 'site_config.dart';
-import 'auth_service.dart';
 import 'net_client.dart';
 
 /// 原生附件下载桥接。
@@ -62,9 +61,6 @@ class AttachmentDownloadService {
       if ((cookie ?? '').isNotEmpty) 'Cookie': cookie!,
     };
 
-    // 标准 viewthread 页面通常包含完整的附件节点和楼中楼；
-    // pretty thread-xxx 页面作为兼容回退。不要强制 mobile=2，否则某些
-    // Comiis 主题会把附件链接/楼中楼折叠成只供 JS 使用的结构。
     final candidates = <Uri>[
       Uri.parse('${SiteConfig.base}forum.php').replace(queryParameters: {
         'mod': 'viewthread',
@@ -95,7 +91,11 @@ class AttachmentDownloadService {
       var started = false;
       for (final url in links) {
         try {
-          final ok = await _enqueue(url: url, cookie: cookie, referer: referer ?? SiteConfig.base);
+          final ok = await _enqueue(
+            url: url,
+            cookie: cookie,
+            referer: referer ?? SiteConfig.base,
+          );
           started = started || ok;
         } catch (_) {}
       }
@@ -109,8 +109,7 @@ class AttachmentDownloadService {
     final result = <String>{};
     if (html.trim().isEmpty) return result;
 
-    // 先处理 HTML 实体和常见转义，避免 href 中的 &amp; / &quot; 让 URI 解析失败。
-    var source = html
+    final source = html
         .replaceAll('&amp;', '&')
         .replaceAll('&quot;', '"')
         .replaceAll('&#39;', "'")
@@ -120,11 +119,17 @@ class AttachmentDownloadService {
     final doc = parser.parse(source);
     final elements = doc.querySelectorAll(
       'a[href], [href], [data-url], [data-href], [data-src], '
-      '[onclick], [comiis_loadimages], [src]'
+      '[onclick], [comiis_loadimages], [src]',
     );
     for (final e in elements) {
       for (final key in const [
-        'href', 'data-url', 'data-href', 'data-src', 'src', 'onclick', 'comiis_loadimages'
+        'href',
+        'data-url',
+        'data-href',
+        'data-src',
+        'src',
+        'onclick',
+        'comiis_loadimages',
       ]) {
         final value = e.attributes[key];
         if (value == null || value.trim().isEmpty) continue;
@@ -133,10 +138,11 @@ class AttachmentDownloadService {
     }
 
     // 某些附件正文最终只留下 URL 字符串或 [attach]URL[/attach]。
-    for (final match in RegExp(
-      r'(?:\[attach(?:ment)?\]\s*)?((?:https?:)?//[^\s<>\[\]"\']+|(?:forum\.php|attachment\.php)\?[^\s<>\[\]"\']*(?:aid=|mod=attachment)[^\s<>\[\]"\']*)(?:\s*\[/attach(?:ment)?\])?',
+    final urlPattern = RegExp(
+      r"(?:\[attach(?:ment)?\]\s*)?((?:https?:)?//[^\s<>\[\]\"']+|(?:forum\.php|attachment\.php)\?[^\s<>\[\]\"']*(?:aid=|mod=attachment)[^\s<>\[\]\"']*)(?:\s*\[/attach(?:ment)?\])?",
       caseSensitive: false,
-    ).allMatches(source)) {
+    );
+    for (final match in urlPattern.allMatches(source)) {
       _addCandidate(result, match.group(1) ?? '');
     }
 
@@ -146,12 +152,13 @@ class AttachmentDownloadService {
   void _addCandidate(Set<String> out, String raw) {
     var value = raw.trim();
     if (value.isEmpty) return;
+
     // onclick 常见形式：download('forum.php?mod=attachment&aid=...')。
-    value = value.replaceAll(RegExp(r'^(?:javascript:)?\s*[^\'\"]*[\'\"]'), '');
-    final matches = RegExp(
-      r'((?:https?:)?//[^\s\'\"<>]+|(?:forum\.php|attachment\.php)\?[^\s\'\"<>]+)',
+    final urlPattern = RegExp(
+      r'''((?:https?:)?//[^\s<>"']+|(?:forum\.php|attachment\.php)\?[^\s<>"']+)''',
       caseSensitive: false,
-    ).allMatches(value);
+    );
+    final matches = urlPattern.allMatches(value);
     if (matches.isEmpty) {
       _addNormalized(out, value);
       return;
