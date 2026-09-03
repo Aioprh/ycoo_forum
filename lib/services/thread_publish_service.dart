@@ -133,8 +133,11 @@ class ThreadPublishService {
     }
   }
 
-  /// 编辑自己已发布的主题: 走 Discuz 原生 `forum.php?mod=post&action=edit` 表单。
-  /// 泛化回填页面要求的隐藏字段, 再覆写标题/正文提交, 兼容不同 Discuz 版本。
+  /// 编辑自己已发布的主题。严格对齐网页端流程：
+  /// 1) GET 编辑页拿到 formhash 与整张 `#postform` 表单(含 price/typeid/readperm/
+  ///    附件配置等隐藏与回显字段);
+  /// 2) 原样收集这些字段(保留原文的售价、分类、阅读权限、附件等设置);
+  /// 3) 仅覆写 subject/message 并 POST 到表单指向的 action(editsubmit=yes)。
   Future<String?> editThread({
     required int tid,
     required int fid,
@@ -150,42 +153,42 @@ class ThreadPublishService {
 
     try {
       final client = await NetClient.instance.client;
-      final editUrl =
-          '${_base}forum.php?mod=post&action=edit&fid=$fid&tid=$tid&pid=$pid&extra=page%3D1&mobile=2';
       final headers = _headers();
-      final page = await NetClient.retry(() => client.get(Uri.parse(editUrl), headers: headers).timeout(NetClient.timeout));
+      // GET 地址携带 fid/tid/pid 用于定位要编辑的楼层, 与网页端一致。
+      final getUrl =
+          '${_base}forum.php?mod=post&action=edit&fid=$fid&tid=$tid&pid=$pid&page=1&mobile=2';
+      final page = await NetClient.retry(() => client.get(Uri.parse(getUrl), headers: headers).timeout(NetClient.timeout));
       if (page.statusCode != 200) return '读取编辑页失败 HTTP ${page.statusCode}';
       final html = NetClient.decode(page.bodyBytes);
       final doc = parser.parse(html);
-      final formhash = NetClient.extractFormHash(html) ?? _value(doc, 'formhash');
-      if (formhash.isEmpty) {
+      final form = doc.querySelector('form#postform, form[id="postform"]');
+      if (form == null) {
         final permText = doc.body?.text.replaceAll(RegExp(r'\s+'), ' ').trim() ?? '';
         if (permText.contains('无权') || permText.contains('没有权限') || permText.contains('权限不足')) return '只有帖子作者可以编辑该主题';
-        return '未取得编辑令牌(formhash)，请重新进入帖子后再试';
+        return '未取得编辑表单，请重新进入帖子后再试';
       }
+      final formhash = NetClient.extractFormHash(html) ?? _value(doc, 'formhash');
+      if (formhash.isEmpty) return '未取得编辑令牌(formhash)，请重新进入帖子后再试';
 
-      // 泛化回填页面上所有隐藏字段, 保证编辑表单必需的后台字段
-      // (pid/fid/tid/posttime 等)都能原样带上, 不依赖某个具体模板。
-      final form = <String, String>{'formhash': formhash};
-      for (final input in doc.querySelectorAll('input[type="hidden"]')) {
-        final name = input.attributes['name'] ?? '';
-        final value = input.attributes['value'] ?? '';
-        if (name.isEmpty) continue;
-        form[name] = value;
-      }
-      form['subject'] = title;
-      form['message'] = body;
-      form['editsubmit'] = 'true';
+      // 沿网页端把整张表单现有字段原样带回, 保留售价/分类/权限/附件等设置。
+      final fields = _collectPostForm(form);
+      fields['formhash'] = formhash;
+      fields['subject'] = title;
+      fields['message'] = body;
+      // 网页端提交按钮也是 editsubmit=yes, 强制兜底确保触发编辑提交。
+      fields['editsubmit'] = 'yes';
 
+      // POST 目标使用表单自带 action(editsubmit=yes, 不含 fid/tid/pid), 与网页端一致。
+      final postUrl =
+          '${_base}forum.php?mod=post&action=edit&extra=&editsubmit=yes&mobile=2';
       final response = await client.post(
-        Uri.parse(editUrl),
+        Uri.parse(postUrl),
         headers: {
           ...headers,
-          'Referer': editUrl,
+          'Referer': getUrl,
           'Content-Type': 'application/x-www-form-urlencoded; charset=UTF-8',
-          'X-Requested-With': 'XMLHttpRequest',
         },
-        body: form,
+        body: fields,
       ).timeout(NetClient.timeout);
       final result = NetClient.decode(response.bodyBytes);
       final resultDoc = parser.parse(result);
@@ -201,6 +204,46 @@ class ThreadPublishService {
     } catch (e) {
       return '编辑请求失败：${e.toString().replaceFirst('Exception: ', '')}';
     }
+  }
+
+  /// 收集编辑表单元表单控件的当前值(隐藏/文本输入、复选框、下拉与多行文本框),
+  /// 等效于浏览器随表单一起提交的内容。
+  Map<String, String> _collectPostForm(dynamic form) {
+    final out = <String, String>{};
+    void put(String name, String value) {
+      if (name.isEmpty) return;
+      out[name] = value;
+    }
+
+    for (final input in form.querySelectorAll('input')) {
+      if (input.attributes['disabled'] != null) continue;
+      final name = input.attributes['name'] ?? '';
+      final type = (input.attributes['type'] ?? 'text').toLowerCase();
+      if (name.isEmpty || type == 'file') continue;
+      if (type == 'radio' || type == 'checkbox') {
+        if (input.attributes['checked'] != null) put(name, input.attributes['value'] ?? '');
+      } else {
+        put(name, input.attributes['value'] ?? (input.text ?? ''));
+      }
+    }
+    for (final area in form.querySelectorAll('textarea')) {
+      final name = area.attributes['name'] ?? '';
+      if (name.isNotEmpty) put(name, area.text ?? '');
+    }
+    for (final select in form.querySelectorAll('select')) {
+      final name = select.attributes['name'] ?? '';
+      if (name.isEmpty) continue;
+      String? value;
+      for (final opt in select.querySelectorAll('option')) {
+        if (opt.attributes['selected'] != null) {
+          value = opt.attributes['value'] ?? '';
+          break;
+        }
+      }
+      value ??= select.querySelector('option')?.attributes['value'] ?? '';
+      if (value != null) put(name, value);
+    }
+    return out;
   }
 
   Future<dynamic> _postPage(int fid) async {
