@@ -338,16 +338,38 @@ class _CommentCardState extends State<_CommentCard> {
       '.replyfloor_content li', 'li.replyfloor_li', '.replyfloor_box li',
       '.replyfloor_reply', '.replyfloor_item',
     ];
+    // 判定一个节点是否真的"楼中楼回复条目", 而不是 replyfloor 的外壳/按钮/分页器。
+    // 空外壳(无回复的楼层)里只有 .replyfloor_content_ul / .replyfloor_content_pager
+    // /"我要说一句"按钮等, 它们不能算回复。
+    bool isReplyNode(dom.Element n) {
+      final cls = (n.attributes['class'] ?? '').toLowerCase();
+      final id = (n.attributes['id'] ?? '').toLowerCase();
+      return cls.contains('replyfloor_content_li') ||
+          id.contains('replyfloor_content_li') ||
+          cls.contains('replyfloor_li') ||
+          id.startsWith('replyfloor_content_li_') ||
+          cls == 'replyfloor_reply' || cls == 'replyfloor_item';
+    }
+
     for (final selector in selectors) {
       for (final node in doc.querySelectorAll(selector)) {
+        if (!isReplyNode(node)) continue;
         if (!nodes.contains(node)) nodes.add(node);
       }
     }
     if (nodes.isEmpty) {
-      for (final root in doc.querySelectorAll(
-          '.replyfloor_content_ul, .replyfloor_content, .replyfloor_box, .replyfloor')) {
+      final roots = doc.querySelectorAll(
+          '.replyfloor_content_ul, .replyfloor_content, .replyfloor_box, .replyfloor');
+      for (final root in roots) {
         for (final child in root.children) {
-          if (child.text.trim().isNotEmpty && !nodes.contains(child)) nodes.add(child);
+          // 只收"回复条目"，且必须有正文或头像；跳过纯外壳/分页器/提示按钮。
+          if (!isReplyNode(child)) continue;
+          final hasBody = (child.text.trim().isNotEmpty) ||
+              (child.querySelector(
+                    '.replyfloor_content_main, .replyfloor_msg, .replyfloor_message, '
+                    '.replyfloor_body, .replyfloor_text, .replyfloor_content_text, img',
+                  ) != null);
+          if (hasBody && !nodes.contains(child)) nodes.add(child);
         }
       }
     }
@@ -357,6 +379,7 @@ class _CommentCardState extends State<_CommentCard> {
         doc = parser.parseFragment(decoded);
         for (final selector in selectors) {
           for (final node in doc.querySelectorAll(selector)) {
+            if (!isReplyNode(node)) continue;
             if (!nodes.contains(node)) nodes.add(node);
           }
         }

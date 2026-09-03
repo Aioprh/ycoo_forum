@@ -205,7 +205,11 @@ class CommentReplyResolver {
       final post = _findPostByPid(doc, pid);
       if (post != null) {
         final nested = _extractNestedReplyHtml(post);
-        if (nested.isNotEmpty) return _normalizeReplyPidHtml(nested);
+        // 回退提取到的必须是"真正含回复条目 li"的内容; 若只是空外壳
+        // (replyfloor_box 等固定渲染容器)则视为无回复, 返回空。
+        if (nested.isNotEmpty && _containsReplyNode(nested)) {
+          return _normalizeReplyPidHtml(nested);
+        }
       }
     }
     return '';
@@ -225,12 +229,41 @@ class CommentReplyResolver {
         .replaceAll('&#39;', "'").replaceAll('&amp;', '&').trim();
   }
 
+  /// 是否真的存在楼中楼回复条目, 而不是只存在 replyfloor 外壳。
+  ///
+  /// 关键: 无回复的楼层也会有固定渲染的外壳 (.replyfloor_box / .replyfloor_bd /
+  /// .replyfloor_content / .replyfloor_content_ul), 只是里面没有回复条目 li。
+  /// 入口与内容判据必须以"存在回复条目 li"为准, 绝不能因为外壳存在就当作
+  /// 有回复, 否则会让没有楼中楼的楼层也出现空的展开入口。
   bool _containsReplyNode(String html) {
     if (html.trim().isEmpty) return false;
-    return parser.parseFragment(html).querySelector(
-          '.replyfloor_box, .replyfloor_content, .replyfloor_content_ul, '
-          '.replyfloor_content_li, li.replyfloor_li, .replyfloor_reply, .replyfloor_item',
-        ) != null;
+    final doc = parser.parseFragment(html);
+    // 1) 标准回复叶子节点
+    for (final selector in [
+      '.replyfloor_content_li', '.replyfloor_content_ul > li',
+      'li.replyfloor_li', 'li[class*="replyfloor_content_li"]',
+      'li[id*="replyfloor_content_li"]',
+    ]) {
+      if (doc.querySelector(selector) != null) return true;
+    }
+    // 2) 兼容回复条目不是 <li> 而是 <div class="replyfloor_content_li"> 的情况
+    for (final node in doc.querySelectorAll('*')) {
+      final cls = (node.attributes['class'] ?? '').toLowerCase();
+      final id = (node.attributes['id'] ?? '').toLowerCase();
+      if (cls.contains('replyfloor_content_li') || id.contains('replyfloor_content_li')) {
+        return true;
+      }
+    }
+    // 3) 回复条目兜底: 非空的 texts, 排除纯外壳/按钮/分页器
+    for (final selector in [
+      '.replyfloor_reply', '.replyfloor_item', '.replyfloor_content_user',
+      '.replyfloor_content_text', '.replyfloor_msg', '.replyfloor_message',
+      '.replyfloor_content_main', '.replyfloor_content_avatar',
+    ]) {
+      final node = doc.querySelector(selector);
+      if (node != null && node.text.trim().isNotEmpty) return true;
+    }
+    return false;
   }
 
   /// Comiis 不同手机版样式会把目标 PID 放在 href、onclick、data-*、rel、
