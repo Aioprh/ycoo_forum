@@ -188,7 +188,7 @@ class _EditThreadPageState extends State<EditThreadPage> {
           SwitchListTile.adaptive(
             secondary: const Icon(Icons.tune_rounded),
             title: const Text('高级设置', style: TextStyle(fontWeight: FontWeight.w800)),
-            subtitle: const Text('分类、售价、阅读权限、签名、通知、隐藏回复等网页端选项'),
+            subtitle: const Text('分类、售价、阅读权限、回帖可见性与排序、签名、通知等'),
             value: _showAdvanced,
             onChanged: _submitting ? null : (value) => setState(() => _showAdvanced = value),
           ),
@@ -257,13 +257,17 @@ class _EditThreadPageState extends State<EditThreadPage> {
                   ),
                   SwitchListTile.adaptive(
                     contentPadding: EdgeInsets.zero,
-                    title: const Text('隐藏回复'),
+                    secondary: const Icon(Icons.visibility_off_outlined),
+                    title: const Text('回帖仅作者可见'),
+                    subtitle: const Text('其他用户的回复仅主题作者可见'),
                     value: _hiddenReplies,
                     onChanged: _submitting ? null : (value) => setState(() => _hiddenReplies = value),
                   ),
                   SwitchListTile.adaptive(
                     contentPadding: EdgeInsets.zero,
-                    title: const Text('默认倒序查看'),
+                    secondary: const Icon(Icons.swap_vert_rounded),
+                    title: const Text('回帖倒序排列'),
+                    subtitle: const Text('帖子打开时优先显示最新回复'),
                     value: _descViewDefault,
                     onChanged: _submitting ? null : (value) => setState(() => _descViewDefault = value),
                   ),
