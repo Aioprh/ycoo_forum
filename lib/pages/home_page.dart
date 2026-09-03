@@ -3,6 +3,7 @@ import 'package:flutter/material.dart';
 import '../models/thread_item.dart';
 import '../services/api_service.dart';
 import '../services/auth_service.dart';
+import '../services/hot_threads_service.dart';
 import '../services/site_fallback_service.dart';
 import '../widgets/thread_list_view.dart';
 import 'create_thread_page.dart';
@@ -26,8 +27,13 @@ class _HomePageState extends State<HomePage> {
   int _index = 0;
 
   Future<List<ThreadItem>> _load(String view) async {
-    // ycoo 的热门导读需要 index=1 才会返回与网页端
-    // `forum.php?mod=guide&view=hot&index=1` 相同的帖子列表。
+    if (view == 'hot') {
+      // 热门页是网页端独立的导读结构，优先使用专用解析器，
+      // 不再把它强行套进普通 forumlist_li 解析逻辑。
+      final hot = await HotThreadsService.instance.fetch();
+      if (hot.isNotEmpty) return hot;
+    }
+
     final baseUrl = ApiService.guideUrl(view);
     final url = view == 'hot' ? '$baseUrl&index=1' : baseUrl;
     try {
