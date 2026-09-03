@@ -421,13 +421,16 @@ class ApiService {
       // 提取真实楼层 pid(取自容器 id="post_<pid>"/"postmessage_<pid>"),写入卡片供楼中楼回复使用。
       final pid = _postPid(post);
       final pidAttr = pid > 0 ? ' data-pid="$pid"' : '';
-      // 检测该楼层行是否内嵌楼中楼容器。楼中楼是楼层行内正文块之外的兄弟块,
-      // 若存在, 说明本楼有可展开的回复, 在卡片上打标记, 评论组件据此显示展开入口。
-      // 不能依赖"回复(N)"计数: Comiis 手机模板不渲染该文本, 解析恒为 0。
+      // 检测该楼层行内是否真的有楼中楼回复条目。楼中楼回复的叶子节点是
+      // .replyfloor_content_ul > .replyfloor_content_li 或 .replyfloor_content_li;
+      // 而 .replyfloor_box / .replyfloor_bd / .replyfloor_content 只是模板为每个
+      // 楼层都固定渲染的容器外壳, 没有回复时同样存在, 不能作为依据, 否则会
+      // 让大量没有实际回复的楼层也出现空的展开入口。
       final hasReplies = post.querySelector(
-            '.replyfloor_box, .replyfloor_bd, .replyfloor_content, '
-            '.replyfloor_content_ul, .replyfloor_content_li, li.replyfloor_li, '
-            '[class*="replyfloor"], [id*="replyfloor"]',
+            '.replyfloor_content_ul .replyfloor_content_li, '
+            '.replyfloor_content_ul > .replyfloor_content_li, '
+            '.replyfloor_content_li, li.replyfloor_li, '
+            'li[class*="replyfloor_content_li"], li[id*="replyfloor_content_li"]',
           ) != null;
       final repliesAttr = hasReplies ? ' data-replies="1"' : '';
       final author = _normSpace(post.querySelector('.top_user, .authi .xw1, .authi a')?.text ?? '');
