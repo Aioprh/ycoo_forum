@@ -1,5 +1,6 @@
 import 'package:html/parser.dart' as parser;
 import 'package:http/http.dart' as http;
+import 'package:shared_preferences/shared_preferences.dart';
 
 import 'site_config.dart';
 import 'auth_service.dart';
@@ -10,6 +11,7 @@ class CheckinService {
   CheckinService._();
   static final instance = CheckinService._();
   static String get _base => SiteConfig.base;
+  static const String _lastAutoCheckinKey = 'ycoo.checkin.lastAutoDate';
 
   Future<http.Client> get _client async => NetClient.instance.client;
 
@@ -36,8 +38,6 @@ class CheckinService {
     return null;
   }
 
-  /// Discuz 不同模板会把 formhash 放在 hidden input、链接参数、JS 或 data 属性中。
-  /// 不能只依赖 <input name="formhash">，否则签到页改模板后会误报令牌缺失。
   String? _extractFormhash(String html) {
     final hidden = _hidden(html, 'formhash');
     if (hidden != null && hidden.isNotEmpty) return hidden;
@@ -55,8 +55,6 @@ class CheckinService {
     return null;
   }
 
-  /// 页面是否已呈现“已签到”状态（按钮 btnvisted 或文字提示）。
-  /// K-Misign 在展示层用该标记表示今日已完成签到。
   bool _isSignedState(String html) =>
       html.contains('btnvisted') ||
       html.contains('已签到') ||
@@ -72,7 +70,6 @@ class CheckinService {
     if (username != null && username.isNotEmpty && (doc.body?.text ?? '').contains(username)) {
       return true;
     }
-    // 已保存的 Discuz 登录 Cookie 存在时，不因为模板中出现“登录”链接就误判。
     return (AuthService.instance.authCookie ?? '').isNotEmpty;
   }
 
@@ -119,6 +116,35 @@ class CheckinService {
     return null;
   }
 
+  /// 应用启动时自动签到。
+  ///
+  /// 同一天只执行一次自动签到请求；只有确认“签到成功”或“今天已经签到”
+  /// 后才记录日期，网络失败/令牌失败不会阻止当天后续再次尝试。
+  Future<String?> autoSignOncePerDay() async {
+    if (!AuthService.instance.isLoggedIn) return null;
+
+    try {
+      final sp = await SharedPreferences.getInstance();
+      final today = _localDateKey();
+      if (sp.getString(_lastAutoCheckinKey) == today) return null;
+
+      final result = await sign();
+      if (result == '签到成功' || result == '今天已经签到') {
+        await sp.setString(_lastAutoCheckinKey, today);
+      }
+      return result;
+    } catch (_) {
+      return null;
+    }
+  }
+
+  String _localDateKey() {
+    final now = DateTime.now();
+    final month = now.month.toString().padLeft(2, '0');
+    final day = now.day.toString().padLeft(2, '0');
+    return '${now.year}-$month-$day';
+  }
+
   Future<String> sign() async {
     if (!AuthService.instance.isLoggedIn) return '请先登录论坛';
 
@@ -134,7 +160,6 @@ class CheckinService {
       String pageUrl = pages.first.toString();
       String pageHtml = '';
 
-      // 每次点击签到都重新请求当前登录会话的页面并提取新 token。
       for (final pageUri in pages) {
         try {
           final response = await NetClient.retry(() => client.get(
@@ -150,7 +175,6 @@ class CheckinService {
             pageHtml = html;
             break;
           }
-          // 即使当前页面没有 hash，也保留 HTML，后面可能从其中找到真实签到入口。
           if (pageHtml.isEmpty) {
             pageHtml = html;
             pageUrl = pageUri.toString();
@@ -162,7 +186,6 @@ class CheckinService {
         return '签到页面缺少有效的操作令牌，请重新打开论坛后重试';
       }
 
-      // 若当前页面已显示“已签到”，直接提示，避免重复提交。
       if (_isSignedState(pageHtml)) return '今天已经签到';
 
       Uri? signUri = _findRealSignAction(pageHtml, pageUrl, formhash);
@@ -186,9 +209,6 @@ class CheckinService {
       if (result != null) return result;
       if (body.contains('btnvisted') || body.contains('已签到')) return '签到成功';
 
-      // 服务端返回的签名/回显未必直接给出“签到成功”字样（K-Misign 常返回空或 JS），
-      // 且首次签到实际已成功但未识别时，不能误报失败。这里回查签到页：
-      // 只要按钮此时已变为“已签到”，即判定本次签到真实成功。
       try {
         final recheck = await NetClient.retry(() => client.get(
               Uri.parse('${_base}plugin.php?id=k_misign:sign'),
