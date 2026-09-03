@@ -130,6 +130,45 @@ class _ProfilePageState extends State<ProfilePage> {
     );
   }
 
+  Widget _moduleText({required String title, required String subtitle, required Color subtitleColor, bool emphasized = false}) {
+    return SizedBox(
+      height: 42,
+      child: Column(
+        mainAxisAlignment: MainAxisAlignment.center,
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          SizedBox(
+            height: 18,
+            child: Align(
+              alignment: Alignment.centerLeft,
+              child: Text(
+                title,
+                maxLines: 1,
+                overflow: TextOverflow.ellipsis,
+                strutStyle: const StrutStyle(fontSize: 14, height: 1.25, forceStrutHeight: true),
+                style: TextStyle(fontSize: 14, height: 1.25, fontWeight: emphasized ? FontWeight.w800 : FontWeight.w700),
+              ),
+            ),
+          ),
+          const SizedBox(height: 3),
+          SizedBox(
+            height: 16,
+            child: Align(
+              alignment: Alignment.centerLeft,
+              child: Text(
+                subtitle,
+                maxLines: 1,
+                overflow: TextOverflow.ellipsis,
+                strutStyle: const StrutStyle(fontSize: 11, height: 1.25, forceStrutHeight: true),
+                style: TextStyle(fontSize: 11, height: 1.25, color: subtitleColor),
+              ),
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+
   Widget _featureTile({required IconData icon, required String title, required String subtitle, required VoidCallback onTap}) {
     final scheme = Theme.of(context).colorScheme;
     return Card(
@@ -141,24 +180,18 @@ class _ProfilePageState extends State<ProfilePage> {
           padding: const EdgeInsets.all(13),
           child: Row(
             children: [
-              Container(
+              SizedBox(
                 width: 42,
                 height: 42,
-                decoration: BoxDecoration(color: scheme.primaryContainer, borderRadius: BorderRadius.circular(13)),
-                child: Icon(icon, size: 22),
-              ),
-              const SizedBox(width: 11),
-              Expanded(
-                child: Column(
-                  crossAxisAlignment: CrossAxisAlignment.start,
-                  children: [
-                    Text(title, maxLines: 1, overflow: TextOverflow.ellipsis, style: const TextStyle(fontSize: 14, fontWeight: FontWeight.w700)),
-                    const SizedBox(height: 3),
-                    Text(subtitle, maxLines: 1, overflow: TextOverflow.ellipsis, style: TextStyle(fontSize: 11, color: scheme.onSurfaceVariant)),
-                  ],
+                child: DecoratedBox(
+                  decoration: BoxDecoration(color: scheme.primaryContainer, borderRadius: BorderRadius.circular(13)),
+                  child: Icon(icon, size: 22),
                 ),
               ),
-              Icon(Icons.chevron_right_rounded, color: scheme.onSurfaceVariant),
+              const SizedBox(width: 11),
+              Expanded(child: _moduleText(title: title, subtitle: subtitle, subtitleColor: scheme.onSurfaceVariant)),
+              const SizedBox(width: 8),
+              SizedBox(width: 20, child: Icon(Icons.chevron_right_rounded, color: scheme.onSurfaceVariant)),
             ],
           ),
         ),
@@ -235,30 +268,22 @@ class _ProfilePageState extends State<ProfilePage> {
           padding: const EdgeInsets.all(13),
           child: Row(
             children: [
-              Container(
+              SizedBox(
                 width: 42,
                 height: 42,
-                decoration: BoxDecoration(color: scheme.primaryContainer, borderRadius: BorderRadius.circular(13)),
-                child: Icon(switch (mode) {
-                  ThemeMode.light => Icons.light_mode,
-                  ThemeMode.dark => Icons.dark_mode,
-                  ThemeMode.system => Icons.brightness_auto,
-                }, size: 22),
-              ),
-              const SizedBox(width: 11),
-              Expanded(
-                child: Column(
-                  crossAxisAlignment: CrossAxisAlignment.start,
-                  children: [
-                    const Text('外观', style: TextStyle(fontSize: 14, fontWeight: FontWeight.w700)),
-                    const SizedBox(height: 3),
-                    Text('白天 / 夜间 / 跟随系统', maxLines: 1, overflow: TextOverflow.ellipsis, style: TextStyle(fontSize: 11, color: scheme.onSurfaceVariant)),
-                    const SizedBox(height: 3),
-                    Text(_modeLabel(mode), maxLines: 1, overflow: TextOverflow.ellipsis, style: TextStyle(fontSize: 11, color: scheme.primary, fontWeight: FontWeight.w700)),
-                  ],
+                child: DecoratedBox(
+                  decoration: BoxDecoration(color: scheme.primaryContainer, borderRadius: BorderRadius.circular(13)),
+                  child: Icon(switch (mode) {
+                    ThemeMode.light => Icons.light_mode,
+                    ThemeMode.dark => Icons.dark_mode,
+                    ThemeMode.system => Icons.brightness_auto,
+                  }, size: 22),
                 ),
               ),
-              Icon(Icons.chevron_right_rounded, color: scheme.onSurfaceVariant),
+              const SizedBox(width: 11),
+              Expanded(child: _moduleText(title: '外观', subtitle: _modeLabel(mode), subtitleColor: scheme.onSurfaceVariant)),
+              const SizedBox(width: 8),
+              SizedBox(width: 20, child: Icon(Icons.chevron_right_rounded, color: scheme.onSurfaceVariant)),
             ],
           ),
         ),
@@ -271,7 +296,6 @@ class _ProfilePageState extends State<ProfilePage> {
       crossAxisAlignment: CrossAxisAlignment.stretch,
       children: [
         _sectionHeader(context, '外观'),
-        // 监听主题模式变化, 切换后即时刷新当前模式文案与图标。
         ValueListenableBuilder<ThemeMode>(
           valueListenable: ThemeModeController.instance.mode,
           builder: (context, mode, _) => _appearanceTile(context, mode),
@@ -296,7 +320,6 @@ class _ProfilePageState extends State<ProfilePage> {
     text = text.replaceAll(RegExp(r'Lv\.?\s*\d+', caseSensitive: false), ' ');
     text = text.replaceAll(RegExp(r'(?:管理员|版主|实习|超级版主|童生|秀才|举人|进士|探花|榜眼|状元|九品|八品|七品|六品|五品|四品|三品|二品|一品|新人|元老|新手上路|正式|核心|VIP|会员|用户组)\s*'), ' ');
     text = text.replaceAll(RegExp(r'\s+'), ' ').trim();
-    // 剔除昵称开头独立粘连的图标残留数字(源站 Comiis 模板图标字体被剥离后残留的等级/角标数字, 非昵称本身)
     text = text.replaceFirst(RegExp(r'^\d+\s+'), '').trim();
     return text.isEmpty ? '用户' : text;
   }
@@ -387,13 +410,13 @@ class _ProfilePageState extends State<ProfilePage> {
           child: Row(children: [
             Container(width: 46, height: 46, decoration: BoxDecoration(color: scheme.secondary, borderRadius: BorderRadius.circular(14)), child: Icon(done ? Icons.check_rounded : Icons.calendar_month_rounded, color: scheme.onSecondary, size: 25)),
             const SizedBox(width: 12),
-            Expanded(child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
-              Row(children: [const Text('每日签到', style: TextStyle(fontSize: 16, fontWeight: FontWeight.w800)), if (done) ...[const SizedBox(width: 6), Container(padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 3), decoration: BoxDecoration(color: scheme.primaryContainer, borderRadius: BorderRadius.circular(7)), child: const Text('已完成', style: TextStyle(fontSize: 9, fontWeight: FontWeight.w700)))]]),
-              const SizedBox(height: 4),
-              Text(subtitle, maxLines: 1, overflow: TextOverflow.ellipsis, style: TextStyle(fontSize: 12, color: scheme.onSurfaceVariant)),
-            ])),
+            Expanded(child: _moduleText(title: '每日签到', subtitle: subtitle, subtitleColor: scheme.onSurfaceVariant, emphasized: true)),
+            if (done) ...[
+              const SizedBox(width: 6),
+              Container(padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 3), decoration: BoxDecoration(color: scheme.primaryContainer, borderRadius: BorderRadius.circular(7)), child: const Text('已完成', style: TextStyle(fontSize: 9, fontWeight: FontWeight.w700))),
+            ],
             const SizedBox(width: 8),
-            trailing,
+            SizedBox(width: 20, child: Center(child: trailing)),
           ]),
         ),
       ),
@@ -446,7 +469,7 @@ class _ProfilePageState extends State<ProfilePage> {
       _featureTile(icon: Icons.info_outline_rounded, title: '关于', subtitle: '项目地址、版本与更新', onTap: _openAbout),
       _appearanceSection(context),
       const SizedBox(height: 8),
-      ListTile(contentPadding: const EdgeInsets.symmetric(horizontal: 14), leading: const Icon(Icons.logout), title: const Text('退出登录'), trailing: const Icon(Icons.chevron_right), onTap: _logout),
+      ListTile(contentPadding: const EdgeInsets.symmetric(horizontal: 14), leading: const Icon(Icons.logout), title: const Text('退出登录', style: TextStyle(fontSize: 14, fontWeight: FontWeight.w600)), trailing: const SizedBox(width: 20, child: Icon(Icons.chevron_right)), onTap: _logout),
     ];
   }
 
