@@ -139,29 +139,72 @@ class _HomePageState extends State<HomePage> {
     );
   }
 
+  /// 三个 Tab 使用完全一致的内部网格：图标区域固定、文字区域固定高度，
+  /// 从而避免“最新回复”较长时把文字视觉位置撑偏。
   Widget _buildTabs(BuildContext context, ColorScheme scheme) {
     return Padding(
       padding: const EdgeInsets.fromLTRB(16, 0, 16, 4),
-      child: Row(children: [
-        for (var i = 0; i < _tabs.length; i++) ...[
-          Expanded(child: _tab(i, scheme)), if (i != _tabs.length - 1) const SizedBox(width: 8),
+      child: Row(
+        crossAxisAlignment: CrossAxisAlignment.stretch,
+        children: [
+          for (var i = 0; i < _tabs.length; i++) ...[
+            Expanded(child: _tab(i, scheme)),
+            if (i != _tabs.length - 1) const SizedBox(width: 8),
+          ],
         ],
-      ]),
+      ),
     );
   }
 
   Widget _tab(int index, ColorScheme scheme) {
     final selected = _index == index;
     return Material(
-      color: selected ? scheme.primary : scheme.surface, borderRadius: BorderRadius.circular(14), elevation: selected ? 1 : 0,
+      color: selected ? scheme.primary : scheme.surface,
+      borderRadius: BorderRadius.circular(14),
+      elevation: selected ? 1 : 0,
       child: InkWell(
-        borderRadius: BorderRadius.circular(14), onTap: () => setState(() => _index = index),
-        child: Padding(
-          padding: const EdgeInsets.symmetric(vertical: 11),
-          child: Row(mainAxisAlignment: MainAxisAlignment.center, children: [
-            Icon(_tabs[index].$3, size: 16, color: selected ? scheme.onPrimary : scheme.primary), const SizedBox(width: 5),
-            Text(_tabs[index].$1, style: TextStyle(fontSize: 13, fontWeight: FontWeight.w700, color: selected ? scheme.onPrimary : scheme.onSurfaceVariant)),
-          ]),
+        borderRadius: BorderRadius.circular(14),
+        onTap: () => setState(() => _index = index),
+        child: SizedBox(
+          height: 64,
+          child: Column(
+            mainAxisAlignment: MainAxisAlignment.center,
+            children: [
+              SizedBox(
+                height: 20,
+                child: Center(
+                  child: Icon(
+                    _tabs[index].$3,
+                    size: 16,
+                    color: selected ? scheme.onPrimary : scheme.primary,
+                  ),
+                ),
+              ),
+              const SizedBox(height: 4),
+              SizedBox(
+                height: 18,
+                child: Center(
+                  child: Text(
+                    _tabs[index].$1,
+                    maxLines: 1,
+                    overflow: TextOverflow.ellipsis,
+                    textAlign: TextAlign.center,
+                    strutStyle: const StrutStyle(
+                      fontSize: 13,
+                      height: 1.25,
+                      forceStrutHeight: true,
+                    ),
+                    style: TextStyle(
+                      fontSize: 13,
+                      height: 1.25,
+                      fontWeight: FontWeight.w700,
+                      color: selected ? scheme.onPrimary : scheme.onSurfaceVariant,
+                    ),
+                  ),
+                ),
+              ),
+            ],
+          ),
         ),
       ),
     );
