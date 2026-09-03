@@ -1,5 +1,6 @@
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
+import 'package:html/dom.dart' as dom;
 import 'package:html/parser.dart' as html_parser;
 
 import '../models/thread_detail.dart';
@@ -126,6 +127,32 @@ class _DetailPageState extends State<DetailPage> {
     final d = _detail;
     if (!_loggedIn || d == null || d.authorUid <= 0) return false;
     return d.authorUid == (AuthService.instance.uid ?? 0);
+  }
+
+  /// 将帖子 HTML 正文转换为可编辑的纯文本, 保留换行并去除脚本/样式内容。
+  String threadBodyToPlainText(String html) {
+    if (html.isEmpty) return html;
+    final doc = html_parser.parse(html);
+    for (final tag in const ['script', 'style', 'noscript']) {
+      doc.querySelectorAll(tag).forEach((el) => el.remove());
+    }
+    final buffer = StringBuffer();
+    final body = doc.body;
+    if (body != null) {
+      for (final node in body.descendantNodes) {
+        if (node is dom.Text && (node.text?.isNotEmpty ?? false)) {
+          buffer.write(node.text);
+        } else if (node is dom.Element) {
+          final tag = node.localName?.toLowerCase() ?? '';
+          if (const {
+            'br', 'p', 'div', 'li', 'tr', 'blockquote'
+          }.contains(tag)) {
+            buffer.write('\n');
+          }
+        }
+      }
+    }
+    return buffer.toString().trim();
   }
 
   Future<void> _openEdit() async {
