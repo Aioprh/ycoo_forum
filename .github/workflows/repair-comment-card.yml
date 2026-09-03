@@ -1,35 +1,23 @@
 name: Repair CommentCard build error
 
 on:
-  push:
-    branches: [main]
+  workflow_dispatch:
 
 permissions:
   contents: write
 
 jobs:
   repair:
-    if: github.actor != 'github-actions[bot]'
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
-      - name: Restore missing key parameter
+      - name: Verify CommentCard constructor
         run: |
           python3 - <<'PY'
           from pathlib import Path
           p = Path('lib/widgets/native_comment_list.dart')
           s = p.read_text()
-          old = "  const _CommentCard({\n    required this.comment,"
-          new = "  const _CommentCard({\n    super.key,\n    required this.comment,"
-          if old not in s:
-              raise SystemExit('CommentCard constructor pattern not found')
-          p.write_text(s.replace(old, new, 1))
+          if 'const _CommentCard({' not in s:
+              raise SystemExit('CommentCard constructor not found')
+          print('CommentCard constructor exists; no source rewrite required.')
           PY
-      - name: Commit repair
-        run: |
-          git config user.name "github-actions[bot]"
-          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
-          git add lib/widgets/native_comment_list.dart
-          git diff --cached --quiet && exit 0
-          git commit -m "fix: add missing key to CommentCard"
-          git push
