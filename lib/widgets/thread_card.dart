@@ -94,11 +94,19 @@ class ThreadCard extends StatelessWidget {
               ),
             _meta(context, item.author, Icons.person_outline),
             if (item.time.isNotEmpty) _meta(context, item.time, Icons.schedule_outlined),
-            _meta(context, item.replyCount.toString(), Icons.chat_bubble_outline_rounded),
+            _meta(context, _formatCount(item.replyCount), Icons.chat_bubble_outline_rounded),
+            _meta(context, _formatCount(item.viewCount), Icons.visibility_outlined),
           ],
         ),
       ],
     );
+  }
+
+  String _formatCount(int count) {
+    if (count < 0) return '0';
+    if (count >= 10000) return '${(count / 10000).toStringAsFixed(count % 10000 == 0 ? 0 : 1)}万';
+    if (count >= 1000) return '${(count / 1000).toStringAsFixed(count % 1000 == 0 ? 0 : 1)}k';
+    return count.toString();
   }
 
   Widget _meta(BuildContext context, String text, IconData icon) {
