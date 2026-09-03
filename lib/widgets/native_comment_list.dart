@@ -240,6 +240,10 @@ class _CommentCard extends StatefulWidget {
 
 class _CommentCardState extends State<_CommentCard> {
   bool _loadingReplies = false, _repliesExpanded = false;
+  /// 是否真实存在楼中楼。以 fetchReplies 接口的权威结果为准：
+  /// 有实际回复条目才置 true。绝不依赖首屏 HTML 的 data-replies 推断，
+  /// 因为异步/分页渲染时首屏可能抓不到回复叶子节点，会漏判。
+  bool? _hasReplies;
   String _replyHtml = '';
   String? _replyError;
   int _pid = 0;
@@ -248,10 +252,13 @@ class _CommentCardState extends State<_CommentCard> {
   void initState() {
     super.initState();
     _pid = widget.comment.pid;
-    // 只有明确内嵌楼中楼的楼层才后台预热，普通评论不发起请求、也不出现空的展开入口。
-    // 不再依赖 replyCount: Comiis 手机模板不渲染"回复(N)"文本，解析恒为 0，
-    // 若以此做门控会导致有楼中楼的楼完全不显示。
-    if (widget.tid > 0 && (widget.comment.hasReplies || widget.comment.replyCount > 0)) {
+    // 排除无楼中楼可能性的楼层（首屏连 replyfloor 外壳都没有），不发起无谓请求；
+    // 其次对"疑似有楼中楼"的楼层后台预热一次 fetchReplies，用其结果作为
+    // 入口与展开的唯一依据。不再用 replyCount / data-replies 做判据。
+    if (widget.tid > 0 &&
+        (widget.comment.hasReplies ||
+            widget.comment.replyCount > 0 ||
+            _pid > 0)) {
       WidgetsBinding.instance.addPostFrameCallback((_) => _loadReplies());
     }
   }
@@ -260,52 +267,65 @@ class _CommentCardState extends State<_CommentCard> {
     if (_loadingReplies || widget.tid <= 0) return;
     setState(() { _loadingReplies = true; _replyError = null; });
     try {
-      if (_pid <= 0 || force) {
+      if (_pid <= 0) {
         _pid = await CommentReplyResolver.instance.resolvePid(
           tid: widget.tid, commentIndex: widget.index,
           author: widget.comment.author, floor: widget.comment.floor,
         );
       }
-      if (_pid <= 0) throw Exception('未取得评论楼层');
+      if (_pid <= 0) {
+        if (!mounted) return;
+        setState(() {
+          _loadingReplies = false;
+          _hasReplies = false;
+          _repliesExpanded = false;
+        });
+        return;
+      }
       _replyHtml = await CommentReplyResolver.instance.fetchReplies(
         tid: widget.tid, pid: _pid,
       );
-      if (!mounted) return;
       final replies = _parseReplies();
+      if (!mounted) return;
       setState(() {
         _loadingReplies = false;
-        // 自动加载成功后直接展示楼中楼；普通评论解析为空则不显示空容器。
-        _repliesExpanded = replies.isNotEmpty;
-        if (replies.isEmpty && widget.comment.hasReplies) {
-          _replyError = '暂时没有取得楼中楼内容';
-          _repliesExpanded = false;
-        } else if (replies.isNotEmpty && _repliesExpanded) {
-          _replyError = null;
-        }
+        // 权威判据：接口实际返回了回复条目才认为有楼中楼。
+        final has = replies.isNotEmpty;
+        _hasReplies = has;
+        _replyError = null;
+        // 自动加载仅在有真实内容时展开；无内容绝不显示空态。
+        _repliesExpanded = has && (widget.comment.hasReplies || force);
       });
     } catch (e) {
       if (!mounted) return;
       setState(() {
         _loadingReplies = false;
-        // 请求失败时不保留空的楼中楼区域；父评论仍完整显示，按钮可再次重试。
         _repliesExpanded = false;
-        _replyError = widget.comment.hasReplies ? '$e' : null;
+        _replyError = '$e';
       });
     }
   }
 
-  void _toggleReplies() {
+  void _toggleReplies() async {
     if (_loadingReplies) return;
     final willExpand = !_repliesExpanded;
     if (!willExpand) {
       setState(() => _repliesExpanded = false);
       return;
     }
-    setState(() {
-      _repliesExpanded = true;
-      _replyError = null;
-    });
-    _loadReplies(force: true);
+    // 确保接口数据已拉取：若尚未加载过则先加载，用真实结果决定是否可展开。
+    if (_hasReplies == null) {
+      await _loadReplies(force: true);
+      if (!mounted || _hasReplies != true) {
+        if (mounted && _hasReplies == false) {
+          ScaffoldMessenger.of(context).showSnackBar(
+            const SnackBar(content: Text('该楼层暂时没有楼中楼回复')),
+          );
+        }
+        return;
+      }
+    }
+    setState(() { _repliesExpanded = true; _replyError = null; });
   }
 
   List<_FloorReply> _parseReplies() {
@@ -522,9 +542,12 @@ class _CommentCardState extends State<_CommentCard> {
     final comment = widget.comment;
     final colors = Theme.of(context).colorScheme;
     final replies = _parseReplies();
-    // 只要楼层行内嵌有楼中楼标记就显示展开入口(后台会自动加载并展开)；
-    // 已解析到内容 / 正在加载也同样显示。不再依赖不可靠的回复计数。
-    final showReplyToggle = widget.comment.hasReplies || replies.isNotEmpty || _loadingReplies;
+    // 入口与是否展示，统一以 fetchReplies 接口的权威结果为依据：
+    //  - 已确认存在楼中楼(_hasReplies == true) -> 显示"展开/收起"
+    //  - 正在首次探测中(_loadingReplies)          -> 暂不显示，等结果，避免闪烁/空入口
+    //  - 已确认无楼中楼(_hasReplies == false)     -> 不显示，避免误导
+    // 不再依赖首屏 data-replies / replyCount 推断，模板异步渲染也不受影响。
+    final showReplyToggle = _hasReplies == true;
     return Container(
       padding: const EdgeInsets.fromLTRB(14, 13, 14, 10),
       decoration: BoxDecoration(
