@@ -192,7 +192,7 @@ class ThreadEditService {
       final result = NetClient.decode(response.bodyBytes);
       final resultDoc = parser.parse(result);
       final text = _plain(resultDoc);
-      if (_isSuccess(resultDoc, text, result, status: status, location: location)) return null;
+      if (_isSuccess(resultDoc, text, result, status, location)) return null;
       if (_looksLikeLogin(text)) return '登录状态已失效，请重新登录';
       if (text.contains('formhash') || text.contains('非法请求') || text.contains('验证失败')) return '编辑令牌已失效，请重新进入帖子后再试';
       if (_looksLikePermission(text)) return '只有帖子作者可以编辑该主题';
