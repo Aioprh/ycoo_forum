@@ -109,7 +109,12 @@ class NativeCommentList extends StatelessWidget {
       separatorBuilder: (_, __) => const SizedBox(height: 10),
       itemBuilder: (context, index) {
         final comment = comments[index];
+        // 评论翻页时, Flutter 会按 index 复用同一个位置的 State。若不加稳定且
+        // 随 pid 变化的 key, 新一页的卡片会残留上一页那条评论的楼中楼状态
+        // (展开/已拉取的 pid), 导致"第一页的楼中楼出现在第二页"。
+        // 用 pid(辅以 index)作为 key, 让每条评论拥有独立 State。
         return _CommentCard(
+          key: ValueKey('comment-${comment.pid}-$index'),
           comment: comment,
           index: index,
           tid: tid,
@@ -260,6 +265,27 @@ class _CommentCardState extends State<_CommentCard> {
             widget.comment.replyCount > 0 ||
             _pid > 0)) {
       WidgetsBinding.instance.addPostFrameCallback((_) => _loadReplies());
+    }
+  }
+
+  @override
+  void didUpdateWidget(covariant _CommentCard oldWidget) {
+    super.didUpdateWidget(oldWidget);
+    // 兜底: 即使某处未给 key, 翻页导致同一位置的 State 换到了另一条评论时,
+    // 也必须重置楼中楼状态并重新探测, 否则会残留上一页的楼中楼。
+    if (oldWidget.comment.pid != widget.comment.pid) {
+      _pid = widget.comment.pid;
+      _replyHtml = '';
+      _replyError = null;
+      _loadingReplies = false;
+      _repliesExpanded = false;
+      _hasReplies = null;
+      if (widget.tid > 0 &&
+          (widget.comment.hasReplies ||
+              widget.comment.replyCount > 0 ||
+              _pid > 0)) {
+        WidgetsBinding.instance.addPostFrameCallback((_) => _loadReplies());
+      }
     }
   }
 
