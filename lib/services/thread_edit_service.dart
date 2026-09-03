@@ -181,12 +181,12 @@ class ThreadEditService {
       final result = NetClient.decode(response.bodyBytes);
       final resultDoc = parser.parse(result);
       final text = _plain(resultDoc);
-      if (_isSuccess(resultDoc, text)) return null;
+      if (_isSuccess(resultDoc, text, result)) return null;
       if (_looksLikeLogin(text)) return '登录状态已失效，请重新登录';
       if (text.contains('formhash') || text.contains('非法请求') || text.contains('验证失败')) return '编辑令牌已失效，请重新进入帖子后再试';
       if (_looksLikePermission(text)) return '只有帖子作者可以编辑该主题';
       if (text.contains('验证码')) return '论坛要求验证码，请使用网页完成验证后再编辑';
-      return _firstFailure(text) ?? '保存失败：论坛未返回成功结果';
+      return _firstFailure(text) ?? _extractErrorLabel(text) ?? '保存失败：论坛未返回成功结果';
     } catch (e) {
       return '编辑请求失败：${e.toString().replaceFirst('Exception: ', '')}';
     }
@@ -224,14 +224,47 @@ class ThreadEditService {
   String _plain(dynamic doc) => (doc.body?.text ?? '').replaceAll(RegExp(r'\s+'), ' ').trim();
   bool _looksLikeLogin(String text) => text.contains('请登录') || text.contains('登录后') || text.contains('请先登录');
   bool _looksLikePermission(String text) => text.contains('无权') || text.contains('没有权限') || text.contains('权限不足');
-  bool _isSuccess(dynamic doc, String text) {
+  bool _isSuccess(dynamic doc, String text, [String? raw]) {
+    // 1) 明确成功提示。
     if (RegExp(r'(编辑成功|保存成功|主题已(?:编辑|更新)|已(?:保存|更新))').hasMatch(text)) return true;
-    if (doc.querySelector('meta[http-equiv="refresh"]') != null) return true;
+
+    // 2) meta refresh 跳转。
+    dynamic refresh;
+    for (final meta in doc.querySelectorAll('meta')) {
+      if ((meta.attributes['http-equiv'] ?? '').toLowerCase() == 'refresh') {
+        refresh = meta;
+        break;
+      }
+    }
+    if (refresh != null) {
+      final url = (refresh.attributes['content'] ?? '').toLowerCase();
+      // 若被跳回 action=edit 编辑页，视为失败。
+      if (url.contains('action=edit')) return false;
+      return !text.contains('抱歉') && !text.contains('失败');
+    }
+
+    // 3) 移动端常以 JS 跳转到 viewthread 表示成功。
+    final full = raw ?? text;
+    if (RegExp(r'''location(?:\.href)?\s*=\s*["'][^"']*viewthread[^"']*["']''').hasMatch(full)) {
+      return !text.contains('抱歉');
+    }
+
+    // 4) 服务端又重新渲染出编辑表单(编辑被打回) → 一定是失败。
+    if (doc.querySelector('form#postform, form[name="postform"], textarea[name="message"]') != null) {
+      return false;
+    }
+
+    // 5) 兼容仅返回主题页节点的情况。返回页带“返回主题”链接常见于失败后重新渲染，
+    //    因此必须排除 失败/抱歉/来路 等关键词，避免把打回误判为成功。
     final redirect = doc.querySelector('a[href*="thread-"]');
-    return redirect != null && !text.contains('失败');
+    return redirect != null && !text.contains('失败') && !text.contains('抱歉') && !text.contains('来路');
+  }
+  String? _extractErrorLabel(String text) {
+    final match = RegExp(r'(?:抱歉|错误|无标题)[，,、:]?[\s\S]{0,48}?[。;；]').firstMatch(text);
+    return match?.group(0)?.trim();
   }
   String? _firstFailure(String text) {
-    const keys = <String>['禁止编辑', '编辑失败', '内容包含敏感词', '操作失败', '帖子不存在', '主题不存在', '标题不能为空', '内容不能为空'];
+    const keys = <String>['禁止编辑', '编辑失败', '内容包含敏感词', '操作失败', '帖子不存在', '主题不存在', '标题不能为空', '内容不能为空', '不能为空'];
     for (final key in keys) {
       if (text.contains(key)) return key;
     }

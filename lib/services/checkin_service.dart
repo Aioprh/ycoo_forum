@@ -116,6 +116,31 @@ class CheckinService {
     return null;
   }
 
+  /// 只读查询今日是否已经签到，不会触发签到动作。
+  /// 未登录或无法确定时返回 false。
+  Future<bool> isCheckedInToday() async {
+    if (!AuthService.instance.isLoggedIn) return false;
+    try {
+      final client = await _client;
+      final pages = <Uri>[
+        Uri.parse('${_base}plugin.php?id=k_misign:sign'),
+        Uri.parse('${_base}k_misign-sign.html'),
+        Uri.parse('${_base}forum.php?mobile=2'),
+      ];
+      for (final pageUri in pages) {
+        try {
+          final response = await NetClient.retry(() => client.get(
+                pageUri,
+                headers: _headers(_base),
+              ).timeout(NetClient.timeout));
+          if (response.statusCode < 200 || response.statusCode >= 400) continue;
+          return _isSignedState(NetClient.decode(response.bodyBytes));
+        } catch (_) {}
+      }
+    } catch (_) {}
+    return false;
+  }
+
   /// 应用启动时自动签到。
   ///
   /// 同一天只执行一次自动签到请求；只有确认“签到成功”或“今天已经签到”

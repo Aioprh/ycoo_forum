@@ -31,6 +31,7 @@ class _ProfilePageState extends State<ProfilePage> {
   int? _coins;
   bool _ready = false;
   bool _signing = false;
+  bool _alreadySigned = false;
   String? _checkinResult;
 
   @override
@@ -57,6 +58,8 @@ class _ProfilePageState extends State<ProfilePage> {
     _username ??= AuthService.instance.username;
     _uid ??= AuthService.instance.uid;
     _avatarUrl ??= AuthService.instance.avatarUrl;
+    _alreadySigned =
+        AuthService.instance.isLoggedIn ? await CheckinService.instance.isCheckedInToday() : false;
     if (mounted) setState(() => _ready = true);
   }
 
@@ -77,6 +80,7 @@ class _ProfilePageState extends State<ProfilePage> {
       _points = null;
       _coins = null;
       _ready = true;
+      _alreadySigned = false;
       _checkinResult = null;
     });
   }
@@ -92,6 +96,9 @@ class _ProfilePageState extends State<ProfilePage> {
     setState(() {
       _signing = false;
       _checkinResult = result;
+      if (result.contains('成功') || result.contains('已经签到') || result.contains('已签')) {
+        _alreadySigned = true;
+      }
     });
     ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text(result), behavior: SnackBarBehavior.floating));
   }
@@ -398,7 +405,8 @@ class _ProfilePageState extends State<ProfilePage> {
   Widget _checkinCard() {
     final scheme = Theme.of(context).colorScheme;
     final result = _checkinResult;
-    final done = result != null && (result.contains('成功') || result.contains('已经签到') || result.contains('已签'));
+    final done = _alreadySigned ||
+        (result != null && (result.contains('成功') || result.contains('已经签到') || result.contains('已签')));
     Widget trailing;
     if (_signing) {
       trailing = const SizedBox(width: 20, height: 20, child: CircularProgressIndicator(strokeWidth: 2));
@@ -407,7 +415,11 @@ class _ProfilePageState extends State<ProfilePage> {
     } else {
       trailing = Icon(Icons.arrow_forward_ios_rounded, size: 16, color: scheme.onSurfaceVariant);
     }
-    final subtitle = _signing ? '正在签到…' : done ? (result ?? '今天已经签到') : result ?? '点击一次，直接完成今日签到';
+    final subtitle = _signing
+        ? '正在签到…'
+        : done
+            ? (_checkinResult?.isNotEmpty == true ? _checkinResult! : '今天已经签到')
+            : (result ?? '点击一次，直接完成今日签到');
     return Card(
       margin: EdgeInsets.zero,
       clipBehavior: Clip.antiAlias,
@@ -420,7 +432,7 @@ class _ProfilePageState extends State<ProfilePage> {
             Container(width: 46, height: 46, decoration: BoxDecoration(color: scheme.secondary, borderRadius: BorderRadius.circular(14)), child: Icon(done ? Icons.check_rounded : Icons.calendar_month_rounded, color: scheme.onSecondary, size: 25)),
             const SizedBox(width: 12),
             Expanded(child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
-              Row(children: [const Text('每日签到', style: TextStyle(fontSize: 16, fontWeight: FontWeight.w800)), if (done) ...[const SizedBox(width: 6), Container(padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 3), decoration: BoxDecoration(color: scheme.primaryContainer, borderRadius: BorderRadius.circular(7)), child: const Text('已完成', style: TextStyle(fontSize: 9, fontWeight: FontWeight.w700)))]]),
+              Row(children: [Text(done ? '已签到' : '每日签到', style: const TextStyle(fontSize: 16, fontWeight: FontWeight.w800)), if (done) ...[const SizedBox(width: 6), Container(padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 3), decoration: BoxDecoration(color: scheme.primaryContainer, borderRadius: BorderRadius.circular(7)), child: const Text('已完成', style: TextStyle(fontSize: 9, fontWeight: FontWeight.w700)))]]),
               const SizedBox(height: 4),
               Text(subtitle, maxLines: 1, overflow: TextOverflow.ellipsis, style: TextStyle(fontSize: 12, color: scheme.onSurfaceVariant)),
             ])),
