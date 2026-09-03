@@ -10,10 +10,8 @@ import 'site_config.dart';
 class HotThreadsService {
   HotThreadsService._();
   static final instance = HotThreadsService._();
-
   static String get _base => SiteConfig.base;
   static final _canonical = '${SiteConfig.base}forum.php?mod=guide&view=hot&index=1';
-
   Future<List<ThreadItem>> fetch() async {
     final urls = <String>[_canonical, '$_canonical&mobile=2', '$_base' 'forum.php?mod=guide&view=hot&index=1&mobile=2'];
     final seenUrls = <String>{};
@@ -23,13 +21,10 @@ class HotThreadsService {
         final html = await _get(url);
         final result = _parse(parser.parse(html));
         if (result.isNotEmpty) return result;
-      } catch (e) {
-        debugPrint('hot threads parse failed: $e');
-      }
+      } catch (e) { debugPrint('hot threads parse failed: $e'); }
     }
     return const <ThreadItem>[];
   }
-
   Future<String> _get(String url) async {
     final client = await NetClient.instance.client;
     final parsed = Uri.parse(url);
@@ -42,7 +37,6 @@ class HotThreadsService {
     if (response.statusCode != 200) throw Exception('热门页请求失败 HTTP ${response.statusCode}');
     return NetClient.decode(response.bodyBytes);
   }
-
   List<ThreadItem> _parse(dom.Document doc) {
     final result = <ThreadItem>[];
     final seen = <int>{};
@@ -69,7 +63,6 @@ class HotThreadsService {
     }
     return result;
   }
-
   static String _elementText(dom.Element? element) {
     if (element == null) return '';
     final clone = element.clone(true);
@@ -80,7 +73,6 @@ class HotThreadsService {
     }
     return _clean(clone.text);
   }
-
   static String _clean(String value) {
     final buffer = StringBuffer();
     for (final rune in value.runes) {
@@ -90,7 +82,6 @@ class HotThreadsService {
     }
     return buffer.toString().replaceAll(RegExp(r'\s+'), ' ').trim();
   }
-
   dom.Element? _container(dom.Element element) {
     dom.Element? p = element.parent;
     for (var i = 0; i < 8 && p != null; i++, p = p.parent) {
@@ -101,7 +92,6 @@ class HotThreadsService {
     }
     return element.parent;
   }
-
   static int? _tid(String href) => _firstInt(RegExp(r'(?:thread-|[?&](?:tid|ptid)=)(\d+)', caseSensitive: false), href);
   static bool _validTitle(String value) { if (value.length < 2 || value.length > 300) return false; const bad = {'首页', '登录', '注册', '返回', '下一页', '上一页', '查看更多', '查看全部', '热门'}; return !bad.contains(value); }
   static String _firstText(dom.Element? root, List<String> selectors) { if (root == null) return ''; for (final selector in selectors) { final value = _elementText(root.querySelector(selector)); if (_validTitle(value)) return value; } return ''; }
