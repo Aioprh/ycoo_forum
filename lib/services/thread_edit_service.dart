@@ -14,6 +14,12 @@ class ThreadEditData {
   final bool allownoticeauthor;
   final bool hiddenreplies;
   final bool descviewdefault;
+  /// 编辑表单里的主题分类(typeid)选项，与网页端下拉一致。
+  final List<ThreadType> typeOptions;
+  /// 编辑表单里的阅读权限选项(用户组名)，与网页端下拉一致。
+  final List<ThreadReadpermOption> readpermOptions;
+  /// 当前用户组允许的最高售价，来自网页端 placeholder“最高 N”。
+  final int maxPrice;
 
   const ThreadEditData({
     required this.subject,
@@ -21,11 +27,29 @@ class ThreadEditData {
     this.typeid,
     this.price = 0,
     this.readperm = 0,
+    this.typeOptions = const [],
+    this.readpermOptions = const [],
+    this.maxPrice = 0,
     this.usesig = true,
     this.allownoticeauthor = true,
     this.hiddenreplies = false,
     this.descviewdefault = false,
   });
+}
+
+/// 阅读权限的单一选项：value 为权限数值，label 为网页端显示的用户组名。
+class ThreadReadpermOption {
+  final int value;
+  final String label;
+  const ThreadReadpermOption(this.value, this.label);
+}
+
+/// 版块的主题分类选项。与 thread_publish_service.ThreadType 同构，
+/// 这里单独定义以免编辑服务反向依赖发帖服务。
+class ThreadType {
+  final int id;
+  final String name;
+  const ThreadType(this.id, this.name);
 }
 
 /// Discuz 主题编辑：先读取真实编辑表单，再按网页端 form action 提交。
@@ -98,13 +122,47 @@ class ThreadEditService {
     if (readpermSelected != null) {
       readperm = int.tryParse(readpermSelected.attributes['value'] ?? '') ?? 0;
     }
+    // 阅读权限选项对应用户组名(不限/童生/秀才/.../最高权限)，原样带回供 UI 复刻网页端下拉。
+    final readpermOptions = <ThreadReadpermOption>[];
+    final seenReadperm = <String>{};
+    for (final opt in readpermSelect?.querySelectorAll('option') ?? const []) {
+      final label = opt.text.trim();
+      final val = int.tryParse(opt.attributes['value'] ?? '');
+      final key = label.isEmpty ? '不限' : label;
+      if (seenReadperm.add(key)) readpermOptions.add(ThreadReadpermOption(val ?? 0, label.isEmpty ? '不限' : label));
+    }
+
+    // 主题分类选项也从编辑表单读取(而非另开发帖页请求)，与网页端下拉完全一致。
+    final typeOptions = <ThreadType>[];
+    final seenType = <int>{};
+    for (final opt in form.querySelectorAll('select[name="typeid"] option')) {
+      final id = int.tryParse(opt.attributes['value'] ?? '');
+      final name = opt.text.trim();
+      if (id == null || id <= 0 || name.isEmpty || name.contains('请选择') || !seenType.add(id)) continue;
+      typeOptions.add(ThreadType(id, name));
+    }
+
+    // 最高售价来自网页端 placeholder“最高 N”；解析不到则退回当前售价(只保留不动)。
+    final currentPrice = intValue('price');
+    int maxPrice = 0;
+    final priceInput = form.querySelector('input[name="price"]');
+    final placeholder = priceInput?.attributes['placeholder'] ?? '';
+    final maxMatch = RegExp(r'最高\s*(\d+)').firstMatch(placeholder);
+    if (maxMatch != null) {
+      maxPrice = int.tryParse(maxMatch.group(1)!) ?? currentPrice;
+    }
+    if (maxPrice <= 0) maxPrice = currentPrice;
+
     final typeId = selectedTypeId();
     return ThreadEditData(
       subject: value('subject'),
       message: value('message'),
       typeid: typeId,
-      price: intValue('price'),
+      price: currentPrice,
       readperm: readperm,
+      typeOptions: typeOptions,
+      readpermOptions: readpermOptions,
+      maxPrice: maxPrice,
       usesig: checked('usesig', fallback: true),
       allownoticeauthor: checked('allownoticeauthor', fallback: true),
       hiddenreplies: checked('hiddenreplies'),
@@ -154,7 +212,7 @@ class ThreadEditService {
       fields['subject'] = title;
       fields['message'] = body;
       fields['editsubmit'] = 'yes';
-      if (typeid != null && typeid > 0) fields['typeid'] = '$typeid';
+      if (typeid != null) fields['typeid'] = '$typeid';
       if (price != null) fields['price'] = '$price';
       if (readperm != null) fields['readperm'] = readperm == 0 ? '' : '$readperm';
       // Discuz 用 isset($_POST[...]) 判断复选框：勾选才随表单提交，

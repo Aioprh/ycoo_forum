@@ -1,7 +1,6 @@
 import 'package:flutter/material.dart';
 
 import '../services/thread_edit_service.dart';
-import '../services/thread_publish_service.dart';
 
 /// 编辑自己已发布的主题。
 ///
@@ -30,10 +29,13 @@ class _EditThreadPageState extends State<EditThreadPage> {
   final _title = TextEditingController();
   final _body = TextEditingController();
   final _bodyFocus = FocusNode();
+  final _formKey = GlobalKey<FormState>();
 
   List<ThreadType> _types = const [];
+  List<ThreadReadpermOption> _readpermOptions = const [];
   int? _typeId;
   int _price = 0;
+  int _maxPrice = 0;
   int _readPerm = 0;
   bool _useSig = true;
   bool _allowNoticeAuthor = true;
@@ -67,7 +69,6 @@ class _EditThreadPageState extends State<EditThreadPage> {
         fid: widget.fid,
         pid: widget.pid,
       );
-      final types = await ThreadPublishService.instance.fetchThreadTypes(widget.fid);
       if (!mounted) return;
 
       setState(() {
@@ -75,15 +76,18 @@ class _EditThreadPageState extends State<EditThreadPage> {
           if (data.subject.isNotEmpty) _title.text = data.subject;
           if (data.message.isNotEmpty) _body.text = data.message;
           _typeId = data.typeid;
+          _typeId ??= 0; // 无分类的帖子显示为“无分类”
           _price = data.price;
+          _maxPrice = data.maxPrice;
           _readPerm = data.readperm;
           _useSig = data.usesig;
           _allowNoticeAuthor = data.allownoticeauthor;
           _hiddenReplies = data.hiddenreplies;
           _descViewDefault = data.descviewdefault;
+          // 直接用编辑表单自身的选项，保证与网页端下拉一致。
+          _types = data.typeOptions;
+          _readpermOptions = data.readpermOptions;
         }
-        _types = types;
-        _typeId ??= types.isNotEmpty ? types.first.id : null;
         _loading = false;
       });
     } catch (e) {
@@ -93,6 +97,23 @@ class _EditThreadPageState extends State<EditThreadPage> {
         _error = e.toString().replaceFirst('Exception: ', '');
       });
     }
+  }
+
+  String? _priceValidator(String? v, int maxPrice) {
+    final n = int.tryParse(v ?? '');
+    if (n == null || n < 0) return '请输入不小于 0 的整数';
+    if (maxPrice > 0 && n > maxPrice) return '售价不能超过 $_maxPrice';
+    return null;
+  }
+
+  String? _readpermValidator(String? v, List<ThreadReadpermOption> options) {
+    final n = int.tryParse(v ?? '');
+    if (n == null || n < 0) return '请输入不小于 0 的整数';
+    if (options.isEmpty) return null;
+    final valid = options.map((o) => o.value).toSet();
+    // 与网页端行为一致：只允许选择现有用户组的数值，其余视为无效。
+    if (!valid.contains(n)) return '请输入有效的阅读权限数值（${valid.toList()..sort()}）';
+    return null;
   }
 
   void _insert(String value) {
@@ -191,10 +212,12 @@ class _EditThreadPageState extends State<EditThreadPage> {
             onChanged: _submitting ? null : (value) => setState(() => _showAdvanced = value),
           ),
           if (_showAdvanced)
-            Padding(
-              padding: const EdgeInsets.fromLTRB(16, 0, 16, 14),
-              child: Column(
-                children: [
+            Form(
+              key: _formKey,
+              child: Padding(
+                padding: const EdgeInsets.fromLTRB(16, 0, 16, 14),
+                child: Column(
+                  children: [
                   if (_types.isNotEmpty)
                     DropdownButtonFormField<int>(
                       value: _typeId,
@@ -202,49 +225,55 @@ class _EditThreadPageState extends State<EditThreadPage> {
                         labelText: '主题分类',
                         prefixIcon: Icon(Icons.label_outline),
                       ),
-                      items: _types
-                          .map((type) => DropdownMenuItem<int>(
-                                value: type.id,
-                                child: Text(type.name),
-                              ))
-                          .toList(),
+                      items: [
+                        const DropdownMenuItem<int>(
+                          value: 0,
+                          child: Text('无分类'),
+                        ),
+                        ..._types
+                            .map((type) => DropdownMenuItem<int>(
+                                  value: type.id,
+                                  child: Text(type.name),
+                                ))
+                            .toList(),
+                      ],
                       onChanged: _submitting ? null : (value) => setState(() => _typeId = value),
                     ),
                   const SizedBox(height: 10),
-                  DropdownButtonFormField<int>(
-                    value: _price,
-                    decoration: const InputDecoration(
-                      labelText: '主题售价',
-                      prefixIcon: Icon(Icons.monetization_on_outlined),
+                  TextFormField(
+                    key: const ValueKey('price'),
+                    initialValue: _price == 0 ? '0' : '$_price',
+                    enabled: !_submitting,
+                    keyboardType: TextInputType.number,
+                    maxLength: 6,
+                    decoration: InputDecoration(
+                      labelText: '主题售价（星币）',
+                      prefixIcon: const Icon(Icons.monetization_on_outlined),
+                      helperText: _maxPrice > 0 ? '最高可设置 $_maxPrice 星币' : '售价为 0 表示免费',
+                      counterText: '',
+                      border: const OutlineInputBorder(),
                     ),
-                    items: {
-                      ...const [0, 1, 2, 3, 5, 10, 20],
-                      _price, // 服务端实际值不在固定档位时也保证可显示
-                    }
-                        .map((value) => DropdownMenuItem<int>(
-                              value: value,
-                              child: Text(value == 0 ? '免费' : '$value 星币'),
-                            ))
-                        .toList(),
-                    onChanged: _submitting ? null : (value) => setState(() => _price = value ?? 0),
+                    validator: (v) => _priceValidator(v, _maxPrice),
+                    onChanged: (v) => _price = int.tryParse(v ?? '') ?? 0,
                   ),
                   const SizedBox(height: 10),
-                  DropdownButtonFormField<int>(
-                    value: _readPerm,
-                    decoration: const InputDecoration(
-                      labelText: '阅读权限',
-                      prefixIcon: Icon(Icons.lock_outline),
+                  TextFormField(
+                    key: const ValueKey('readperm'),
+                    initialValue: '$_readPerm',
+                    enabled: !_submitting,
+                    keyboardType: TextInputType.number,
+                    maxLength: 3,
+                    decoration: InputDecoration(
+                      labelText: '阅读权限（数值，0=不限）',
+                      prefixIcon: const Icon(Icons.lock_outline),
+                      helperText: _readpermOptions.isNotEmpty
+                          ? '参考用户组：${_readpermOptions.take(7).map((o) => '${o.label}(${o.value})').join('、')}…'
+                          : '0 表示不限，数字越大权限要求越高',
+                      counterText: '',
+                      border: const OutlineInputBorder(),
                     ),
-                    items: {
-                      ...const [0, 1, 2, 3, 5, 10, 20, 30, 50],
-                      _readPerm, // 服务端实际权限不在固定档位时也保证可显示
-                    }
-                        .map((value) => DropdownMenuItem<int>(
-                              value: value,
-                              child: Text(value == 0 ? '不限' : '$value 级'),
-                            ))
-                        .toList(),
-                    onChanged: _submitting ? null : (value) => setState(() => _readPerm = value ?? 0),
+                    validator: (v) => _readpermValidator(v, _readpermOptions),
+                    onChanged: (v) => _readPerm = int.tryParse(v ?? '') ?? 0,
                   ),
                   const SizedBox(height: 6),
                   SwitchListTile.adaptive(
@@ -255,7 +284,7 @@ class _EditThreadPageState extends State<EditThreadPage> {
                   ),
                   SwitchListTile.adaptive(
                     contentPadding: EdgeInsets.zero,
-                    title: const Text('允许通知作者'),
+                    title: const Text('接收回复通知'),
                     value: _allowNoticeAuthor,
                     onChanged: _submitting ? null : (value) => setState(() => _allowNoticeAuthor = value),
                   ),
@@ -276,6 +305,7 @@ class _EditThreadPageState extends State<EditThreadPage> {
                     onChanged: _submitting ? null : (value) => setState(() => _descViewDefault = value),
                   ),
                 ],
+                ),
               ),
             ),
         ],
@@ -286,6 +316,10 @@ class _EditThreadPageState extends State<EditThreadPage> {
   Future<void> _submit() async {
     if (_submitting) return;
     FocusScope.of(context).unfocus();
+    // 高级设置展开时才校验售价/阅读权限；收起时用户未改动，直接沿用加载值。
+    if (_showAdvanced && !(_formKey.currentState?.validate() ?? true)) {
+      return;
+    }
     setState(() {
       _submitting = true;
       _error = null;
