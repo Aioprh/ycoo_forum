@@ -236,6 +236,7 @@ class _CommentCard extends StatefulWidget {
   final Future<void> Function() onReply;
   final VoidCallback onProfile;
   const _CommentCard({
+    super.key,
     required this.comment, required this.index, required this.tid, required this.fid,
     required this.onReply, required this.onProfile,
   });
