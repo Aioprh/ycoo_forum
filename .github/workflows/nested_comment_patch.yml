@@ -1,0 +1,32 @@
+name: nested comment patch runner
+
+on: push
+
+permissions:
+  contents: write
+
+jobs:
+  patch:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Patch native comment list
+        run: |
+          python3 - <<'PY'
+          from pathlib import Path
+          p = Path('lib/widgets/native_comment_list.dart')
+          s = p.read_text(encoding='utf-8')
+          s = s.replace('''  @override\n  void initState() {\n    super.initState();\n    _pid = widget.comment.pid;\n    if (widget.tid > 0) {\n      WidgetsBinding.instance.addPostFrameCallback((_) => _loadReplies());\n    }\n  }\n''', '''  @override\n  void initState() {\n    super.initState();\n    _pid = widget.comment.pid;\n    // 只有明确存在楼中楼时才后台预热，普通评论不产生空的展开入口。\n    if (widget.tid > 0 && widget.comment.replyCount > 0) {\n      WidgetsBinding.instance.addPostFrameCallback((_) => _loadReplies());\n    }\n  }\n''', 1)
+          s = s.replace('''      setState(() {\n        _loadingReplies = false;\n        // 首次加载 (force=false): 有回复则默认展开, 方便用户查看。\n        // 强制刷新 (force=true): 保持用户期望的展开状态, 不因结果为空而折叠。\n        if (!force) _repliesExpanded = replies.isNotEmpty;\n        if (replies.isEmpty && widget.comment.replyCount > 0) {\n          _replyError = '暂时没有取得楼中楼内容';\n        }\n      });\n''', '''      setState(() {\n        _loadingReplies = false;\n        // 后台预热只缓存数据，不自动展开；父评论始终保持可见。\n        if (replies.isEmpty && widget.comment.replyCount > 0) {\n          _replyError = '暂时没有取得楼中楼内容';\n          _repliesExpanded = false;\n        } else if (replies.isNotEmpty && _repliesExpanded) {\n          _replyError = null;\n        }\n      });\n''', 1)
+          s = s.replace('''  void _toggleReplies() {\n    if (_loadingReplies) return;\n    final willExpand = !_repliesExpanded;\n    if (willExpand) {\n      // 每次展开都重新 fetch 楼中楼，保证刷新后或有新回复时能看到最新数据。\n      _loadReplies(force: true);\n      // 若 force 加载时发现已有加载，_loadReplies 内部会 return 不重复进入。\n      // 把展开状态同步打开，让用户看到 loading 而不是"先关闭再打开"的闪现。\n      if (!mounted) return;\n      setState(() => _repliesExpanded = true);\n    } else {\n      setState(() => _repliesExpanded = false);\n    }\n  }\n''', '''  void _toggleReplies() {\n    if (_loadingReplies) return;\n    final willExpand = !_repliesExpanded;\n    if (!willExpand) {\n      setState(() => _repliesExpanded = false);\n      return;\n    }\n    setState(() {\n      _repliesExpanded = true;\n      _replyError = null;\n    });\n    _loadReplies(force: true);\n  }\n''', 1)
+          s = s.replace('final showReplyToggle = replies.isNotEmpty || comment.replyCount > 0 || _replyError != null;', 'final showReplyToggle = replies.isNotEmpty || comment.replyCount > 0;', 1)
+          p.write_text(s, encoding='utf-8')
+          PY
+      - name: Commit and remove patch runner
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add lib/widgets/native_comment_list.dart
+          git rm .github/workflows/nested_comment_patch.yml .github/workflows/_fix_nested_comments.yml
+          git commit -m "fix: keep parent comments visible while loading nested replies"
+          git push
