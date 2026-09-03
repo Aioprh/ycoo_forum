@@ -58,7 +58,17 @@ class HotThreadsService {
       final fid = _firstInt(RegExp(r'(?:forum-|[?&]fid=)(\d+)', caseSensitive: false), rootHtml) ?? 0;
       final level = _firstText(root, const ['.top_lev', '.level']);
       final time = _firstText(root, const ['.f_d', '.time', 'time', '.kmtime', '.dateline']);
-      result.add(ThreadItem(tid: tid, title: title, author: author, avatar: avatar, fid: fid, boardName: board, level: level, time: time, subtitle: _subtitle(rootText, title), cover: _abs(root?.querySelector('img')?.attributes['src'] ?? ''), likeCount: _numberAfter(rootText, const ['点赞', '喜欢']), replyCount: _numberAfter(rootText, const ['回复', '评论']), viewCount: _numberAfter(rootText, const ['浏览', '查看', '阅读'])));
+      // 热门页与"最新/最新回复"两个 tab 的 li.forumlist_li 结构一致, 底部同样用
+      // .comiis_xznalist_bottom 里的 span.comiis_tm 以 iconfont 形式展示
+      // 点赞/回复/查看 三个数字(没有文字标签)。因此必须按 comiis_tm 顺序取,
+      // 不能用"回复/浏览"等文字前缀去匹配, 否则热门页三项统计会全部为 0。
+      final nums = <int>[];
+      if (root != null) {
+        for (final e in root.querySelectorAll('.comiis_xznalist_bottom span.comiis_tm')) {
+          nums.add(int.tryParse(e.text.trim()) ?? 0);
+        }
+      }
+      result.add(ThreadItem(tid: tid, title: title, author: author, avatar: avatar, fid: fid, boardName: board, level: level, time: time, subtitle: _subtitle(rootText, title), cover: _abs(root?.querySelector('img')?.attributes['src'] ?? ''), likeCount: nums.isNotEmpty ? nums[0] : _numberAfter(rootText, const ['点赞', '喜欢']), replyCount: nums.length > 1 ? nums[1] : _numberAfter(rootText, const ['回复', '评论']), viewCount: nums.length > 2 ? nums[2] : _numberAfter(rootText, const ['浏览', '查看', '阅读'])));
       if (result.length >= 50) break;
     }
     return result;
