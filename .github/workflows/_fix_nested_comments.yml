@@ -1,0 +1,135 @@
+name: apply nested comment display fix
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - '.github/workflows/_fix_nested_comments.yml'
+
+permissions:
+  contents: write
+
+jobs:
+  fix:
+    if: github.actor != 'github-actions[bot]'
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Patch nested comment behavior
+        shell: python
+        run: |
+          from pathlib import Path
+          p = Path('lib/widgets/native_comment_list.dart')
+          s = p.read_text(encoding='utf-8')
+
+          old = """  @override
+  void initState() {
+    super.initState();
+    _pid = widget.comment.pid;
+    if (widget.tid > 0) {
+      WidgetsBinding.instance.addPostFrameCallback((_) => _loadReplies());
+    }
+  }
+"""
+          new = """  @override
+  void initState() {
+    super.initState();
+    _pid = widget.comment.pid;
+    // 没有明确的楼中楼数量时不主动请求，避免普通评论出现空的“展开”状态。
+    // 有回复的评论后台预热 PID/内容，但绝不自动展开，保持父评论始终可见。
+    if (widget.tid > 0 && widget.comment.replyCount > 0) {
+      WidgetsBinding.instance.addPostFrameCallback((_) => _loadReplies());
+    }
+  }
+"""
+          if old not in s:
+              raise SystemExit('initState target not found')
+          s = s.replace(old, new, 1)
+
+          old = """      setState(() {
+        _loadingReplies = false;
+        // 首次加载 (force=false): 有回复则默认展开, 方便用户查看。
+        // 强制刷新 (force=true): 保持用户期望的展开状态, 不因结果为空而折叠。
+        if (!force) _repliesExpanded = replies.isNotEmpty;
+        if (replies.isEmpty && widget.comment.replyCount > 0) {
+          _replyError = '暂时没有取得楼中楼内容';
+        }
+      });
+"""
+          new = """      setState(() {
+        _loadingReplies = false;
+        // 后台预热只准备数据，不改变用户的展开状态。
+        // 手动展开时由 _toggleReplies 控制，避免评论列表初次加载就被撑开。
+        if (replies.isEmpty && widget.comment.replyCount > 0) {
+          _replyError = '暂时没有取得楼中楼内容';
+          // 获取失败时保持父评论可见，并保留“展开”入口用于重试。
+          _repliesExpanded = false;
+        } else if (replies.isNotEmpty && _repliesExpanded) {
+          _replyError = null;
+        }
+      });
+"""
+          if old not in s:
+              raise SystemExit('load success target not found')
+          s = s.replace(old, new, 1)
+
+          old = """  void _toggleReplies() {
+    if (_loadingReplies) return;
+    final willExpand = !_repliesExpanded;
+    if (willExpand) {
+      // 每次展开都重新 fetch 楼中楼，保证刷新后或有新回复时能看到最新数据。
+      _loadReplies(force: true);
+      // 若 force 加载时发现已有加载，_loadReplies 内部会 return 不重复进入。
+      // 把展开状态同步打开，让用户看到 loading 而不是\"先关闭再打开\"的闪现。
+      if (!mounted) return;
+      setState(() => _repliesExpanded = true);
+    } else {
+      setState(() => _repliesExpanded = false);
+    }
+  }
+"""
+          new = """  void _toggleReplies() {
+    if (_loadingReplies) return;
+    final willExpand = !_repliesExpanded;
+    if (!willExpand) {
+      setState(() => _repliesExpanded = false);
+      return;
+    }
+
+    // 用户明确点击后才展开；加载失败时会自动收起并保留入口重试。
+    setState(() {
+      _repliesExpanded = true;
+      _replyError = null;
+    });
+    _loadReplies(force: true);
+  }
+"""
+          if old not in s:
+              raise SystemExit('toggle target not found')
+          s = s.replace(old, new, 1)
+
+          old = "    final showReplyToggle = replies.isNotEmpty || comment.replyCount > 0 || _replyError != null;"
+          new = "    final showReplyToggle = replies.isNotEmpty || comment.replyCount > 0;"
+          if old not in s:
+              raise SystemExit('toggle visibility target not found')
+          s = s.replace(old, new, 1)
+
+          p.write_text(s, encoding='utf-8')
+
+      - name: Verify Dart source
+        run: |
+          grep -n "showReplyToggle\|没有明确的楼中楼数量\|手动展开时" lib/widgets/native_comment_list.dart
+
+      - name: Commit source change and remove helper workflow
+        shell: bash
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add lib/widgets/native_comment_list.dart
+          git rm .github/workflows/_fix_nested_comments.yml
+          git commit -m "fix: keep parent comments visible while loading nested replies"
+          git push
