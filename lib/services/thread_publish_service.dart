@@ -133,6 +133,76 @@ class ThreadPublishService {
     }
   }
 
+  /// 编辑自己已发布的主题: 走 Discuz 原生 `forum.php?mod=post&action=edit` 表单。
+  /// 泛化回填页面要求的隐藏字段, 再覆写标题/正文提交, 兼容不同 Discuz 版本。
+  Future<String?> editThread({
+    required int tid,
+    required int fid,
+    required int pid,
+    required String subject,
+    required String message,
+  }) async {
+    if (!AuthService.instance.isLoggedIn || (AuthService.instance.authCookie ?? '').isEmpty) return '请先登录论坛';
+    final title = subject.trim();
+    final body = message.trim();
+    if (title.isEmpty) return '请输入标题';
+    if (body.isEmpty) return '请输入正文';
+
+    try {
+      final client = await NetClient.instance.client;
+      final editUrl =
+          '${_base}forum.php?mod=post&action=edit&fid=$fid&tid=$tid&pid=$pid&extra=page%3D1&mobile=2';
+      final headers = _headers();
+      final page = await NetClient.retry(() => client.get(Uri.parse(editUrl), headers: headers).timeout(NetClient.timeout));
+      if (page.statusCode != 200) return '读取编辑页失败 HTTP ${page.statusCode}';
+      final html = NetClient.decode(page.bodyBytes);
+      final doc = parser.parse(html);
+      final formhash = NetClient.extractFormHash(html) ?? _value(doc, 'formhash');
+      if (formhash.isEmpty) {
+        final permText = doc.body?.text.replaceAll(RegExp(r'\s+'), ' ').trim() ?? '';
+        if (permText.contains('无权') || permText.contains('没有权限') || permText.contains('权限不足')) return '只有帖子作者可以编辑该主题';
+        return '未取得编辑令牌(formhash)，请重新进入帖子后再试';
+      }
+
+      // 泛化回填页面上所有隐藏字段, 保证编辑表单必需的后台字段
+      // (pid/fid/tid/posttime 等)都能原样带上, 不依赖某个具体模板。
+      final form = <String, String>{'formhash': formhash};
+      for (final input in doc.querySelectorAll('input[type="hidden"]')) {
+        final name = input.attributes['name'] ?? '';
+        final value = input.attributes['value'] ?? '';
+        if (name.isEmpty) continue;
+        form[name] = value;
+      }
+      form['subject'] = title;
+      form['message'] = body;
+      form['editsubmit'] = 'true';
+
+      final response = await client.post(
+        Uri.parse(editUrl),
+        headers: {
+          ...headers,
+          'Referer': editUrl,
+          'Content-Type': 'application/x-www-form-urlencoded; charset=UTF-8',
+          'X-Requested-With': 'XMLHttpRequest',
+        },
+        body: form,
+      ).timeout(NetClient.timeout);
+      final result = NetClient.decode(response.bodyBytes);
+      final resultDoc = parser.parse(result);
+      final text = resultDoc.body?.text.replaceAll(RegExp(r'\s+'), ' ').trim() ?? result;
+      if (RegExp(r'(编辑成功|保存成功|主题已(?:编辑|更新)|已(?:保存|更新))').hasMatch(text)) return null;
+      if (resultDoc.querySelector('meta[http-equiv="refresh"]') != null) return null;
+      if (resultDoc.querySelector('a[href*="thread-"]') != null && !text.contains('失败')) return null;
+      if (text.contains('登录') || text.contains('请先登录')) return '登录状态已失效，请重新登录';
+      if (text.contains('formhash') || text.contains('非法请求') || text.contains('验证失败')) return '编辑令牌已失效，请重新进入帖子后再试';
+      if (text.contains('无权') || text.contains('没有权限') || text.contains('权限不足')) return '只有帖子作者可以编辑该主题';
+      if (text.contains('验证码')) return '论坛要求验证码，请使用网页完成验证后再编辑';
+      return _firstFailure(text) ?? '保存失败，请稍后重试';
+    } catch (e) {
+      return '编辑请求失败：${e.toString().replaceFirst('Exception: ', '')}';
+    }
+  }
+
   Future<dynamic> _postPage(int fid) async {
     final client = await NetClient.instance.client;
     final url = '${_base}forum.php?mod=post&action=newthread&fid=$fid&mobile=2';

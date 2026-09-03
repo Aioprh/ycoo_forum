@@ -17,6 +17,7 @@ import '../widgets/native_post_content.dart';
 import '../widgets/forum_attachment_section.dart';
 import 'login_page.dart';
 import 'thread_list_page.dart';
+import 'edit_thread_page.dart';
 
 class DetailPage extends StatefulWidget {
   final int tid;
@@ -119,6 +120,33 @@ class _DetailPageState extends State<DetailPage> {
 
   void _snack(String text) =>
       ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text(text)));
+
+  // 仅当当前账号是楼主且已就绪时, 才允许编辑。
+  bool get _canEdit {
+    final d = _detail;
+    if (!_loggedIn || d == null || d.authorUid <= 0) return false;
+    return d.authorUid == (AuthService.instance.uid ?? 0);
+  }
+
+  Future<void> _openEdit() async {
+    final d = _detail;
+    if (d == null || d.authorUid <= 0 || d.tid <= 0) return;
+    final changed = await Navigator.of(context).push<bool>(
+      MaterialPageRoute(
+        builder: (_) => EditThreadPage(
+          tid: d.tid,
+          fid: d.fid,
+          pid: d.firstPid,
+          title: d.title,
+          body: threadBodyToPlainText(d.bodyHtml),
+        ),
+      ),
+    );
+    if (changed == true && mounted) {
+      _snack('主题已更新');
+      await _fetch();
+    }
+  }
 
   Future<void> _login() async {
     final ok = await Navigator.of(context)
@@ -336,6 +364,12 @@ class _DetailPageState extends State<DetailPage> {
           style: const TextStyle(fontSize: 16, fontWeight: FontWeight.w700),
         ),
         actions: [
+          if (_canEdit)
+            IconButton(
+              tooltip: '编辑主题',
+              onPressed: _openEdit,
+              icon: const Icon(Icons.edit_outlined),
+            ),
           IconButton(
             onPressed: _fetching ? null : _fetch,
             icon: _fetching
