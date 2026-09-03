@@ -118,12 +118,16 @@ class HotThreadsService {
   }
 
   static String _clean(String value) {
-    return value
-        .replaceAll(RegExp(r'[\\u200B-\\u200D\\uFEFF]'), '')
-        .replaceAll(RegExp(r'[\\uE000-\\uF8FF]'), '')
-        .replaceAll(RegExp(r'[\\uF0000-\\uFFFFD]'), '')
-        .replaceAll(RegExp(r'\\s+'), ' ')
-        .trim();
+    final buffer = StringBuffer();
+    for (final rune in value.runes) {
+      final isPrivateUse = (rune >= 0xE000 && rune <= 0xF8FF) ||
+          (rune >= 0xF0000 && rune <= 0xFFFFD) ||
+          (rune >= 0x100000 && rune <= 0x10FFFD);
+      final isInvisible = rune == 0x200B || rune == 0x200C ||
+          rune == 0x200D || rune == 0xFEFF;
+      if (!isPrivateUse && !isInvisible) buffer.writeCharCode(rune);
+    }
+    return buffer.toString().replaceAll(RegExp(r'\s+'), ' ').trim();
   }
 
   dom.Element? _container(dom.Element element) {
