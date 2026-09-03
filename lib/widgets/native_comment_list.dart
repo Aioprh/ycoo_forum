@@ -43,6 +43,8 @@ class NativeCommentList extends StatelessWidget {
         level: _text(card.querySelector('.p-level')),
         time: _text(card.querySelector('.p-time')),
         replyCount: int.tryParse(replyMatch?.group(1) ?? '0') ?? 0,
+        // 标记由服务端在生成卡片时按楼层行内是否内嵌 replyfloor 容器而写入。
+        hasReplies: card.attributes['data-replies'] == '1',
         bodyHtml: body.innerHtml,
       ));
     }
@@ -214,11 +216,12 @@ class NativeCommentList extends StatelessWidget {
 
 class _CommentFloor {
   final int pid, uid, replyCount;
+  final bool hasReplies;
   final String floor, author, level, time, bodyHtml;
   const _CommentFloor({
     required this.pid, required this.uid, required this.replyCount,
-    required this.floor, required this.author, required this.level,
-    required this.time, required this.bodyHtml,
+    required this.hasReplies, required this.floor, required this.author,
+    required this.level, required this.time, required this.bodyHtml,
   });
 }
 
@@ -245,8 +248,10 @@ class _CommentCardState extends State<_CommentCard> {
   void initState() {
     super.initState();
     _pid = widget.comment.pid;
-    // 只有明确有楼中楼时才后台预热，普通评论不产生空的展开入口。
-    if (widget.tid > 0 && widget.comment.replyCount > 0) {
+    // 只有明确内嵌楼中楼的楼层才后台预热，普通评论不发起请求、也不出现空的展开入口。
+    // 不再依赖 replyCount: Comiis 手机模板不渲染"回复(N)"文本，解析恒为 0，
+    // 若以此做门控会导致有楼中楼的楼完全不显示。
+    if (widget.tid > 0 && (widget.comment.hasReplies || widget.comment.replyCount > 0)) {
       WidgetsBinding.instance.addPostFrameCallback((_) => _loadReplies());
     }
   }
@@ -271,7 +276,7 @@ class _CommentCardState extends State<_CommentCard> {
         _loadingReplies = false;
         // 自动加载成功后直接展示楼中楼；普通评论解析为空则不显示空容器。
         _repliesExpanded = replies.isNotEmpty;
-        if (replies.isEmpty && widget.comment.replyCount > 0) {
+        if (replies.isEmpty && widget.comment.hasReplies) {
           _replyError = '暂时没有取得楼中楼内容';
           _repliesExpanded = false;
         } else if (replies.isNotEmpty && _repliesExpanded) {
@@ -284,7 +289,7 @@ class _CommentCardState extends State<_CommentCard> {
         _loadingReplies = false;
         // 请求失败时不保留空的楼中楼区域；父评论仍完整显示，按钮可再次重试。
         _repliesExpanded = false;
-        _replyError = widget.comment.replyCount > 0 ? '$e' : null;
+        _replyError = widget.comment.hasReplies ? '$e' : null;
       });
     }
   }
@@ -517,11 +522,9 @@ class _CommentCardState extends State<_CommentCard> {
     final comment = widget.comment;
     final colors = Theme.of(context).colorScheme;
     final replies = _parseReplies();
-    // 只有真正解析到楼中楼 / 正在加载楼中楼时, 才显示展开入口。
-    // 不再依赖 comment.replyCount: 论坛的 "回复(N)" 计数语义上包含任何回复
-    // (含楼中楼), 但当前页未必能抓到 replyfloor 节点, 硬套数字会让没有
-    // 楼中楼的评论也出现空展开入口。
-    final showReplyToggle = replies.isNotEmpty || _loadingReplies;
+    // 只要楼层行内嵌有楼中楼标记就显示展开入口(后台会自动加载并展开)；
+    // 已解析到内容 / 正在加载也同样显示。不再依赖不可靠的回复计数。
+    final showReplyToggle = widget.comment.hasReplies || replies.isNotEmpty || _loadingReplies;
     return Container(
       padding: const EdgeInsets.fromLTRB(14, 13, 14, 10),
       decoration: BoxDecoration(

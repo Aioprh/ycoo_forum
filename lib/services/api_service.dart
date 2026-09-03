@@ -421,12 +421,21 @@ class ApiService {
       // 提取真实楼层 pid(取自容器 id="post_<pid>"/"postmessage_<pid>"),写入卡片供楼中楼回复使用。
       final pid = _postPid(post);
       final pidAttr = pid > 0 ? ' data-pid="$pid"' : '';
+      // 检测该楼层行是否内嵌楼中楼容器。楼中楼是楼层行内正文块之外的兄弟块,
+      // 若存在, 说明本楼有可展开的回复, 在卡片上打标记, 评论组件据此显示展开入口。
+      // 不能依赖"回复(N)"计数: Comiis 手机模板不渲染该文本, 解析恒为 0。
+      final hasReplies = post.querySelector(
+            '.replyfloor_box, .replyfloor_bd, .replyfloor_content, '
+            '.replyfloor_content_ul, .replyfloor_content_li, li.replyfloor_li, '
+            '[class*="replyfloor"], [id*="replyfloor"]',
+          ) != null;
+      final repliesAttr = hasReplies ? ' data-replies="1"' : '';
       final author = _normSpace(post.querySelector('.top_user, .authi .xw1, .authi a')?.text ?? '');
       final level = _normSpace(post.querySelector('.top_lev, .p_pop')?.text ?? '');
       final floor = _normSpace(post.querySelector('.f_d.y, .pi .authi em, .pls .authi em')?.text ?? '').replaceAll(RegExp(r'[^0-9A-Za-z一二三四五六七八九十楼主]'), '');
       final time = _normSpace(post.querySelector('.kmtime, .comiis_tm, .authi em')?.text ?? '');
       final displayFloor = floor.isEmpty ? (out.isEmpty ? '楼主' : '${out.length + 1}楼') : floor;
-      out.add('<div class="post-card"$pidAttr><div class="post-hd"><span class="p-floor">$displayFloor</span>${author.isEmpty ? '' : '<b class="p-author">$author</b>'}${level.isEmpty ? '' : '<span class="p-level">$level</span>'}</div>${time.isEmpty ? '' : '<div class="p-time">$time</div>'}<div class="p-body">${_cleanPostHtml(html)}</div></div>');
+      out.add('<div class="post-card"$pidAttr$repliesAttr><div class="post-hd"><span class="p-floor">$displayFloor</span>${author.isEmpty ? '' : '<b class="p-author">$author</b>'}${level.isEmpty ? '' : '<span class="p-level">$level</span>'}</div>${time.isEmpty ? '' : '<div class="p-time">$time</div>'}<div class="p-body">${_cleanPostHtml(html)}</div></div>');
     }
     if (out.isNotEmpty) return out;
     for (final selector in ['.comiis_aimg_show', '.comiis_message_table', '.t_f', '.pcb', '.postmessage', '[id^="postmessage_"]']) {
