@@ -245,7 +245,8 @@ class _CommentCardState extends State<_CommentCard> {
   void initState() {
     super.initState();
     _pid = widget.comment.pid;
-    if (widget.tid > 0) {
+    // 只有明确存在楼中楼时才后台预热，普通评论不产生空的展开入口。
+    if (widget.tid > 0 && widget.comment.replyCount > 0) {
       WidgetsBinding.instance.addPostFrameCallback((_) => _loadReplies());
     }
   }
@@ -268,11 +269,12 @@ class _CommentCardState extends State<_CommentCard> {
       final replies = _parseReplies();
       setState(() {
         _loadingReplies = false;
-        // 首次加载 (force=false): 有回复则默认展开, 方便用户查看。
-        // 强制刷新 (force=true): 保持用户期望的展开状态, 不因结果为空而折叠。
-        if (!force) _repliesExpanded = replies.isNotEmpty;
+        // 后台预热只缓存数据，不自动展开；父评论始终保持可见。
         if (replies.isEmpty && widget.comment.replyCount > 0) {
           _replyError = '暂时没有取得楼中楼内容';
+          _repliesExpanded = false;
+        } else if (replies.isNotEmpty && _repliesExpanded) {
+          _replyError = null;
         }
       });
     } catch (e) {
@@ -287,16 +289,15 @@ class _CommentCardState extends State<_CommentCard> {
   void _toggleReplies() {
     if (_loadingReplies) return;
     final willExpand = !_repliesExpanded;
-    if (willExpand) {
-      // 每次展开都重新 fetch 楼中楼，保证刷新后或有新回复时能看到最新数据。
-      _loadReplies(force: true);
-      // 若 force 加载时发现已有加载，_loadReplies 内部会 return 不重复进入。
-      // 把展开状态同步打开，让用户看到 loading 而不是"先关闭再打开"的闪现。
-      if (!mounted) return;
-      setState(() => _repliesExpanded = true);
-    } else {
+    if (!willExpand) {
       setState(() => _repliesExpanded = false);
+      return;
     }
+    setState(() {
+      _repliesExpanded = true;
+      _replyError = null;
+    });
+    _loadReplies(force: true);
   }
 
   List<_FloorReply> _parseReplies() {
@@ -513,7 +514,7 @@ class _CommentCardState extends State<_CommentCard> {
     final comment = widget.comment;
     final colors = Theme.of(context).colorScheme;
     final replies = _parseReplies();
-    final showReplyToggle = replies.isNotEmpty || comment.replyCount > 0 || _replyError != null;
+    final showReplyToggle = replies.isNotEmpty || comment.replyCount > 0;
     return Container(
       padding: const EdgeInsets.fromLTRB(14, 13, 14, 10),
       decoration: BoxDecoration(
