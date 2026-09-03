@@ -91,7 +91,9 @@ class ProfileUsernameService {
           href.contains('uid%3d$uidText') ||
           href.contains('uid%253d$uidText');
       if (!hasUid || !href.contains('mod=space')) continue;
-      final value = _stripUi(_clean(a.text));
+      // 该链接文本常混入角标数字/等级/用户组/积分(如 "9 烟雨客 Lv.2 秀才 积分: 274"),
+      // 先剔除元信息再校验, 避免侧栏“我的中心”卡片污染昵称。
+      final value = _stripMeta(_stripUi(_clean(a.text)));
       if (_valid(value)) return value;
     }
 
@@ -114,6 +116,16 @@ class ProfileUsernameService {
     // Missing icon fonts can become a square/box glyph followed by the label.
     v = v.replaceAll(RegExp(r'^[\u2000-\u206F\u25A0-\u25FF\u2600-\u27BF\uE000-\uF8FF]+'), '').trim();
     v = v.replaceAll(RegExp(r'^(?:[\u25A1\u25A0□■▣▤▥▦▧▨▩×✕✖]+\s*)'), '').trim();
+    return v;
+  }
+
+  // 剔除链接文本中混入的账户元信息(角标/等级/用户组/积分等), 仅保留纯昵称。
+  static String _stripMeta(String value) {
+    var v = _clean(value);
+    v = v.replaceFirst(RegExp(r'^\d+\s*'), '').trim();
+    v = v.replaceFirst(RegExp(r'Lv\.?\s*\d+.*$', caseSensitive: false), '').trim();
+    v = v.replaceFirst(RegExp(r'(?:积分|经验|贡献|人气|关注|粉丝)\s*[:：]?\s*\d+.*$', caseSensitive: false), '').trim();
+    v = v.replaceFirst(RegExp(r'^(?:童生|秀才|举人|进士|探花|榜眼|状元|九品|八品|七品|六品|五品|四品|三品|二品|一品|管理员|版主|超级版主|实习|VIP|会员|新手上路|元老|新人|正式|核心)\s*$'), '').trim();
     return v;
   }
 

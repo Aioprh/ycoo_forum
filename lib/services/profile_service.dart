@@ -96,9 +96,11 @@ class ProfileService {
       final lower = href.toLowerCase();
       final hasUid = lower.contains('uid=$uidText') || lower.contains('uid%3d$uidText') || lower.contains('uid%253d$uidText');
       if (!hasUid || !lower.contains('mod=space') || !lower.contains('do=profile')) continue;
-      final value = _clean(a.text);
+      // 该链接文本常混入角标数字/等级/用户组/积分(如 "9 烟雨客 Lv.2 秀才 积分: 274"),
+      // 先剔除元信息再校验, 避免侧栏“我的中心”卡片污染昵称。
+      final value = _stripMeta(_clean(a.text));
       if (_validName(value) && !_uiLabel(value)) return value;
-      final parentValue = _clean(a.parent?.text ?? '');
+      final parentValue = _stripMeta(_clean(a.parent?.text ?? ''));
       if (_validName(parentValue) && !_uiLabel(parentValue)) return parentValue;
     }
     final candidates = [doc.querySelector('meta[property="og:title"]')?.attributes['content'] ?? '', doc.querySelector('title')?.text ?? ''];
@@ -136,6 +138,17 @@ class ProfileService {
   }
 
   static bool _uiLabel(String value) => RegExp(r'^(?:关注|已关注|聊天|私信|回复|主题|回帖|帖子|帖子数|粉丝|积分|星币|登录|注册|退出|刷新|用户|用户名|昵称|资料|个人资料|用户资料|个人中心|Ta的空间|空间|我的|提示信息|系统提示|温馨提示|提示|抱歉|无权|没有权限|不存在|该用户)$').hasMatch(_clean(value));
+
+  // 剔除链接文本中混入的账户元信息(角标/等级/用户组/积分等), 仅保留纯昵称。
+  static String _stripMeta(String s) {
+    var v = s.trim();
+    v = v.replaceFirst(RegExp(r'^\d+\s*'), '').trim();
+    v = v.replaceFirst(RegExp(r'Lv\.?\s*\d+.*$', caseSensitive: false), '').trim();
+    v = v.replaceFirst(RegExp(r'(?:积分|经验|贡献|人气|关注|粉丝)\s*[:：]?\s*\d+.*$', caseSensitive: false), '').trim();
+    v = v.replaceFirst(RegExp(r'^(?:童生|秀才|举人|进士|探花|榜眼|状元|九品|八品|七品|六品|五品|四品|三品|二品|一品|管理员|版主|超级版主|实习|VIP|会员|新手上路|元老|新人|正式|核心)\s*$'), '').trim();
+    v = v.replaceAll(RegExp(r'\s+'), ' ').trim();
+    return v;
+  }
 
   static int? _numberFromHref(dom.Document doc, bool Function(String href) matches) {
     for (final a in doc.querySelectorAll('a[href]')) {
