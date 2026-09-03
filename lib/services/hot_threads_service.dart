@@ -58,7 +58,7 @@ class HotThreadsService {
       final fid = _firstInt(RegExp(r'(?:forum-|[?&]fid=)(\d+)', caseSensitive: false), rootHtml) ?? 0;
       final level = _firstText(root, const ['.top_lev', '.level']);
       final time = _firstText(root, const ['.f_d', '.time', 'time', '.kmtime', '.dateline']);
-      result.add(ThreadItem(tid: tid, title: title, author: author, avatar: avatar, fid: fid, boardName: board, level: level, time: time, subtitle: _subtitle(rootText, title), cover: _abs(root?.querySelector('img')?.attributes['src'] ?? ''), likeCount: _numberAfter(rootText, const ['点赞', '喜欢']), replyCount: _numberAfter(rootText, const ['回复', '评论']), viewCount: _numberAfter(rootText, const ['浏览', '查看'])));
+      result.add(ThreadItem(tid: tid, title: title, author: author, avatar: avatar, fid: fid, boardName: board, level: level, time: time, subtitle: _subtitle(rootText, title), cover: _abs(root?.querySelector('img')?.attributes['src'] ?? ''), likeCount: _numberAfter(rootText, const ['点赞', '喜欢']), replyCount: _numberAfter(rootText, const ['回复', '评论']), viewCount: _numberAfter(rootText, const ['浏览', '查看', '阅读'])));
       if (result.length >= 50) break;
     }
     return result;
