@@ -1,7 +1,7 @@
 import 'package:flutter/material.dart';
 import 'package:html/parser.dart' as html_parser;
 
-import '../services/thread_publish_service.dart';
+import '../services/thread_edit_service.dart';
 
 /// 编辑自己已发布的主题：预填原标题与正文，提交后返回近况。
 class EditThreadPage extends StatefulWidget {
@@ -49,7 +49,7 @@ class _EditThreadPageState extends State<EditThreadPage> {
     if (_submitting) return;
     FocusScope.of(context).unfocus();
     setState(() => _submitting = true);
-    final err = await ThreadPublishService.instance.editThread(
+    final err = await ThreadEditService.instance.editThread(
       tid: widget.tid,
       fid: widget.fid,
       pid: widget.pid,
@@ -59,17 +59,17 @@ class _EditThreadPageState extends State<EditThreadPage> {
     if (!mounted) return;
     setState(() => _submitting = false);
     if (err != null) {
-      ScaffoldMessenger.of(
-        context,
-      ).showSnackBar(SnackBar(content: Text(err), behavior: SnackBarBehavior.floating));
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(content: Text(err), behavior: SnackBarBehavior.floating),
+      );
       return;
     }
-    ScaffoldMessenger.of(
-      context,
-    ).showSnackBar(const SnackBar(
-      content: Text('编辑成功'),
-      behavior: SnackBarBehavior.floating,
-    ));
+    ScaffoldMessenger.of(context).showSnackBar(
+      const SnackBar(
+        content: Text('编辑成功'),
+        behavior: SnackBarBehavior.floating,
+      ),
+    );
     Navigator.of(context).pop(true);
   }
 
@@ -99,8 +99,14 @@ class _EditThreadPageState extends State<EditThreadPage> {
               fillColor: colors.surface,
               counterText: '',
               contentPadding: const EdgeInsets.symmetric(horizontal: 16, vertical: 14),
-              border: OutlineInputBorder(borderRadius: BorderRadius.circular(16), borderSide: BorderSide(color: colors.outlineVariant)),
-              enabledBorder: OutlineInputBorder(borderRadius: BorderRadius.circular(16), borderSide: BorderSide(color: colors.outlineVariant)),
+              border: OutlineInputBorder(
+                borderRadius: BorderRadius.circular(16),
+                borderSide: BorderSide(color: colors.outlineVariant),
+              ),
+              enabledBorder: OutlineInputBorder(
+                borderRadius: BorderRadius.circular(16),
+                borderSide: BorderSide(color: colors.outlineVariant),
+              ),
             ),
           ),
           const SizedBox(height: 10),
@@ -118,8 +124,14 @@ class _EditThreadPageState extends State<EditThreadPage> {
               fillColor: colors.surface,
               alignLabelWithHint: true,
               contentPadding: const EdgeInsets.fromLTRB(14, 14, 14, 14),
-              border: OutlineInputBorder(borderRadius: BorderRadius.circular(16), borderSide: BorderSide(color: colors.outlineVariant)),
-              enabledBorder: OutlineInputBorder(borderRadius: BorderRadius.circular(16), borderSide: BorderSide(color: colors.outlineVariant)),
+              border: OutlineInputBorder(
+                borderRadius: BorderRadius.circular(16),
+                borderSide: BorderSide(color: colors.outlineVariant),
+              ),
+              enabledBorder: OutlineInputBorder(
+                borderRadius: BorderRadius.circular(16),
+                borderSide: BorderSide(color: colors.outlineVariant),
+              ),
             ),
           ),
           const SizedBox(height: 6),
@@ -144,7 +156,11 @@ class _EditThreadPageState extends State<EditThreadPage> {
             onPressed: _submitting ? null : _submit,
             style: FilledButton.styleFrom(minimumSize: const Size.fromHeight(50)),
             child: _submitting
-                ? const SizedBox(width: 22, height: 22, child: CircularProgressIndicator(strokeWidth: 2.4))
+                ? const SizedBox(
+                    width: 22,
+                    height: 22,
+                    child: CircularProgressIndicator(strokeWidth: 2.4),
+                  )
                 : const Text('保存修改', style: TextStyle(fontSize: 16, fontWeight: FontWeight.w700)),
           ),
         ),
