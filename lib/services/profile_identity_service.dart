@@ -69,12 +69,16 @@ class ProfileIdentityService {
           _findLabelValue(doc, '昵称：'),
           _findNicknameNode(doc),
         ]);
+        // 精确锚点(.comiis_space_info h2 / .vwmy)必须优先于任何宽泛的
+        // a[href] 扫描。否则资料页侧栏“我的中心”卡片链接文本
+        // (角标数字 + 昵称 + Lv 等级 + 用户组 + 积分) 会被 `_findProfileLinkName`
+        // 当成用户名整体返回, 导致昵称旁多出数字与元信息。
         username ??= _firstValid([
           _findLabelValue(doc, '用户名'),
           _findLabelValue(doc, '用户名：'),
-          _findProfileLinkName(doc, uid),
-          _titleName(doc),
           _findVisibleName(doc),
+          _titleName(doc),
+          _findProfileLinkName(doc, uid),
         ]);
         avatar ??= _firstAvatar(doc) ?? '${_base}uc_server/avatar.php?uid=$uid&size=middle';
         level ??= _findLevel(doc);
@@ -233,7 +237,11 @@ class ProfileIdentityService {
       if (!href.contains('space') && !href.contains('member')) continue;
       if (!RegExp(r'(?:uid=|uid%3D|uid/|uid-)' + uid.toString(), caseSensitive: false).hasMatch(href)) continue;
       final text = _clean(a.text);
-      if (_validName(text)) return text;
+      // 该类链接文本经常混入角标数字、等级、用户组与积分
+      // (如 "9 烟雨客 Lv.2 秀才 积分: 274"), 先剔除元信息再校验。
+      final stripped = _stripAccountMeta(text);
+      final candidate = stripped ?? text;
+      if (_validName(candidate)) return candidate;
     }
     return null;
   }
