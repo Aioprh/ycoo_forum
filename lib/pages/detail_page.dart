@@ -137,21 +137,25 @@ class _DetailPageState extends State<DetailPage> {
       doc.querySelectorAll(tag).forEach((el) => el.remove());
     }
     final buffer = StringBuffer();
-    final body = doc.body;
-    if (body != null) {
-      for (final node in body.descendantNodes) {
-        if (node is dom.Text && (node.text?.isNotEmpty ?? false)) {
-          buffer.write(node.text);
+    const blockTags = {'p', 'div', 'li', 'tr', 'blockquote'};
+    void walk(List<dom.Node> nodes) {
+      for (final node in nodes) {
+        if (node is dom.Text) {
+          if (node.text?.isNotEmpty ?? false) buffer.write(node.text);
         } else if (node is dom.Element) {
           final tag = node.localName?.toLowerCase() ?? '';
-          if (const {
-            'br', 'p', 'div', 'li', 'tr', 'blockquote'
-          }.contains(tag)) {
+          if (tag == 'br') {
             buffer.write('\n');
+          } else {
+            walk(node.nodes);
+            if (blockTags.contains(tag)) buffer.write('\n');
           }
         }
       }
     }
+
+    final body = doc.body;
+    if (body != null) walk(body.nodes);
     return buffer.toString().trim();
   }
 
