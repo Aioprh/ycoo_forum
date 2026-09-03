@@ -194,20 +194,54 @@ class _SearchPageState extends State<SearchPage> {
     final match = RegExp(r'(?:thread-|[?&]tid=)(\d+)', caseSensitive: false).firstMatch(href);
     if (match == null) return null;
     final tid = int.tryParse(match.group(1)!) ?? 0;
-    final title = _clean(a.text);
+    final title = _cleanTitle(a);
     if (tid <= 0 || title.length < 2 || !seen.add(tid) || _navigationTitle(title)) return null;
-    final parentText = _clean(parent?.text ?? '');
-    final boardHref = RegExp(r'(?:forum-|[?&]fid=)(\d+)', caseSensitive: false).firstMatch(parent?.outerHtml ?? '')?.group(1);
+
+    // 循父向上定位承载"发帖时间/作者/版块"的条目容器 (xunsearch 模板为 <dl>,
+    // 元信息在 <p class="field-info"> 里)。取不到就保持空, 不破坏其它搜索模板。
+    var container = parent;
+    for (var depth = 0; depth < 8 && container != null; depth++) {
+      if (container.querySelector('.field-info') != null) break;
+      container = container.parent;
+    }
+    var author = '', timeStr = '', board = '';
+    var fid = 0;
+    final fieldInfo = container?.querySelector('.field-info');
+    if (fieldInfo != null) {
+      for (final span in fieldInfo.querySelectorAll('span')) {
+        final strong = span.querySelector('strong');
+        final label = strong?.text ?? '';
+        var txt = _clean(span.text);
+        if (strong != null) txt = _clean(span.text.replaceFirst(strong.text, ''));
+        if (label.contains('时间')) {
+          timeStr = txt.replaceAll('发帖时间:', '').trim();
+        } else if (label.contains('作者')) {
+          author = _clean(span.querySelector('a')?.text ?? '');
+          if (author.isEmpty) author = txt;
+        } else {
+          final boardA = span.querySelector('a[href*="fid="]');
+          if (boardA != null) {
+            board = _clean(boardA.text);
+            final m = RegExp(r'(?:forum-|[?&]fid=)(\d+)', caseSensitive: false)
+                .firstMatch(boardA.attributes['href'] ?? '');
+            fid = int.tryParse(m?.group(1) ?? '') ?? 0;
+          }
+        }
+      }
+    }
+
+    final parentText = _clean((container ?? parent)?.text ?? '');
+    final subtitle = parentText == title ? '' : parentText.replaceFirst(title, '').trim();
     return ThreadItem(
       tid: tid,
       title: title,
-      author: '',
+      author: author,
       avatar: '',
-      fid: int.tryParse(boardHref ?? '') ?? 0,
-      boardName: '',
+      fid: fid,
+      boardName: board,
       level: '',
-      time: '',
-      subtitle: parentText == title ? '' : parentText.replaceFirst(title, '').trim(),
+      time: timeStr,
+      subtitle: subtitle,
       cover: '',
       likeCount: 0,
       replyCount: 0,
@@ -264,6 +298,25 @@ class _SearchPageState extends State<SearchPage> {
         '下一页','上一页','首页','尾页','更多','回复','查看','详情','登录','注册','搜索','高级搜索'
       }.contains(text);
 
+  Widget _meta(IconData icon, String text) {
+    final hint = Theme.of(context).colorScheme.onSurfaceVariant;
+    return Row(mainAxisSize: MainAxisSize.min, children: [
+      Icon(icon, size: 13, color: hint),
+      const SizedBox(width: 3),
+      Text(text, style: TextStyle(fontSize: 11.5, color: hint)),
+    ]);
+  }
+
+  String _cleanTitle(dynamic a) {
+    var text = a.text ?? '';
+    if (a.querySelector('h4') != null) {
+      // xunsearch 模板: 去掉序号前缀与相关度 <small>[NN%]</small> 噪音。
+      text = text.replaceAll(RegExp(r'\s*\[\d+%\]'), '');
+      text = text.replaceFirst(RegExp(r'^\s*\d+\s+'), '');
+    }
+    return _clean(text);
+  }
+
   String _clean(String text) => text
       .replaceAll(RegExp(r'[\uE000-\uF8FF\uFFFD□]'), '')
       .replaceAll(RegExp(r'\s+'), ' ')
@@ -312,8 +365,23 @@ class _SearchPageState extends State<SearchPage> {
                           final item = _results[i];
                           return Card(
                             child: ListTile(
-                              title: Text(item.title),
-                              subtitle: item.subtitle.isEmpty ? null : Text(item.subtitle, maxLines: 2, overflow: TextOverflow.ellipsis),
+                              title: Text(item.title, maxLines: 2, overflow: TextOverflow.ellipsis),
+                              subtitle: Column(
+                                crossAxisAlignment: CrossAxisAlignment.start,
+                                children: [
+                                  if (item.subtitle.isNotEmpty)
+                                    Padding(
+                                      padding: const EdgeInsets.only(bottom: 6),
+                                      child: Text(item.subtitle, maxLines: 2, overflow: TextOverflow.ellipsis),
+                                    ),
+                                  if (item.author.isNotEmpty || item.time.isNotEmpty || item.boardName.isNotEmpty)
+                                    Wrap(spacing: 12, runSpacing: 4, children: [
+                                      if (item.author.isNotEmpty) _meta(Icons.person_outline_outlined, item.author),
+                                      if (item.time.isNotEmpty) _meta(Icons.schedule_outlined, item.time),
+                                      if (item.boardName.isNotEmpty) _meta(Icons.forum_outlined, item.boardName),
+                                    ]),
+                                ],
+                              ),
                               trailing: const Icon(Icons.chevron_right),
                               onTap: () => Navigator.push(context, MaterialPageRoute(builder: (_) => DetailPage(tid: item.tid, title: item.title))),
                             ),
