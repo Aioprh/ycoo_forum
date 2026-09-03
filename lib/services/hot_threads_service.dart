@@ -1,3 +1,4 @@
+import 'package:flutter/foundation.dart';
 import 'package:html/dom.dart' as dom;
 import 'package:html/parser.dart' as parser;
 
@@ -6,10 +7,6 @@ import 'auth_service.dart';
 import 'net_client.dart';
 import 'site_config.dart';
 
-/// 专门解析网页端热门导读。
-///
-/// ycoo 的热门页与普通导读页使用的 DOM 结构并不总是一致，
-/// 因此这里不依赖 `li.forumlist_li`，而是从主题链接反向定位帖子容器。
 class HotThreadsService {
   HotThreadsService._();
   static final instance = HotThreadsService._();
@@ -30,8 +27,8 @@ class HotThreadsService {
         final html = await _get(url);
         final result = _parse(parser.parse(html));
         if (result.isNotEmpty) return result;
-      } catch (_) {
-        // 尝试下一种页面形态。
+      } catch (e) {
+        debugPrint('hot threads parse failed: $e');
       }
     }
     return const <ThreadItem>[];
@@ -74,20 +71,17 @@ class HotThreadsService {
       if (tid == null || !seen.add(tid)) continue;
 
       final root = _container(a);
-      var title = _clean(a.text);
+      var title = _elementText(a);
       if (!_validTitle(title)) {
         title = _firstText(root, const [
-          'h1', 'h2', 'h3',
-          '.xst', '.subject', '.title',
-          '.mmlist_li_box h2 a',
-          'th a',
-          'a[href*="tid="]',
+          'h1', 'h2', 'h3', '.xst', '.subject', '.title',
+          '.mmlist_li_box h2 a', 'th a', 'a[href*="tid="]',
         ]);
       }
       if (!_validTitle(title)) continue;
 
       final rootHtml = root?.outerHtml ?? '';
-      final rootText = _clean(root?.text ?? '');
+      final rootText = _elementText(root);
       final boardAnchor = root?.querySelector('.comiis_xznalist_bk a, .forumname a, .from a, a[href*="fid="]');
       final author = _firstText(root, const ['.top_user', '.author', '.by', '.xw1', '.authi a']);
       final avatar = _abs(root?.querySelector('img')?.attributes['src'] ?? '');
@@ -97,14 +91,8 @@ class HotThreadsService {
       final time = _firstText(root, const ['.f_d', '.time', 'time', '.kmtime', '.dateline']);
 
       result.add(ThreadItem(
-        tid: tid,
-        title: title,
-        author: author,
-        avatar: avatar,
-        fid: fid,
-        boardName: board,
-        level: level,
-        time: time,
+        tid: tid, title: title, author: author, avatar: avatar, fid: fid,
+        boardName: board, level: level, time: time,
         subtitle: _subtitle(rootText, title),
         cover: _abs(root?.querySelector('img')?.attributes['src'] ?? ''),
         likeCount: _numberAfter(rootText, const ['点赞', '喜欢']),
@@ -114,6 +102,28 @@ class HotThreadsService {
       if (result.length >= 50) break;
     }
     return result;
+  }
+
+  static String _elementText(dom.Element? element) {
+    if (element == null) return '';
+    final clone = element.clone(true);
+    for (final node in clone.querySelectorAll('i,em,font,svg')) {
+      final cls = node.classes.join(' ').toLowerCase();
+      final attrs = node.attributes.entries.map((e) => '${e.key}=${e.value}').join(' ').toLowerCase();
+      if (cls.contains('icon') || cls.contains('font') || attrs.contains('iconfont') || attrs.contains('font-family')) {
+        node.remove();
+      }
+    }
+    return _clean(clone.text);
+  }
+
+  static String _clean(String value) {
+    return value
+        .replaceAll(RegExp(r'[\\u200B-\\u200D\\uFEFF]'), '')
+        .replaceAll(RegExp(r'[\\uE000-\\uF8FF]'), '')
+        .replaceAll(RegExp(r'[\\uF0000-\\uFFFFD]'), '')
+        .replaceAll(RegExp(r'\\s+'), ' ')
+        .trim();
   }
 
   dom.Element? _container(dom.Element element) {
@@ -127,11 +137,7 @@ class HotThreadsService {
     return element.parent;
   }
 
-  static int? _tid(String href) {
-    return _firstInt(RegExp(r'(?:thread-|[?&](?:tid|ptid)=)(\d+)', caseSensitive: false), href);
-  }
-
-  static String _clean(String value) => value.replaceAll(RegExp(r'\s+'), ' ').trim();
+  static int? _tid(String href) => _firstInt(RegExp(r'(?:thread-|[?&](?:tid|ptid)=)(\d+)', caseSensitive: false), href);
 
   static bool _validTitle(String value) {
     if (value.length < 2 || value.length > 300) return false;
@@ -142,7 +148,7 @@ class HotThreadsService {
   static String _firstText(dom.Element? root, List<String> selectors) {
     if (root == null) return '';
     for (final selector in selectors) {
-      final value = _clean(root.querySelector(selector)?.text ?? '');
+      final value = _elementText(root.querySelector(selector));
       if (_validTitle(value)) return value;
     }
     return '';
