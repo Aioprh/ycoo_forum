@@ -26,7 +26,10 @@ class _HomePageState extends State<HomePage> {
   int _index = 0;
 
   Future<List<ThreadItem>> _load(String view) async {
-    final url = ApiService.guideUrl(view);
+    // ycoo 的热门导读需要 index=1 才会返回与网页端
+    // `forum.php?mod=guide&view=hot&index=1` 相同的帖子列表。
+    final baseUrl = ApiService.guideUrl(view);
+    final url = view == 'hot' ? '$baseUrl&index=1' : baseUrl;
     try {
       final primary = await ApiService.instance.fetchThreads(url);
       if (primary.isNotEmpty) return primary;
