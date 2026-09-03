@@ -15,7 +15,7 @@ class HotThreadsService {
   static final instance = HotThreadsService._();
 
   static String get _base => SiteConfig.base;
-  static const _canonical = '${SiteConfig.base}forum.php?mod=guide&view=hot&index=1';
+  static final _canonical = '${SiteConfig.base}forum.php?mod=guide&view=hot&index=1';
 
   Future<List<ThreadItem>> fetch() async {
     final urls = <String>[
