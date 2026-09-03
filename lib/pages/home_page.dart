@@ -18,7 +18,6 @@ class HomePage extends StatefulWidget {
 }
 
 class _HomePageState extends State<HomePage> {
-  // Discuz 导读的合法 view 参数：newthread=最新发表、new=最新回复、hot=热门。
   static const _tabs = <(String, String, IconData)>[
     ('最新', 'newthread', Icons.auto_awesome_rounded),
     ('最新回复', 'new', Icons.forum_rounded),
@@ -27,7 +26,6 @@ class _HomePageState extends State<HomePage> {
   int _index = 0;
 
   Future<List<ThreadItem>> _load(String view) async {
-    // 保持 7c13372 验证过的移动端导读数据源。
     final url = ApiService.guideUrl(view);
     try {
       final primary = await ApiService.instance.fetchThreads(url);
@@ -139,13 +137,11 @@ class _HomePageState extends State<HomePage> {
     );
   }
 
-  /// 三个 Tab 使用完全一致的内部网格：图标区域固定、文字区域固定高度，
-  /// 从而避免“最新回复”较长时把文字视觉位置撑偏。
   Widget _buildTabs(BuildContext context, ColorScheme scheme) {
     return Padding(
       padding: const EdgeInsets.fromLTRB(16, 0, 16, 4),
       child: Row(
-        crossAxisAlignment: CrossAxisAlignment.stretch,
+        crossAxisAlignment: CrossAxisAlignment.center,
         children: [
           for (var i = 0; i < _tabs.length; i++) ...[
             Expanded(child: _tab(i, scheme)),
@@ -172,13 +168,7 @@ class _HomePageState extends State<HomePage> {
             children: [
               SizedBox(
                 height: 20,
-                child: Center(
-                  child: Icon(
-                    _tabs[index].$3,
-                    size: 16,
-                    color: selected ? scheme.onPrimary : scheme.primary,
-                  ),
-                ),
+                child: Center(child: Icon(_tabs[index].$3, size: 16, color: selected ? scheme.onPrimary : scheme.primary)),
               ),
               const SizedBox(height: 4),
               SizedBox(
@@ -189,17 +179,8 @@ class _HomePageState extends State<HomePage> {
                     maxLines: 1,
                     overflow: TextOverflow.ellipsis,
                     textAlign: TextAlign.center,
-                    strutStyle: const StrutStyle(
-                      fontSize: 13,
-                      height: 1.25,
-                      forceStrutHeight: true,
-                    ),
-                    style: TextStyle(
-                      fontSize: 13,
-                      height: 1.25,
-                      fontWeight: FontWeight.w700,
-                      color: selected ? scheme.onPrimary : scheme.onSurfaceVariant,
-                    ),
+                    strutStyle: const StrutStyle(fontSize: 13, height: 1.25, forceStrutHeight: true),
+                    style: TextStyle(fontSize: 13, height: 1.25, fontWeight: FontWeight.w700, color: selected ? scheme.onPrimary : scheme.onSurfaceVariant),
                   ),
                 ),
               ),
