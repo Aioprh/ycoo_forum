@@ -1,0 +1,181 @@
+name: Align profile module text layout
+
+on:
+  push:
+    branches: [main]
+
+permissions:
+  contents: write
+
+jobs:
+  align:
+    if: github.actor != 'github-actions[bot]'
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Align module text layout
+        run: |
+          python3 - <<'PY'
+          from pathlib import Path
+          import re
+
+          path = Path('lib/pages/profile_page.dart')
+          text = path.read_text()
+
+          old = '''  Widget _featureTile({required IconData icon, required String title, required String subtitle, required VoidCallback onTap}) {
+    final scheme = Theme.of(context).colorScheme;
+    return Card(
+      margin: EdgeInsets.zero,
+      clipBehavior: Clip.antiAlias,
+      child: InkWell(
+        onTap: onTap,
+        child: Padding(
+          padding: const EdgeInsets.all(13),
+          child: Row(
+            children: [
+              Container(
+                width: 42,
+                height: 42,
+                decoration: BoxDecoration(color: scheme.primaryContainer, borderRadius: BorderRadius.circular(13)),
+                child: Icon(icon, size: 22),
+              ),
+              const SizedBox(width: 11),
+              Expanded(
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Text(title, maxLines: 1, overflow: TextOverflow.ellipsis, style: const TextStyle(fontSize: 14, fontWeight: FontWeight.w700)),
+                    const SizedBox(height: 3),
+                    Text(subtitle, maxLines: 1, overflow: TextOverflow.ellipsis, style: TextStyle(fontSize: 11, color: scheme.onSurfaceVariant)),
+                  ],
+                ),
+              ),
+              Icon(Icons.chevron_right_rounded, color: scheme.onSurfaceVariant),
+            ],
+          ),
+        ),
+      ),
+    );
+  }'''
+
+          new = '''  Widget _moduleTextGroup({
+    required String title,
+    required String subtitle,
+    required Color subtitleColor,
+    Color? titleColor,
+    Widget? extra,
+  }) {
+    return SizedBox(
+      height: 42,
+      child: Column(
+        mainAxisAlignment: MainAxisAlignment.center,
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Row(
+            children: [
+              Expanded(
+                child: Text(
+                  title,
+                  maxLines: 1,
+                  overflow: TextOverflow.ellipsis,
+                  strutStyle: const StrutStyle(fontSize: 14, height: 1.2, forceStrutHeight: true),
+                  style: TextStyle(fontSize: 14, height: 1.2, fontWeight: FontWeight.w700, color: titleColor),
+                ),
+              ),
+              if (extra != null) ...[const SizedBox(width: 6), extra],
+            ],
+          ),
+          const SizedBox(height: 3),
+          SizedBox(
+            height: 15,
+            child: Align(
+              alignment: Alignment.centerLeft,
+              child: Text(
+                subtitle,
+                maxLines: 1,
+                overflow: TextOverflow.ellipsis,
+                strutStyle: const StrutStyle(fontSize: 11, height: 1.2, forceStrutHeight: true),
+                style: TextStyle(fontSize: 11, height: 1.2, color: subtitleColor),
+              ),
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+
+  Widget _featureTile({required IconData icon, required String title, required String subtitle, required VoidCallback onTap}) {
+    final scheme = Theme.of(context).colorScheme;
+    return Card(
+      margin: EdgeInsets.zero,
+      clipBehavior: Clip.antiAlias,
+      child: InkWell(
+        onTap: onTap,
+        child: Padding(
+          padding: const EdgeInsets.all(13),
+          child: Row(
+            children: [
+              SizedBox(
+                width: 42,
+                height: 42,
+                child: DecoratedBox(
+                  decoration: BoxDecoration(color: scheme.primaryContainer, borderRadius: BorderRadius.circular(13)),
+                  child: Center(child: Icon(icon, size: 22)),
+                ),
+              ),
+              const SizedBox(width: 11),
+              Expanded(child: _moduleTextGroup(title: title, subtitle: subtitle, subtitleColor: scheme.onSurfaceVariant)),
+              const SizedBox(width: 8),
+              Icon(Icons.chevron_right_rounded, color: scheme.onSurfaceVariant),
+            ],
+          ),
+        ),
+      ),
+    );
+  }'''
+
+          if old not in text:
+              raise SystemExit('feature tile block not found')
+          text = text.replace(old, new, 1)
+
+          appearance_old = '''              Expanded(
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    const Text('外观', style: TextStyle(fontSize: 14, fontWeight: FontWeight.w700)),
+                    const SizedBox(height: 3),
+                    Text('白天 / 夜间 / 跟随系统', maxLines: 1, overflow: TextOverflow.ellipsis, style: TextStyle(fontSize: 11, color: scheme.onSurfaceVariant)),
+                    const SizedBox(height: 3),
+                    Text(_modeLabel(mode), maxLines: 1, overflow: TextOverflow.ellipsis, style: TextStyle(fontSize: 11, color: scheme.primary, fontWeight: FontWeight.w700)),
+                  ],
+                ),
+              ),'''
+          appearance_new = '''              Expanded(
+                child: _moduleTextGroup(
+                  title: '外观',
+                  subtitle: '${_modeLabel(mode)} · 白天 / 夜间 / 跟随系统',
+                  subtitleColor: scheme.onSurfaceVariant,
+                ),
+              ),'''
+          if appearance_old not in text:
+              raise SystemExit('appearance tile block not found')
+          text = text.replace(appearance_old, appearance_new, 1)
+
+          path.write_text(text)
+          PY
+
+      - name: Verify formatting
+        run: |
+          dart format --output=none --set-exit-if-changed lib/pages/profile_page.dart
+
+      - name: Commit changes and remove temporary workflow
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          git config user.name 'github-actions[bot]'
+          git config user.email '41898282+github-actions[bot]@users.noreply.github.com'
+          git add lib/pages/profile_page.dart .github/workflows/ui_profile_align.yml
+          git commit -m 'ui: unify profile module text layout'
+          git rm .github/workflows/ui_profile_align.yml
+          git commit -m 'chore: remove temporary profile alignment workflow'
+          git push origin main
