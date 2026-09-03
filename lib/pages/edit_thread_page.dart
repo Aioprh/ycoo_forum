@@ -39,7 +39,6 @@ class _EditThreadPageState extends State<EditThreadPage> {
   bool _allowNoticeAuthor = true;
   bool _hiddenReplies = false;
   bool _descViewDefault = false;
-  bool _addFeed = true;
   bool _showAdvanced = false;
   bool _loading = true;
   bool _submitting = false;
@@ -82,7 +81,6 @@ class _EditThreadPageState extends State<EditThreadPage> {
           _allowNoticeAuthor = data.allownoticeauthor;
           _hiddenReplies = data.hiddenreplies;
           _descViewDefault = data.descviewdefault;
-          _addFeed = data.addfeed;
         }
         _types = types;
         _typeId ??= types.isNotEmpty ? types.first.id : null;
@@ -219,7 +217,10 @@ class _EditThreadPageState extends State<EditThreadPage> {
                       labelText: '主题售价',
                       prefixIcon: Icon(Icons.monetization_on_outlined),
                     ),
-                    items: const [0, 1, 2, 3, 5, 10, 20]
+                    items: {
+                      ...const [0, 1, 2, 3, 5, 10, 20],
+                      _price, // 服务端实际值不在固定档位时也保证可显示
+                    }
                         .map((value) => DropdownMenuItem<int>(
                               value: value,
                               child: Text(value == 0 ? '免费' : '$value 星币'),
@@ -234,7 +235,10 @@ class _EditThreadPageState extends State<EditThreadPage> {
                       labelText: '阅读权限',
                       prefixIcon: Icon(Icons.lock_outline),
                     ),
-                    items: const [0, 1, 2, 3, 5, 10, 20, 30, 50]
+                    items: {
+                      ...const [0, 1, 2, 3, 5, 10, 20, 30, 50],
+                      _readPerm, // 服务端实际权限不在固定档位时也保证可显示
+                    }
                         .map((value) => DropdownMenuItem<int>(
                               value: value,
                               child: Text(value == 0 ? '不限' : '$value 级'),
@@ -271,12 +275,6 @@ class _EditThreadPageState extends State<EditThreadPage> {
                     value: _descViewDefault,
                     onChanged: _submitting ? null : (value) => setState(() => _descViewDefault = value),
                   ),
-                  SwitchListTile.adaptive(
-                    contentPadding: EdgeInsets.zero,
-                    title: const Text('添加到动态'),
-                    value: _addFeed,
-                    onChanged: _submitting ? null : (value) => setState(() => _addFeed = value),
-                  ),
                 ],
               ),
             ),
@@ -306,7 +304,6 @@ class _EditThreadPageState extends State<EditThreadPage> {
       allownoticeauthor: _allowNoticeAuthor,
       hiddenreplies: _hiddenReplies,
       descviewdefault: _descViewDefault,
-      addfeed: _addFeed,
     );
 
     if (!mounted) return;

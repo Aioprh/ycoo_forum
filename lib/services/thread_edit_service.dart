@@ -14,7 +14,6 @@ class ThreadEditData {
   final bool allownoticeauthor;
   final bool hiddenreplies;
   final bool descviewdefault;
-  final bool addfeed;
 
   const ThreadEditData({
     required this.subject,
@@ -26,7 +25,6 @@ class ThreadEditData {
     this.allownoticeauthor = true,
     this.hiddenreplies = false,
     this.descviewdefault = false,
-    this.addfeed = true,
   });
 }
 
@@ -85,21 +83,34 @@ class ThreadEditService {
     int intValue(String name) => int.tryParse(value(name)) ?? 0;
     bool checked(String name, {bool fallback = false}) =>
         form.querySelector('input[name="$name"][checked]') != null ? true : fallback;
-    int? selectedInt(String name) {
-      final option = form.querySelector('select[name="$name"] option[selected]');
-      return int.tryParse(option?.attributes['value'] ?? '');
+    // Comiis 移动模板会把“请选择”(value=0) 与真实分类同时标记为 selected，
+    // 浏览器实际提交的是最后一个 selected 选项，这里也取最后一个且 value>0 的分类。
+    int? selectedTypeId() {
+      final options = form.querySelectorAll('select[name="typeid"] option[selected]');
+      if (options.isEmpty) return null;
+      final id = int.tryParse(options.last.attributes['value'] ?? '');
+      return (id != null && id > 0) ? id : null;
     }
+    // 阅读权限在编辑表单里是 <select> 而非 input；没有选中任何 option 表示“不限”(0)。
+    int readperm = 0;
+    final readpermSelect = form.querySelector('select[name="readperm"]');
+    final readpermSelected = readpermSelect?.querySelector('option[selected]');
+    if (readpermSelected != null) {
+      readperm = int.tryParse(readpermSelected.attributes['value'] ?? '') ?? 0;
+    }
+    final typeId = selectedTypeId();
     return ThreadEditData(
       subject: value('subject'),
       message: value('message'),
-      typeid: selectedInt('typeid'),
+      typeid: typeId,
       price: intValue('price'),
-      readperm: intValue('readperm'),
+      readperm: readperm,
       usesig: checked('usesig', fallback: true),
       allownoticeauthor: checked('allownoticeauthor', fallback: true),
       hiddenreplies: checked('hiddenreplies'),
-      descviewdefault: checked('descviewdefault') || value('ordertype') == '1',
-      addfeed: checked('addfeed', fallback: true),
+      // Discuz 编辑表单里“倒序排列”是 name=ordertype 的复选框，
+      // 不能用 value('ordertype')（复选框 value 恒为 "1"，无论是否勾选）。
+      descviewdefault: checked('ordertype'),
     );
   }
 
@@ -116,7 +127,6 @@ class ThreadEditService {
     bool? allownoticeauthor,
     bool? hiddenreplies,
     bool? descviewdefault,
-    bool? addfeed,
   }) async {
     if (!AuthService.instance.isLoggedIn || (AuthService.instance.authCookie ?? '').isEmpty) return '请先登录论坛';
     final title = subject.trim();
@@ -144,17 +154,16 @@ class ThreadEditService {
       fields['subject'] = title;
       fields['message'] = body;
       fields['editsubmit'] = 'yes';
-      if (typeid != null) fields['typeid'] = '$typeid';
+      if (typeid != null && typeid > 0) fields['typeid'] = '$typeid';
       if (price != null) fields['price'] = '$price';
-      if (readperm != null) fields['readperm'] = '$readperm';
-      if (usesig != null) fields['usesig'] = usesig ? '1' : '0';
-      if (allownoticeauthor != null) fields['allownoticeauthor'] = allownoticeauthor ? '1' : '0';
-      if (hiddenreplies != null) fields['hiddenreplies'] = hiddenreplies ? '1' : '0';
-      if (descviewdefault != null) {
-        fields['descviewdefault'] = descviewdefault ? '1' : '0';
-        if (fields.containsKey('ordertype')) fields['ordertype'] = descviewdefault ? '1' : '0';
-      }
-      if (addfeed != null) fields['addfeed'] = addfeed ? '1' : '0';
+      if (readperm != null) fields['readperm'] = readperm == 0 ? '' : '$readperm';
+      // Discuz 用 isset($_POST[...]) 判断复选框：勾选才随表单提交，
+      // 未勾选必须完全不带该字段(提交 =0 也会被 isset 判为勾选, 导致无法取消)。
+      if (usesig != null) _setCheckbox(fields, 'usesig', usesig);
+      if (allownoticeauthor != null) _setCheckbox(fields, 'allownoticeauthor', allownoticeauthor);
+      if (hiddenreplies != null) _setCheckbox(fields, 'hiddenreplies', hiddenreplies);
+      // 编辑表单里“回帖倒序排列”的字段名是 ordertype(无 descviewdefault)。
+      if (descviewdefault != null) _setCheckbox(fields, 'ordertype', descviewdefault);
 
       final action = (form.attributes['action'] ?? '').trim();
       Uri postUrl = editUrl;
@@ -178,10 +187,12 @@ class ThreadEditService {
         },
         body: fields,
       ).timeout(NetClient.timeout);
+      final status = response.statusCode;
+      final location = (response.headers['location'] ?? '').toLowerCase();
       final result = NetClient.decode(response.bodyBytes);
       final resultDoc = parser.parse(result);
       final text = _plain(resultDoc);
-      if (_isSuccess(resultDoc, text, result)) return null;
+      if (_isSuccess(resultDoc, text, result, status: status, location: location)) return null;
       if (_looksLikeLogin(text)) return '登录状态已失效，请重新登录';
       if (text.contains('formhash') || text.contains('非法请求') || text.contains('验证失败')) return '编辑令牌已失效，请重新进入帖子后再试';
       if (_looksLikePermission(text)) return '只有帖子作者可以编辑该主题';
@@ -189,6 +200,15 @@ class ThreadEditService {
       return _firstFailure(text) ?? _extractErrorLabel(text) ?? '保存失败：论坛未返回成功结果';
     } catch (e) {
       return '编辑请求失败：${e.toString().replaceFirst('Exception: ', '')}';
+    }
+  }
+
+  /// 复选框按 Discuz 语义写入表单字段：勾选 → 值为 "1"；未勾选 → 移除字段。
+  void _setCheckbox(Map<String, String> fields, String name, bool value) {
+    if (value) {
+      fields[name] = '1';
+    } else {
+      fields.remove(name);
     }
   }
 
@@ -215,7 +235,12 @@ class ThreadEditService {
     for (final select in form.querySelectorAll('select')) {
       final name = select.attributes['name'] ?? '';
       if (name.isEmpty) continue;
-      final selected = select.querySelector('option[selected]') ?? select.querySelector('option');
+      // 与浏览器一致：存在多个 selected 时取最后一个
+      // (Comiis 模板的 typeid 会同时标记“请选择”和真实分类)。
+      final selectedOptions = select.querySelectorAll('option[selected]');
+      final selected = selectedOptions.isNotEmpty
+          ? selectedOptions.last
+          : select.querySelector('option');
       if (selected != null) put(name, selected.attributes['value'] ?? '');
     }
     return out;
@@ -224,7 +249,14 @@ class ThreadEditService {
   String _plain(dynamic doc) => (doc.body?.text ?? '').replaceAll(RegExp(r'\s+'), ' ').trim();
   bool _looksLikeLogin(String text) => text.contains('请登录') || text.contains('登录后') || text.contains('请先登录');
   bool _looksLikePermission(String text) => text.contains('无权') || text.contains('没有权限') || text.contains('权限不足');
-  bool _isSuccess(dynamic doc, String text, [String? raw]) {
+  bool _isSuccess(dynamic doc, String text, [String? raw, int? status, String? location]) {
+    // 0) 服务端成功后常直接 3xx 跳转到 viewthread(响应体为空)。
+    //    跨平台(非 Android 的 IOClient 可能不跟随重定向)时靠 Location 兜底判定成功。
+    if (status != null && status >= 300 && status < 400) {
+      final loc = (location ?? '').toLowerCase();
+      return loc.contains('viewthread') && !loc.contains('action=edit');
+    }
+
     // 1) 明确成功提示。
     if (RegExp(r'(编辑成功|保存成功|主题已(?:编辑|更新)|已(?:保存|更新))').hasMatch(text)) return true;
 
