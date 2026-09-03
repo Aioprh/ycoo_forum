@@ -4,6 +4,8 @@ import 'package:flutter_localizations/flutter_localizations.dart';
 import 'pages/board_page.dart';
 import 'pages/home_page.dart';
 import 'pages/profile_page.dart';
+import 'services/auth_service.dart';
+import 'services/checkin_service.dart';
 import 'services/site_config.dart';
 import 'services/theme_mode_controller.dart';
 
@@ -21,13 +23,11 @@ class YcoForumApp extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    // 主题模式变化时重建 MaterialApp, 实现亮/暗/跟随系统的即时切换。
     return ValueListenableBuilder<ThemeMode>(
       valueListenable: ThemeModeController.instance.mode,
       builder: (context, themeMode, _) => MaterialApp(
         title: '源论坛',
         debugShowCheckedModeBanner: false,
-        // 中文本地化：让文本选择菜单(复制/全选等)显示中文
         localizationsDelegates: const [
           GlobalMaterialLocalizations.delegate,
           GlobalWidgetsLocalizations.delegate,
@@ -37,8 +37,6 @@ class YcoForumApp extends StatelessWidget {
         locale: const Locale('zh', 'CN'),
         theme: ThemeData(
           useMaterial3: true,
-          // Android 系统 CJK/Emoji fallback，避免网页中文、扩展汉字和符号
-          // 因默认字体缺少 glyph 而显示成“方框 X”。
           fontFamilyFallback: const <String>[
             'Noto Sans CJK SC',
             'Noto Sans CJK TC',
@@ -67,8 +65,6 @@ class YcoForumApp extends StatelessWidget {
             brightness: Brightness.dark,
           ),
         ),
-        // 跟随手机系统亮暗模式自动切换夜间/日间主题,
-        // 也支持用户在我的页手动指定亮/暗模式。
         themeMode: themeMode,
         home: const RootShell(),
       ),
@@ -86,12 +82,26 @@ class RootShell extends StatefulWidget {
 
 class _RootShellState extends State<RootShell> {
   int _index = 0;
-
   static const _pages = <Widget>[
     HomePage(),
     BoardPage(),
     ProfilePage(),
   ];
+
+  @override
+  void initState() {
+    super.initState();
+    WidgetsBinding.instance.addPostFrameCallback((_) => _autoCheckIn());
+  }
+
+  Future<void> _autoCheckIn() async {
+    // 先恢复本地登录会话，再执行自动签到；签到服务自身还会按本地日期限流。
+    await AuthService.instance.init();
+    if (!AuthService.instance.isLoggedIn) return;
+    await AuthService.instance.checkLoggedIn();
+    if (!AuthService.instance.isLoggedIn || !mounted) return;
+    await CheckinService.instance.autoSignOncePerDay();
+  }
 
   @override
   Widget build(BuildContext context) {
