@@ -281,6 +281,8 @@ class _CommentCardState extends State<_CommentCard> {
       if (!mounted) return;
       setState(() {
         _loadingReplies = false;
+        // 请求失败时不保留空的楼中楼区域；父评论仍完整显示，按钮可再次重试。
+        _repliesExpanded = false;
         _replyError = widget.comment.replyCount > 0 ? '$e' : null;
       });
     }
