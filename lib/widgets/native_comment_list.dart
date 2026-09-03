@@ -246,7 +246,7 @@ class _CommentCardState extends State<_CommentCard> {
     super.initState();
     _pid = widget.comment.pid;
     // 只有明确存在楼中楼时才后台预热，普通评论不产生空的展开入口。
-    if (widget.tid > 0 && widget.comment.replyCount > 0) {
+    if (widget.tid > 0) {
       WidgetsBinding.instance.addPostFrameCallback((_) => _loadReplies());
     }
   }
@@ -269,7 +269,8 @@ class _CommentCardState extends State<_CommentCard> {
       final replies = _parseReplies();
       setState(() {
         _loadingReplies = false;
-        // 后台预热只缓存数据，不自动展开；父评论始终保持可见。
+        // 自动加载成功后直接展示楼中楼；普通评论解析为空则不显示空容器。
+        _repliesExpanded = replies.isNotEmpty;
         if (replies.isEmpty && widget.comment.replyCount > 0) {
           _replyError = '暂时没有取得楼中楼内容';
           _repliesExpanded = false;
