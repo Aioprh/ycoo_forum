@@ -92,10 +92,9 @@ class NativeCommentList extends StatelessWidget {
   Widget build(BuildContext context) {
     final comments = _parse();
     if (comments.isEmpty) {
-      final hint = Theme.of(context).colorScheme.onSurfaceVariant;
-      return Padding(
-        padding: const EdgeInsets.all(24),
-        child: Center(child: Text('暂无评论', style: TextStyle(color: hint))),
+      return const Padding(
+        padding: EdgeInsets.all(24),
+        child: Center(child: Text('暂无评论', style: TextStyle(color: Colors.grey))),
       );
     }
     final root = parser.parseFragment(html);
@@ -328,19 +327,9 @@ class _CommentCardState extends State<_CommentCard> {
       if (node.attributes['id']?.contains('replyfloor_content_li') ?? false) return true;
       if ((node.attributes['class'] ?? '').contains('replyfloor_content_li')) return true;
       if (node.querySelector('.replyfloor_content_text') != null) return true;
-      final buffer = StringBuffer();
-      buffer.write(node.attributes['onclick'] ?? '');
-      for (final v in node.attributes.values) { buffer.write(' '); buffer.write(v); }
-      buffer.write(' '); buffer.write(node.innerHtml);
-      final any = buffer.toString();
-      // 匹配 replyfloor_editor('postpid', pid, ...) / replyfloor_report("postpid", pid) 这种双参数调用。
-      // 因为 raw 字符串中不能同时包含转义的单双引号，这里分两次匹配。
-      const q1 = r"replyfloor_(editor|report)\s*\(\s*'\d+'?\s*,\s*\d+";
-      const q2 = r'replyfloor_(editor|report)\s*\(\s*"\d+"?\s*,\s*\d+';
-      const q3 = r"replyfloor_(editor|report)\s*\(\s*\d+\s*,\s*\d+";
-      if (RegExp(q1, caseSensitive: false).hasMatch(any)) return true;
-      if (RegExp(q2, caseSensitive: false).hasMatch(any)) return true;
-      if (RegExp(q3, caseSensitive: false).hasMatch(any)) return true;
+      final any = '${node.attributes['onclick'] ?? ''} ${node.attributes.values.join(' ')} '
+          '${node.innerHtml}';
+      if (RegExp(r'replyfloor_(?:editor|report)\s*\(\s*["\']?\d+["\']?\s*,\s*\d+', caseSensitive: false).hasMatch(any)) return true;
       return false;
     }
     nodes.retainWhere(looksLikeFloorReply);
