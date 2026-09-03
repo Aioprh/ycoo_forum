@@ -245,8 +245,8 @@ class _CommentCardState extends State<_CommentCard> {
   void initState() {
     super.initState();
     _pid = widget.comment.pid;
-    // 只有明确存在楼中楼时才后台预热，普通评论不产生空的展开入口。
-    if (widget.tid > 0) {
+    // 只有明确有楼中楼时才后台预热，普通评论不产生空的展开入口。
+    if (widget.tid > 0 && widget.comment.replyCount > 0) {
       WidgetsBinding.instance.addPostFrameCallback((_) => _loadReplies());
     }
   }
@@ -517,7 +517,11 @@ class _CommentCardState extends State<_CommentCard> {
     final comment = widget.comment;
     final colors = Theme.of(context).colorScheme;
     final replies = _parseReplies();
-    final showReplyToggle = replies.isNotEmpty || comment.replyCount > 0;
+    // 只有真正解析到楼中楼 / 正在加载楼中楼时, 才显示展开入口。
+    // 不再依赖 comment.replyCount: 论坛的 "回复(N)" 计数语义上包含任何回复
+    // (含楼中楼), 但当前页未必能抓到 replyfloor 节点, 硬套数字会让没有
+    // 楼中楼的评论也出现空展开入口。
+    final showReplyToggle = replies.isNotEmpty || _loadingReplies;
     return Container(
       padding: const EdgeInsets.fromLTRB(14, 13, 14, 10),
       decoration: BoxDecoration(
