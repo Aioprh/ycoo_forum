@@ -29,7 +29,6 @@ class _EditThreadPageState extends State<EditThreadPage> {
   final _title = TextEditingController();
   final _body = TextEditingController();
   final _bodyFocus = FocusNode();
-  final _formKey = GlobalKey<FormState>();
 
   List<ThreadType> _types = const [];
   List<ThreadReadpermOption> _readpermOptions = const [];
@@ -97,23 +96,6 @@ class _EditThreadPageState extends State<EditThreadPage> {
         _error = e.toString().replaceFirst('Exception: ', '');
       });
     }
-  }
-
-  String? _priceValidator(String? v, int maxPrice) {
-    final n = int.tryParse(v ?? '');
-    if (n == null || n < 0) return '请输入不小于 0 的整数';
-    if (maxPrice > 0 && n > maxPrice) return '售价不能超过 $_maxPrice';
-    return null;
-  }
-
-  String? _readpermValidator(String? v, List<ThreadReadpermOption> options) {
-    final n = int.tryParse(v ?? '');
-    if (n == null || n < 0) return '请输入不小于 0 的整数';
-    if (options.isEmpty) return null;
-    final valid = options.map((o) => o.value).toSet();
-    // 与网页端行为一致：只允许选择现有用户组的数值，其余视为无效。
-    if (!valid.contains(n)) return '请输入有效的阅读权限数值（${valid.toList()..sort()}）';
-    return null;
   }
 
   void _insert(String value) {
@@ -212,12 +194,10 @@ class _EditThreadPageState extends State<EditThreadPage> {
             onChanged: _submitting ? null : (value) => setState(() => _showAdvanced = value),
           ),
           if (_showAdvanced)
-            Form(
-              key: _formKey,
-              child: Padding(
-                padding: const EdgeInsets.fromLTRB(16, 0, 16, 14),
-                child: Column(
-                  children: [
+            Padding(
+              padding: const EdgeInsets.fromLTRB(16, 0, 16, 14),
+              child: Column(
+                children: [
                   if (_types.isNotEmpty)
                     DropdownButtonFormField<int>(
                       value: _typeId,
@@ -240,40 +220,46 @@ class _EditThreadPageState extends State<EditThreadPage> {
                       onChanged: _submitting ? null : (value) => setState(() => _typeId = value),
                     ),
                   const SizedBox(height: 10),
-                  TextFormField(
-                    key: const ValueKey('price'),
-                    initialValue: _price == 0 ? '0' : '$_price',
-                    enabled: !_submitting,
-                    keyboardType: TextInputType.number,
-                    maxLength: 6,
+                  // 售价/阅读权限用下拉，与发布帖子功能保持一致交互；选项边界取自网页编辑表单。
+                  DropdownButtonFormField<int>(
+                    value: _price,
                     decoration: InputDecoration(
-                      labelText: '主题售价（星币）',
+                      labelText: '主题售价',
                       prefixIcon: const Icon(Icons.monetization_on_outlined),
                       helperText: _maxPrice > 0 ? '最高可设置 $_maxPrice 星币' : '售价为 0 表示免费',
-                      counterText: '',
-                      border: const OutlineInputBorder(),
                     ),
-                    validator: (v) => _priceValidator(v, _maxPrice),
-                    onChanged: (v) => _price = int.tryParse(v ?? '') ?? 0,
+                    items: _priceOptions().map((value) => DropdownMenuItem<int>(
+                          value: value,
+                          child: Text(value == 0 ? '免费' : '$value 星币'),
+                        )).toList(),
+                    onChanged: _submitting ? null : (value) => setState(() => _price = value ?? 0),
                   ),
                   const SizedBox(height: 10),
-                  TextFormField(
-                    key: const ValueKey('readperm'),
-                    initialValue: '$_readPerm',
-                    enabled: !_submitting,
-                    keyboardType: TextInputType.number,
-                    maxLength: 3,
-                    decoration: InputDecoration(
-                      labelText: '阅读权限（数值，0=不限）',
-                      prefixIcon: const Icon(Icons.lock_outline),
-                      helperText: _readpermOptions.isNotEmpty
-                          ? '参考用户组：${_readpermOptions.take(7).map((o) => '${o.label}(${o.value})').join('、')}…'
-                          : '0 表示不限，数字越大权限要求越高',
-                      counterText: '',
-                      border: const OutlineInputBorder(),
+                  DropdownButtonFormField<int>(
+                    value: _readPerm,
+                    decoration: const InputDecoration(
+                      labelText: '阅读权限',
+                      prefixIcon: Icon(Icons.lock_outline),
+                      helperText: '与网页端一致，按用户组设定',
                     ),
-                    validator: (v) => _readpermValidator(v, _readpermOptions),
-                    onChanged: (v) => _readPerm = int.tryParse(v ?? '') ?? 0,
+                    items: () {
+                      final opts = _readpermOptions.map<DropdownMenuItem<int>>((o) => DropdownMenuItem<int>(
+                            value: o.value,
+                            child: Text(o.value == 0 ? '不限' : '${o.label}（${o.value}）'),
+                          )).toList();
+                      if (_readpermOptions.isEmpty) {
+                        return const [DropdownMenuItem<int>(value: 0, child: Text('不限'))];
+                      }
+                      // 确保当前值(可能重复)一定在选项中，避免下拉找不到 value 而崩溃。
+                      if (!_readpermOptions.any((o) => o.value == _readPerm)) {
+                        opts.add(DropdownMenuItem<int>(
+                          value: _readPerm,
+                          child: Text('自定义（$_readPerm）'),
+                        ));
+                      }
+                      return opts;
+                    }(),
+                    onChanged: _submitting ? null : (value) => setState(() => _readPerm = value ?? 0),
                   ),
                   const SizedBox(height: 6),
                   SwitchListTile.adaptive(
@@ -305,7 +291,6 @@ class _EditThreadPageState extends State<EditThreadPage> {
                     onChanged: _submitting ? null : (value) => setState(() => _descViewDefault = value),
                   ),
                 ],
-                ),
               ),
             ),
         ],
@@ -313,13 +298,21 @@ class _EditThreadPageState extends State<EditThreadPage> {
     );
   }
 
+  /// 可选的售价档位：0 到网页端上限，取发布页常用档位并保证包含当前值。
+  List<int> _priceOptions() {
+    final tiers = const [0, 1, 2, 3, 5, 10, 20, 30, 50, 100, 200, 255];
+    final maxOpt = _maxPrice > 0 ? _maxPrice : (_price > 0 ? _price : 0);
+    final opts = <int>{}
+      ..addAll(tiers.where((v) => v <= maxOpt))
+      ..add(maxOpt)
+      ..add(_price);
+    final list = opts.toList()..sort();
+    return list.length > 40 ? list.take(40).toList() : list;
+  }
+
   Future<void> _submit() async {
     if (_submitting) return;
     FocusScope.of(context).unfocus();
-    // 高级设置展开时才校验售价/阅读权限；收起时用户未改动，直接沿用加载值。
-    if (_showAdvanced && !(_formKey.currentState?.validate() ?? true)) {
-      return;
-    }
     setState(() {
       _submitting = true;
       _error = null;
