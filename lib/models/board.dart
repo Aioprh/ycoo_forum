@@ -18,3 +18,12 @@ class ForumCategory {
   final List<ForumBoard> boards;
   const ForumCategory({required this.name, required this.boards});
 }
+
+/// 版块内的主题分类筛选标签(如「综合」「音源」「漫画」)。
+///
+/// 对应网页端版块页顶部滑动栏里 `filter=typeid&typeid=X` 的链接。
+class ForumTypeTag {
+  final int typeid;
+  final String name;
+  const ForumTypeTag({required this.typeid, required this.name});
+}

@@ -48,7 +48,11 @@ class ApiService {
   }
 
   static String guideUrl(String view) => '$_base' 'forum.php?mod=guide&view=$view&mobile=2';
-  static String forumUrl(int fid, int page) => '$_base' 'forum.php?mod=forumdisplay&fid=$fid&mobile=2&page=$page';
+  static String forumUrl(int fid, int page, {int? typeid}) {
+    var url = '$_base' 'forum.php?mod=forumdisplay&fid=$fid&mobile=2&page=$page';
+    if (typeid != null && typeid > 0) url += '&filter=typeid&typeid=$typeid';
+    return url;
+  }
 
   Future<List<ThreadItem>> fetchThreads(String url) async {
     final html = await _get(url);
@@ -130,6 +134,26 @@ class ApiService {
   }
 
   static String get boardUrl => '$_base' 'forum.php?forumlist=1&mobile=2';
+
+  /// 解析版块页顶部的主题分类筛选标签(网页端滑动栏里的 filter=typeid 链接)。
+  ///
+  /// 例如「书源发布」版块下会有 综合/音源/漫画/影视/iOS源/单个/公告 等小分类。
+  /// 未抓到任何分类时返回空列表(调用方直接隐藏分类栏)。
+  Future<List<ForumTypeTag>> fetchForumTypes(int fid) async {
+    final html = await _get(forumUrl(fid, 1));
+    final doc = parser.parse(html);
+    final tags = <ForumTypeTag>[];
+    final seen = <int>{};
+    for (final a in doc.querySelectorAll('a[href*="filter=typeid"]')) {
+      final href = a.attributes['href'] ?? '';
+      final typeid = _firstInt(RegExp(r'[?&]typeid=(\d+)'), href);
+      if (typeid == null || typeid <= 0 || !seen.add(typeid)) continue;
+      final name = _normSpace(a.text);
+      if (name.isEmpty) continue;
+      tags.add(ForumTypeTag(typeid: typeid, name: name));
+    }
+    return tags;
+  }
 
   Future<List<ForumCategory>> fetchBoards() async {
     final html = await _get(boardUrl);
