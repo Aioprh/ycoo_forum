@@ -66,15 +66,18 @@ class MemberService {
       paths.add(uri.replace(queryParameters: q).path + (q.isEmpty ? '' : '?${Uri(queryParameters: q).query}'));
     }
     final html = await _getFirstWorking(paths);
-    return _parseThreads(html);
+    final collectionPage = _isMemberCollectionPath(path);
+    return _parseThreads(html, collectionPage: collectionPage);
   }
 
-  List<ThreadItem> _parseThreads(String html) {
+  List<ThreadItem> _parseThreads(String html, {bool collectionPage = false}) {
     final doc = parser.parse(html);
     final result = <ThreadItem>[];
     final seen = <int>{};
 
-    // 不再依赖单一 li/class；Discuz 模板只要保留 thread-xxx 或 tid=xxx 就能解析。
+    // 这里不能无差别扫描页面所有 thread-xxx 链接。
+    // 个人主题/收藏页顶部可能带有“发帖前请注意查看【源社区总版规】”的站点公告，
+    // 这个链接不是用户自己的主题，也不是用户收藏，旧解析器会把它误当成列表项。
     for (final a in doc.querySelectorAll('a[href]')) {
       final href = a.attributes['href'] ?? '';
       final match = RegExp(r'(?:thread-|[?&]tid=)(\d+)', caseSensitive: false).firstMatch(href);
@@ -83,14 +86,11 @@ class MemberService {
       final title = _clean(a.text);
       if (tid <= 0 || title.isEmpty || seen.contains(tid)) continue;
       if (_looksLikeNavigation(title) || title.length < 2) continue;
-      // 排除明显的操作链接，但保留真实主题标题。
       if (RegExp(r'^(回复|查看|详情|购买主题|下一页|上一页|首页|尾页|分享|收藏)$').hasMatch(title)) continue;
+      if (collectionPage && _isSiteWideAnnouncementLink(a, title)) continue;
       seen.add(tid);
       final parentText = _clean(a.parent?.text ?? '');
-      // Comiis 个人主页用私用图标字体显示回复/浏览，图标后的数字放在 span.comiis_tm 里，
-      // 同一容器中 comiis_tm 的数值 spans 末尾两个固定是"回复数 / 浏览量"。
       final counts = _findThreadCounts(a);
-      // 板名: 祖先容器里的第一个 forum-N 链接/分类名
       var board = '';
       dom.Element? cur = a.parent;
       while (cur != null) {
@@ -120,7 +120,29 @@ class MemberService {
     return result;
   }
 
-  /// 在 a 的祖先容器里寻找 comiis_tm 数值 spans (comiis 私用图标字体的计数),
+  static bool _isMemberCollectionPath(String path) {
+    final uri = Uri.tryParse('$_base$path');
+    if (uri == null) return false;
+    final doValue = uri.queryParameters['do']?.toLowerCase() ?? '';
+    return doValue == 'thread' || doValue == 'favorite';
+  }
+
+  static bool _isSiteWideAnnouncementLink(dom.Element a, String title) {
+    final normalized = _clean(title).replaceAll(RegExp(r'\s+'), '');
+    if (normalized == '【源社区总版规】' || normalized == '源社区总版规') return true;
+
+    final style = (a.attributes['style'] ?? '').toLowerCase();
+    var ancestor = a.parent;
+    for (var depth = 0; depth < 5 && ancestor != null; depth++, ancestor = ancestor.parent) {
+      final text = _clean(ancestor.text);
+      // 站点公告的典型结构：公告提示文字 + 蓝色的版规链接。
+      if (text.contains('发帖前请注意查看') && text.contains('版规')) return true;
+      if (style.contains('color: blue') && text.contains('版规')) return true;
+    }
+    return false;
+  }
+
+  /// 在 a 的祖先容器里寻找 comiis_tm 数值 spans (comiis 私用图标字体的计数)，
   /// 返回 (点赞数, 回复数, 浏览量)。找不到时 fallback: 用正则扫祖先文本。
   (int, int, int) _findThreadCounts(dom.Element a) {
     dom.Element? cur = a;
@@ -139,7 +161,6 @@ class MemberService {
       }
       cur = cur.parent;
     }
-    // fallback: 祖先文本里找"回复 12 / 浏览 727"这类可读标签。
     var text = '';
     cur = a.parent;
     while (cur != null) {
@@ -198,7 +219,6 @@ class MemberService {
   static String _clean(String text) =>
       text
           .replaceAll('\uFFFD', '')
-          // 过滤 iconfont 私有区码点(方块乱码来源, PUA U+E000-U+F8FF)
           .replaceAll(RegExp(r'[\uE000-\uF8FF]'), '')
           .replaceAll(RegExp(r'\s+'), ' ').trim();
 
