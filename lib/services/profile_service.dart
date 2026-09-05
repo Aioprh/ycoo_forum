@@ -210,9 +210,21 @@ class ProfileService {
     return !RegExp(r'^(UID|用户|用户名|昵称|登录|注册|退出|主题|回帖|帖子|帖子数|个人中心|空间|我的|提示信息)\s*[:：]?$', caseSensitive: false).hasMatch(v);
   }
 
-  Future<List<ThreadItem>> fetchThreads(int uid, {bool replies = false}) {
+  Future<List<ThreadItem>> fetchThreads(int uid, {bool replies = false}) async {
     final type = replies ? 'reply' : 'thread';
-    return MemberServiceV2.instance.fetchThreads('home.php?mod=space&uid=$uid&do=thread&type=$type&view=me&from=space&mobile=2');
+    final items = await MemberServiceV2.instance.fetchThreads('home.php?mod=space&uid=$uid&do=thread&type=$type&view=me&from=space&mobile=2');
+    // 个人主题页顶部会插入站点级公告「【源社区总版规】」。
+    // 它属于全站公告，不属于当前用户的主题；不能把它混入个人资料的主题列表。
+    if (!replies) {
+      return items.where((item) => !_isSiteWideAnnouncement(item)).toList(growable: false);
+    }
+    return items;
+  }
+
+  static bool _isSiteWideAnnouncement(ThreadItem item) {
+    final title = item.title.replaceAll(RegExp(r'\s+'), '').trim();
+    if (title == '【源社区总版规】' || title == '源社区总版规') return true;
+    return false;
   }
 
   Future<String?> setFollow(int uid, bool follow) async {
