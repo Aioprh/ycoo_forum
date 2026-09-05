@@ -177,12 +177,17 @@ class CommentReplyResolver {
       // 判断是否还有后续页：存在 rel=...page=N 的"更多回复"链接或 replyfloor 分页器。
       final hasMore = pageHtml.contains('replyfloor_content_showmore') &&
           pageHtml.contains('class="replyfloor_content_more"');
+      // "更多回复"按钮的 rel 属性位于 <a> 标签内，而 replyfloor_content_showmore 是
+      // 外层 <div> 的 class。原先的正则 replyfloor_content_showmore[^>]*rel 受限于
+      // [^>]* 不能跨越标签边界，永远匹配不到 <a> 上的 rel，导致分页在第一页就终止，
+      // 后续页的楼中楼回复永远拉不到。这里直接在整段 HTML 中搜索包含 replyfloor
+      // 与 page=N 的 rel 属性值来定位下一页。
       final nextPageMatch = hasMore
-          ? RegExp(r'replyfloor_content_showmore[^>]*rel\s*=\s*"([^"]*)"').firstMatch(pageHtml)
+          ? RegExp(r'''rel\s*=\s*"([^"]*replyfloor[^"]*page=(\d+)[^"]*)"''', caseSensitive: false)
+              .firstMatch(pageHtml)
           : null;
       if (nextPageMatch != null) {
-        final pageParam = RegExp(r'[?&]page=(\d+)').firstMatch(nextPageMatch.group(1)!);
-        final next = int.tryParse(pageParam?.group(1) ?? '');
+        final next = int.tryParse(nextPageMatch.group(2) ?? '');
         // 服务器页码可能跳跃，用 rel 里的真实页码直接推进。
         if (next != null && next > page) {
           page = next - 1; // for 循环尾部 +1 后跳到 next
