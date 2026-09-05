@@ -337,7 +337,18 @@ class AuthService {
     await _save();
   }
 
-  /// 回复主题(发新楼层): 走 Discuz 原生 reply 接口。
+  /// 回复主题(发新楼层): 完全对齐网页端 fastpost 的 AJAX 提交。
+  ///
+  /// 网页端帖子底部的快速回复用 `#fastpostsubmit` 触发:
+  /// ```js
+  /// $.ajax({ type:'POST',
+  ///   url: form.attr('action') + '&handlekey=fastpost&loc=1&inajax=1',
+  ///   data: form.serialize(),  // formhash + noticeauthor + message
+  ///   dataType:'xml' });
+  /// ```
+  /// 成功返回 <root><![CDATA[...succeedhandle_fastpost(...)]]></root>。
+  /// 若缺少 handlekey=fastpost&loc=1&inajax=1 或 noticeauthor, Discuz 会走同步跳转,
+  /// 拿不到可判定的 ajax 成功协议, 导致“实际已发布却提示回复失败”。
   Future<String?> reply(int tid, int fid, String message) async {
     final text = message.trim();
     if (text.isEmpty) return '回帖内容不能为空';
@@ -349,15 +360,14 @@ class AuthService {
       final formhash = _hiddenValue(page, 'formhash') ?? '';
       if (formhash.isEmpty) return '未取得回帖令牌(formhash)';
       final extra = 'page%3D1';
+      final noticeauthor = _hiddenValue(page, 'noticeauthor') ?? '';
       final postBody = <String, String>{
         'formhash': formhash,
         'message': text,
         'replysubmit': 'yes',
-        'listextra': extra,
-        'htmlon': _hiddenValue(page, 'htmlon') ?? '0',
-        'posttime': _hiddenValue(page, 'posttime') ?? '',
+        if (noticeauthor.isNotEmpty) 'noticeauthor': noticeauthor,
       };
-      final url = '${base}forum.php?mod=post&action=reply&fid=$fid&tid=$tid&extra=$extra&replysubmit=yes&mobile=2';
+      final url = '${base}forum.php?mod=post&action=reply&fid=$fid&tid=$tid&extra=$extra&replysubmit=yes&handlekey=fastpost&loc=1&inajax=1&mobile=2';
       final resp = await client.post(Uri.parse(url), headers: {..._headers(referer: getUrl), 'Content-Type': 'application/x-www-form-urlencoded; charset=UTF-8', 'Origin': base, 'X-Requested-With': 'XMLHttpRequest'}, body: postBody).timeout(NetClient.timeout);
       final body = NetClient.decode(resp.bodyBytes);
       if (_isReplySuccess(body, tid, resp.statusCode)) return null;
@@ -404,11 +414,16 @@ class AuthService {
     }
   }
 
-  /// 统一判定回复是否成功：覆盖 Discuz 原生 reply 与 Comiis replyfloor 插件
-  /// 的全部 ajax 成功协议。避免“实际上已成功、却误报失败”的假阴性。
+  /// 统一判定回复是否成功：覆盖 Discuz 原生 reply(含 fastpost) 与 Comiis replyfloor。
+  ///
+  /// 关键点：Discuz 的 ajax 成功/失败是成对回调 succeedhandle_* / errorhandle_*。
+  /// 页面里内联的 JS 会同时定义这两个函数，所以一旦响应是整页回退，
+  /// 就必须用“含成功回调且不含错误回调”来判定，否则会把失败页误判为成功。
   bool _isReplySuccess(String body, int tid, int statusCode) {
-    // 1. Discuz / 插件 ajax 成功会在响应脚本里定名调用 succeedhandle_* / do_success，
-    //    或直接返回成功文案。
+    final hasError = RegExp(r'errorhandle_|showError\s*\(|alert_error', caseSensitive: false).hasMatch(body);
+    if (hasError) return false;
+
+    // 1. ajax 成功回调 / 成功文案(回复成功、回复发布成功、succeedhandle_*、do_success)。
     if (body.contains('succeedhandle_') ||
         body.contains('do_success') ||
         body.contains('回复发布成功') ||
@@ -421,13 +436,11 @@ class AuthService {
         (body.contains('tid=$tid') || body.contains('thread-$tid') || body.contains('#pid_'))) {
       return true;
     }
-    // 3. replyfloor 在 inajax 下返回 <root><![CDATA[...]]></root> 包裹的新回帖 HTML。
-    //    真失败必然带 errorhandle_ / showError / alert_error，若含 succeed 且无错误块即成功。
+    // 3. replyfloor inajax 返回 <root><![CDATA[...]]></root> 包裹的新回帖 HTML。
     if (statusCode == 200 &&
         body.contains('<root') &&
         body.toLowerCase().contains('<![cdata[') &&
-        body.contains('succeed') &&
-        !RegExp(r'errorhandle_|showError\s*\(|alert_error', caseSensitive: false).hasMatch(body)) {
+        body.contains('succeed')) {
       return true;
     }
     return false;
@@ -443,13 +456,14 @@ class AuthService {
 
   /// 统一的回复失败信息映射: 从 Discuz / replyfloor 的响应正文里提取可读错误。
   String? _replyError(String body, String text) {
-    final needLogin = RegExp(r'''您需要登录才能|未登录|登录后才能|action=login[^0-9]|<title>[^<]*登录[^<]*</title>''', caseSensitive: false).hasMatch(body);
+    final needLogin = RegExp(r'''您需要(?:先)?登录才能|未登录|登录后才能|action=login[^0-9]|<title>[^<]*登录[^<]*</title>''', caseSensitive: false).hasMatch(body);
     if (needLogin) return '请先登录后回帖';
     if (RegExp(r'''formhash.*(验证失败|非法请求|失效|令牌)|来路不正确|security\.validate''').hasMatch(body) ||
         (body.contains('formhash') && (body.contains('验证失败') || body.contains('非法请求') || body.contains('令牌') || body.contains('失效')))) {
       return '回帖令牌已失效，请刷新后重试';
     }
     final showErr = RegExp(r'''showError\(\s*['"]([^'"]+)['"]''').firstMatch(body)?.group(1) ??
+        RegExp(r'''errorhandle_[A-Za-z_]*\(\s*['"]([^'"]+)['"]''').firstMatch(body)?.group(1) ??
         RegExp(r'''(?:alert_error|error_message)[^>]*>\s*(?:<[^>]+>\s*)?([^<]{2,120})''').firstMatch(body)?.group(1) ??
         RegExp(r'<div[^>]*class="alert_error[^"]*"[^>]*>([^<]{2,120})').firstMatch(body)?.group(1);
     if (showErr != null && showErr.trim().isNotEmpty) return showErr.trim();
