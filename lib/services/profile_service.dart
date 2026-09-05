@@ -76,8 +76,8 @@ class ProfileService {
     final replies = _numberFromHref(doc, (href) => href.contains('do=thread') && href.contains('type=reply')) ?? _numberNearLabel(doc, ['回帖', '回帖数', '帖子']);
     final followers = _numberFromHref(doc, (href) => href.contains('mod=follow') && href.contains('do=follower')) ?? _numberNearLabel(doc, ['粉丝']);
     final following = _numberFromHref(doc, (href) => (href.contains('mod=follow') && (href.contains('do=following') || href.contains('do=friend'))) || href.contains('do=friend')) ?? _numberNearLabel(doc, ['关注', '好友']);
-    final credits = _numberNearLabel(doc, ['星币', '源币', '金币', '余额']);
-    final points = _numberNearLabel(doc, ['积分', '贡献']);
+    final credits = _numberExactLabel(doc, ['星币', '源币', '金币', '余额']) ?? _numberNearLabel(doc, ['星币', '源币', '金币', '余额']);
+    final points = _numberExactLabel(doc, ['积分', '贡献']) ?? _numberNearLabel(doc, ['积分', '贡献']);
     final followedByMe = AuthService.instance.uid != null && RegExp(r'(?:取消关注|已关注)').hasMatch(text);
     final result = ProfileData(uid: uid, username: _validName(username) ? username : (fallbackUsername?.trim().isNotEmpty == true && _validName(fallbackUsername) ? fallbackUsername!.trim() : '用户'), avatar: avatar, group: group, signature: signature, threads: threads, replies: replies, following: following, followers: followers, credits: credits, points: points, followingMe: false, followedByMe: followedByMe);
     _cache[uid] = result;
@@ -96,8 +96,6 @@ class ProfileService {
       final lower = href.toLowerCase();
       final hasUid = lower.contains('uid=$uidText') || lower.contains('uid%3d$uidText') || lower.contains('uid%253d$uidText');
       if (!hasUid || !lower.contains('mod=space') || !lower.contains('do=profile')) continue;
-      // 该链接文本常混入角标数字/等级/用户组/积分(如 "9 烟雨客 Lv.2 秀才 积分: 274"),
-      // 先剔除元信息再校验, 避免侧栏“我的中心”卡片污染昵称。
       final value = _stripMeta(_clean(a.text));
       if (_validName(value) && !_uiLabel(value)) return value;
       final parentValue = _stripMeta(_clean(a.parent?.text ?? ''));
@@ -139,7 +137,6 @@ class ProfileService {
 
   static bool _uiLabel(String value) => RegExp(r'^(?:关注|已关注|聊天|私信|回复|主题|回帖|帖子|帖子数|粉丝|积分|星币|登录|注册|退出|刷新|用户|用户名|昵称|资料|个人资料|用户资料|个人中心|Ta的空间|空间|我的|提示信息|系统提示|温馨提示|提示|抱歉|无权|没有权限|不存在|该用户)$').hasMatch(_clean(value));
 
-  // 剔除链接文本中混入的账户元信息(角标/等级/用户组/积分等), 仅保留纯昵称。
   static String _stripMeta(String s) {
     var v = s.trim();
     v = v.replaceFirst(RegExp(r'^\d+\s*'), '').trim();
@@ -155,6 +152,20 @@ class ProfileService {
       final href = a.attributes['href'] ?? '';
       if (!matches(href)) continue;
       final match = RegExp(r'(?<!\d)(\d{1,12})(?!\d)').firstMatch(_clean(a.text));
+      if (match != null) return int.tryParse(match.group(1)!);
+    }
+    return null;
+  }
+
+  /// 优先读取同一个 DOM 节点中明确的「标签: 数值」，避免从整个统计卡片
+  /// 的邻近数字误配。例如「积分: 274」不能被旁边的「关注 1」匹配成 1。
+  static int? _numberExactLabel(dom.Document doc, List<String> labels) {
+    final labelPattern = labels.map(RegExp.escape).join('|');
+    final pattern = RegExp('(?:^|[^0-9])(?:$labelPattern)\\s*[:：]?\\s*([0-9]{1,12})(?![0-9])');
+    for (final node in doc.querySelectorAll('th,td,li,dt,dd,div,span,p,a,strong,em')) {
+      final text = _clean(node.text);
+      if (text.isEmpty || text.length > 180) continue;
+      final match = pattern.firstMatch(text);
       if (match != null) return int.tryParse(match.group(1)!);
     }
     return null;
@@ -210,9 +221,6 @@ class ProfileService {
     if (cookie == null || cookie.isEmpty) return '请先登录论坛';
     try {
       final client = await NetClient.instance.client;
-      // 关注操作必须先访问 spacecp/ac=follow 页面取得当前会话对应的 formhash。
-      // 直接从个人资料页取 token 在部分 Comiis/Discuz 模板下会拿不到，导致
-      // “未取得操作令牌”。这里与关系页使用同一套官方操作入口。
       final pagePath = 'home.php?mod=spacecp&ac=follow&uid=$uid&mobile=2';
       final page = await _get(pagePath);
       final formhash = _hiddenValue(page, 'formhash');
