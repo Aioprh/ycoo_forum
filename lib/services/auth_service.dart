@@ -360,13 +360,7 @@ class AuthService {
       final url = '${base}forum.php?mod=post&action=reply&fid=$fid&tid=$tid&extra=$extra&replysubmit=yes&mobile=2';
       final resp = await client.post(Uri.parse(url), headers: {..._headers(referer: getUrl), 'Content-Type': 'application/x-www-form-urlencoded; charset=UTF-8', 'Origin': base, 'X-Requested-With': 'XMLHttpRequest'}, body: postBody).timeout(NetClient.timeout);
       final body = NetClient.decode(resp.bodyBytes);
-      final success = body.contains('succeedhandle_') ||
-          body.contains('do_success') ||
-          body.contains('回复成功') ||
-          body.contains('发表回复完成') ||
-          body.contains('location.href') && (body.contains('tid=$tid') || body.contains('thread-$tid')) ||
-          resp.statusCode == 200 && (body.contains('succeed') && !body.contains('errorhandle_'));
-      if (success) return null;
+      if (_isReplySuccess(body, tid, resp.statusCode)) return null;
       return _replyError(body, text);
     } catch (_) {
       return '回帖请求失败,请稍后重试';
@@ -403,15 +397,48 @@ class AuthService {
       final resp = await client.post(Uri.parse(submitUrl), headers: {..._headers(referer: formUrl), 'Content-Type': 'application/x-www-form-urlencoded; charset=UTF-8', 'Origin': base, 'X-Requested-With': 'XMLHttpRequest'}, body: postBody).timeout(NetClient.timeout);
       final body = NetClient.decode(resp.bodyBytes);
       // replyfloor 成功返回: <root><![CDATA[...回复发布成功...succeedhandle_messagepost...]]></root>
-      if (body.contains('succeedhandle_messagepost') ||
-          body.contains('回复发布成功') ||
-          (body.contains('succeedhandle_') && !body.contains('errorhandle_'))) {
-        return null;
-      }
+      if (_isReplySuccess(body, tid, resp.statusCode)) return null;
       return _replyError(body, text);
     } catch (_) {
       return '回帖请求失败,请稍后重试';
     }
+  }
+
+  /// 统一判定回复是否成功：覆盖 Discuz 原生 reply 与 Comiis replyfloor 插件
+  /// 的全部 ajax 成功协议。避免“实际上已成功、却误报失败”的假阴性。
+  bool _isReplySuccess(String body, int tid, int statusCode) {
+    // 1. Discuz / 插件 ajax 成功会在响应脚本里定名调用 succeedhandle_* / do_success，
+    //    或直接返回成功文案。
+    if (body.contains('succeedhandle_') ||
+        body.contains('do_success') ||
+        body.contains('回复发布成功') ||
+        body.contains('回复成功') ||
+        body.contains('发表回复完成')) {
+      return true;
+    }
+    // 2. 部分版本成功只回一个跳转 location.href：回到主题、或定位到新发表楼层 #pid_。
+    if (body.contains('location.href') &&
+        (body.contains('tid=$tid') || body.contains('thread-$tid') || body.contains('#pid_'))) {
+      return true;
+    }
+    // 3. replyfloor 在 inajax 下返回 <root><![CDATA[...]]></root> 包裹的新回帖 HTML。
+    //    真失败必然带 errorhandle_ / showError / alert_error，若含 succeed 且无错误块即成功。
+    if (statusCode == 200 &&
+        body.contains('<root') &&
+        body.toLowerCase().contains('<![cdata[') &&
+        body.contains('succeed') &&
+        !RegExp(r'errorhandle_|showError\s*\(|alert_error', caseSensitive: false).hasMatch(body)) {
+      return true;
+    }
+    return false;
+  }
+
+  /// body 是否回显了用户输入的回复文本（两边都先抹空白，容忍 HTML 换行等转换）。
+  bool _echoed(String body, String text) {
+    if (text.isEmpty) return false;
+    final b = body.replaceAll(RegExp(r'\s+'), '');
+    final t = text.replaceAll(RegExp(r'\s+'), '');
+    return t.isNotEmpty && b.contains(t);
   }
 
   /// 统一的回复失败信息映射: 从 Discuz / replyfloor 的响应正文里提取可读错误。
@@ -426,7 +453,7 @@ class AuthService {
         RegExp(r'''(?:alert_error|error_message)[^>]*>\s*(?:<[^>]+>\s*)?([^<]{2,120})''').firstMatch(body)?.group(1) ??
         RegExp(r'<div[^>]*class="alert_error[^"]*"[^>]*>([^<]{2,120})').firstMatch(body)?.group(1);
     if (showErr != null && showErr.trim().isNotEmpty) return showErr.trim();
-    if (body.contains(text)) return null;
+    if (_echoed(body, text)) return null;
     return '回复失败,请重试';
   }
 
