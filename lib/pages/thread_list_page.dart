@@ -71,32 +71,25 @@ class _BoardThreadListPageState extends State<BoardThreadListPage> {
     );
   }
 
-  /// 分类筛选栏。
+  /// 分类筛选栏：采用截图所示的横向胶囊标签布局。
   ///
-  /// 使用与截图接近的「胶囊按钮」布局：选中项使用主题色浅底，
-  /// 未选中项使用细描边；横向滚动而不是强行压缩到一行，避免分类
-  /// 较多或字体放大时发生挤压、换行和裁切。
+  /// 不强行把所有分类压缩进屏幕，而是保留每个标签自己的可读宽度，
+  /// 分类较多时横向滑动，字体放大时也不会因为固定宽度而挤压换行。
   Widget _typeBar(BuildContext context) {
-    final theme = Theme.of(context);
-    final scheme = theme.colorScheme;
-
     return SizedBox(
       height: 62,
-      child: ScrollConfiguration(
-        behavior: const _TagScrollBehavior(),
-        child: ListView.separated(
-          scrollDirection: Axis.horizontal,
-          padding: const EdgeInsets.fromLTRB(16, 8, 16, 10),
-          itemCount: _types.length + 1,
-          separatorBuilder: (_, __) => const SizedBox(width: 10),
-          itemBuilder: (context, index) {
-            if (index == 0) {
-              return _tagChip(context, 0, '全部');
-            }
-            final tag = _types[index - 1];
-            return _tagChip(context, tag.typeid, tag.name);
-          },
-        ),
+      child: ListView.separated(
+        scrollDirection: Axis.horizontal,
+        padding: const EdgeInsets.fromLTRB(16, 8, 16, 10),
+        itemCount: _types.length + 1,
+        separatorBuilder: (_, __) => const SizedBox(width: 10),
+        itemBuilder: (context, index) {
+          if (index == 0) {
+            return _tagChip(context, 0, '全部');
+          }
+          final tag = _types[index - 1];
+          return _tagChip(context, tag.typeid, tag.name);
+        },
       ),
     );
   }
@@ -146,27 +139,5 @@ class _BoardThreadListPageState extends State<BoardThreadListPage> {
         ),
       ),
     );
-  }
-}
-
-/// 分类栏只保留必要的横向滚动反馈，避免 Android 默认滚动条破坏整体视觉。
-class _TagScrollBehavior extends MaterialScrollBehavior {
-  const _TagScrollBehavior();
-
-  @override
-  Set<PointerDeviceKind> get dragDevices => {
-        PointerDeviceKind.touch,
-        PointerDeviceKind.mouse,
-        PointerDeviceKind.stylus,
-        PointerDeviceKind.unknown,
-      };
-
-  @override
-  Widget buildScrollbar(
-    BuildContext context,
-    Widget child,
-    ScrollableDetails details,
-  ) {
-    return child;
   }
 }
