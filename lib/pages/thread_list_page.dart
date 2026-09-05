@@ -90,7 +90,9 @@ class _BoardThreadListPageState extends State<BoardThreadListPage> {
     return Padding(
       padding: const EdgeInsets.only(right: 8),
       child: ChoiceChip(
-        label: Text(name),
+        label: Center(child: Text(name)),
+        // 去掉选中对勾，否则对勾会占据左侧空间让文字不再居中。
+        showCheckmark: false,
         selected: selected,
         onSelected: (_) {
           if (typeid == _typeid) return;
