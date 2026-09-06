@@ -547,28 +547,191 @@ class _CreateThreadPageState extends State<CreateThreadPage> {
     return '${local.year}-${local.month.toString().padLeft(2, '0')}-${local.day.toString().padLeft(2, '0')} ${local.hour.toString().padLeft(2, '0')}:${local.minute.toString().padLeft(2, '0')} 发布';
   }
 
-  Future<void> _chooseSchedule() async {
+  String _scheduleRelativeLabel(DateTime value) {
+    final delta = value.difference(DateTime.now());
+    final minutes = delta.inMinutes;
+    if (minutes < 60) return '约 $minutes 分钟后发布';
+    final hours = minutes ~/ 60;
+    final remain = minutes % 60;
+    if (hours < 24) return remain == 0 ? '约 $hours 小时后发布' : '约 $hours 小时 $remain 分钟后发布';
+    final days = hours ~/ 24;
+    return '约 $days 天后发布';
+  }
+
+  Future<DateTime?> _pickCustomSchedule(DateTime initial) async {
     final now = DateTime.now();
-    final initial = _scheduledAt != null && _scheduledAt!.isAfter(now.add(const Duration(minutes: 1))) ? _scheduledAt!.toLocal() : now.add(const Duration(minutes: 10));
     final date = await showDatePicker(
       context: context,
-      firstDate: now,
-      lastDate: now.add(const Duration(days: 365)),
-      initialDate: initial,
+      firstDate: DateTime(now.year, now.month, now.day),
+      lastDate: DateTime(now.year + 1, now.month, now.day),
+      initialDate: initial.isBefore(now) ? now : initial,
       helpText: '选择发布时间',
       cancelText: '取消',
       confirmText: '下一步',
     );
-    if (date == null || !mounted) return;
-    final time = await showTimePicker(context: context, initialTime: TimeOfDay.fromDateTime(initial), helpText: '选择发布时间');
-    if (time == null || !mounted) return;
+    if (date == null || !mounted) return null;
+    final time = await showTimePicker(
+      context: context,
+      initialTime: TimeOfDay.fromDateTime(initial),
+      helpText: '选择发布时间',
+      cancelText: '取消',
+      confirmText: '完成',
+    );
+    if (time == null || !mounted) return null;
     final value = DateTime(date.year, date.month, date.day, time.hour, time.minute);
     if (!value.isAfter(DateTime.now())) {
       setState(() => _error = '定时发布时间必须晚于当前时间');
+      return null;
+    }
+    return value;
+  }
+
+  Future<void> _chooseSchedule() async {
+    final now = DateTime.now();
+    final current = _scheduledAt != null && _scheduledAt!.isAfter(now) ? _scheduledAt!.toLocal() : now.add(const Duration(minutes: 10));
+    final selected = await showModalBottomSheet<DateTime>(
+      context: context,
+      isScrollControlled: true,
+      showDragHandle: true,
+      backgroundColor: Theme.of(context).colorScheme.surface,
+      builder: (sheetContext) {
+        var mode = 0;
+        var minutes = current.difference(now).inMinutes.clamp(5, 180).toDouble();
+        DateTime custom = current;
+        return StatefulBuilder(
+          builder: (context, setSheetState) {
+            final scheme = Theme.of(context).colorScheme;
+            final preview = mode == 0 ? now.add(Duration(minutes: minutes.round())) : custom;
+            return SafeArea(
+              child: Padding(
+                padding: EdgeInsets.fromLTRB(18, 4, 18, 18 + MediaQuery.viewInsetsOf(context).bottom),
+                child: Column(
+                  mainAxisSize: MainAxisSize.min,
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    const Text('定时发布', style: TextStyle(fontSize: 21, fontWeight: FontWeight.w900)),
+                    const SizedBox(height: 4),
+                    Text('选择发布时间，设置后会自动保存到草稿。', style: TextStyle(fontSize: 12, color: scheme.onSurfaceVariant)),
+                    const SizedBox(height: 16),
+                    Container(
+                      padding: const EdgeInsets.all(4),
+                      decoration: BoxDecoration(color: scheme.surfaceContainerHighest.withOpacity(.65), borderRadius: BorderRadius.circular(15)),
+                      child: Row(children: [
+                        Expanded(child: _scheduleModeButton(context, label: '按时长定时', icon: Icons.timer_outlined, selected: mode == 0, onTap: () => setSheetState(() => mode = 0))),
+                        Expanded(child: _scheduleModeButton(context, label: '指定时间', icon: Icons.calendar_month_outlined, selected: mode == 1, onTap: () => setSheetState(() => mode = 1))),
+                      ]),
+                    ),
+                    const SizedBox(height: 18),
+                    AnimatedSwitcher(
+                      duration: const Duration(milliseconds: 180),
+                      child: mode == 0
+                          ? Column(
+                              key: const ValueKey('duration'),
+                              children: [
+                                Center(child: Text('${minutes.round()} 分钟', style: TextStyle(fontSize: 30, fontWeight: FontWeight.w900, color: scheme.primary))),
+                                const SizedBox(height: 2),
+                                Center(child: Text(_scheduleRelativeLabel(preview), style: TextStyle(fontSize: 12, color: scheme.onSurfaceVariant))),
+                                Slider(value: minutes, min: 5, max: 180, divisions: 35, label: '${minutes.round()} 分钟', onChanged: (value) => setSheetState(() => minutes = value)),
+                                Row(children: [
+                                  for (final value in const [10, 30, 60, 120])
+                                    Expanded(child: Padding(padding: const EdgeInsets.symmetric(horizontal: 3), child: OutlinedButton(onPressed: () => setSheetState(() => minutes = value.toDouble()), style: OutlinedButton.styleFrom(minimumSize: const Size(0, 38), padding: EdgeInsets.zero, shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12))), child: Text(value >= 60 ? '${value ~/ 60} 小时' : '$value 分钟', style: const TextStyle(fontSize: 11))))),
+                                ]),
+                              ],
+                            )
+                          : Column(
+                              key: const ValueKey('custom'),
+                              children: [
+                                Container(
+                                  width: double.infinity,
+                                  padding: const EdgeInsets.fromLTRB(16, 14, 10, 14),
+                                  decoration: BoxDecoration(color: scheme.primaryContainer.withOpacity(.55), borderRadius: BorderRadius.circular(17)),
+                                  child: Row(children: [
+                                    Container(width: 42, height: 42, decoration: BoxDecoration(color: scheme.surface.withOpacity(.8), borderRadius: BorderRadius.circular(13)), child: Icon(Icons.event_available_rounded, color: scheme.primary)),
+                                    const SizedBox(width: 12),
+                                    Expanded(child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
+                                      Text('${custom.year}-${custom.month.toString().padLeft(2, '0')}-${custom.day.toString().padLeft(2, '0')}', style: const TextStyle(fontSize: 17, fontWeight: FontWeight.w800)),
+                                      const SizedBox(height: 2),
+                                      Text('${custom.hour.toString().padLeft(2, '0')}:${custom.minute.toString().padLeft(2, '0')} · ${_scheduleRelativeLabel(custom)}', style: TextStyle(fontSize: 12, color: scheme.onSurfaceVariant)),
+                                    ])),
+                                    IconButton(onPressed: () async { final picked = await _pickCustomSchedule(custom); if (picked != null) setSheetState(() => custom = picked); }, icon: const Icon(Icons.edit_calendar_rounded), tooltip: '修改时间'),
+                                  ]),
+                                ),
+                              ],
+                            ),
+                    ),
+                    const SizedBox(height: 18),
+                    Row(children: [
+                      if (_scheduledAt != null) ...[
+                        Expanded(child: OutlinedButton.icon(onPressed: () => Navigator.pop(sheetContext, DateTime.fromMillisecondsSinceEpoch(0)), icon: const Icon(Icons.close_rounded, size: 18), label: const Text('取消定时'), style: OutlinedButton.styleFrom(minimumSize: const Size(0, 48), shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(15))))),
+                        const SizedBox(width: 10),
+                      ],
+                      Expanded(flex: 2, child: FilledButton.icon(onPressed: () => Navigator.pop(sheetContext, preview), icon: const Icon(Icons.schedule_send_rounded, size: 19), label: const Text('确认定时'), style: FilledButton.styleFrom(minimumSize: const Size(0, 48), shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(15))))),
+                    ]),
+                  ],
+                ),
+              ),
+            );
+          },
+        );
+      },
+    );
+    if (!mounted || selected == null) return;
+    if (selected.millisecondsSinceEpoch == 0) {
+      setState(() { _scheduledAt = null; _dirty = true; });
+      await _saveDraft();
       return;
     }
-    setState(() { _scheduledAt = value; _dirty = true; });
-    _saveDraft();
+    if (!selected.isAfter(DateTime.now())) {
+      setState(() => _error = '定时发布时间必须晚于当前时间');
+      return;
+    }
+    setState(() { _scheduledAt = selected; _dirty = true; _error = null; });
+    await _saveDraft();
+  }
+
+  Widget _scheduleModeButton(BuildContext context, {required String label, required IconData icon, required bool selected, required VoidCallback onTap}) {
+    final scheme = Theme.of(context).colorScheme;
+    return Material(
+      color: selected ? scheme.surface : Colors.transparent,
+      borderRadius: BorderRadius.circular(12),
+      child: InkWell(
+        onTap: onTap,
+        borderRadius: BorderRadius.circular(12),
+        child: Padding(
+          padding: const EdgeInsets.symmetric(vertical: 10),
+          child: Row(mainAxisAlignment: MainAxisAlignment.center, children: [
+            Icon(icon, size: 17, color: selected ? scheme.primary : scheme.onSurfaceVariant),
+            const SizedBox(width: 6),
+            Text(label, style: TextStyle(fontSize: 13, fontWeight: selected ? FontWeight.w800 : FontWeight.w600, color: selected ? scheme.onSurface : scheme.onSurfaceVariant)),
+          ]),
+        ),
+      ),
+    );
+  }
+
+  Widget _scheduleCard(BuildContext context) {
+    final scheme = Theme.of(context).colorScheme;
+    final scheduled = _scheduledAt?.toLocal();
+    return Container(
+      decoration: BoxDecoration(color: scheduled == null ? scheme.surfaceContainerHighest.withOpacity(.35) : scheme.primaryContainer.withOpacity(.55), borderRadius: BorderRadius.circular(18), border: Border.all(color: scheduled == null ? scheme.outlineVariant.withOpacity(.55) : scheme.primary.withOpacity(.22))),
+      child: InkWell(
+        onTap: _submitting || _uploading ? null : _chooseSchedule,
+        borderRadius: BorderRadius.circular(18),
+        child: Padding(
+          padding: const EdgeInsets.fromLTRB(14, 12, 8, 12),
+          child: Row(children: [
+            Container(width: 42, height: 42, decoration: BoxDecoration(color: scheme.surface.withOpacity(.8), borderRadius: BorderRadius.circular(13)), child: Icon(scheduled == null ? Icons.schedule_rounded : Icons.event_available_rounded, color: scheduled == null ? scheme.onSurfaceVariant : scheme.primary)),
+            const SizedBox(width: 12),
+            Expanded(child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
+              Text(scheduled == null ? '定时发布' : '已设置定时', style: const TextStyle(fontSize: 14, fontWeight: FontWeight.w800)),
+              const SizedBox(height: 3),
+              Text(scheduled == null ? '按时长或指定时间发布' : '${_scheduleLabel()} · ${_scheduleRelativeLabel(scheduled)}', maxLines: 2, overflow: TextOverflow.ellipsis, style: TextStyle(fontSize: 11.5, color: scheduled == null ? scheme.onSurfaceVariant : scheme.primary, fontWeight: scheduled == null ? FontWeight.normal : FontWeight.w700)),
+            ])),
+            Icon(scheduled == null ? Icons.chevron_right_rounded : Icons.edit_rounded, color: scheme.onSurfaceVariant),
+          ]),
+        ),
+      ),
+    );
   }
 
   Widget _advancedCard(BuildContext context) {
@@ -602,17 +765,9 @@ class _CreateThreadPageState extends State<CreateThreadPage> {
             DropdownButtonFormField<int>(value: _price, decoration: const InputDecoration(labelText: '主题售价', prefixIcon: Icon(Icons.monetization_on_outlined)), items: [0,1,2,3,5,10,20].map((v) => DropdownMenuItem(value: v, child: Text(v == 0 ? '免费' : '$v 星币'))).toList(), onChanged: (v) { setState(() => _price = v ?? 0); _markDirty(); }),
             const SizedBox(height: 10),
             DropdownButtonFormField<int>(value: _readperm, decoration: const InputDecoration(labelText: '阅读权限', prefixIcon: Icon(Icons.lock_outline_rounded)), items: [0,10,20,30,50,80,100,255].map((v) => DropdownMenuItem(value: v, child: Text(v == 0 ? '不限' : '$v 级'))).toList(), onChanged: (v) { setState(() => _readperm = v ?? 0); _markDirty(); }),
+            const SizedBox(height: 10),
+            _scheduleCard(context),
             const SizedBox(height: 8),
-            ListTile(
-              contentPadding: EdgeInsets.zero,
-              leading: const Icon(Icons.schedule_rounded),
-              title: const Text('定时发布'),
-              subtitle: Text(_scheduleLabel(), style: TextStyle(color: _scheduledAt == null ? scheme.onSurfaceVariant : scheme.primary, fontWeight: _scheduledAt == null ? FontWeight.normal : FontWeight.w700)),
-              trailing: Wrap(spacing: 0, children: [
-                if (_scheduledAt != null) IconButton(tooltip: '取消定时', onPressed: _submitting || _uploading ? null : () { setState(() { _scheduledAt = null; _dirty = true; }); _saveDraft(); }, icon: const Icon(Icons.close_rounded)),
-                IconButton(tooltip: '设置时间', onPressed: _submitting || _uploading ? null : _chooseSchedule, icon: const Icon(Icons.edit_calendar_rounded)),
-              ]),
-            ),
             const Divider(height: 1),
             option('回帖仅作者可见', '其他用户的回复仅主题作者可见', _hiddenreplies, (v) => setState(() => _hiddenreplies = v), Icons.visibility_off_outlined),
             option('回帖倒序排列', '帖子打开时优先显示最新回复', _descviewdefault, (v) => setState(() => _descviewdefault = v), Icons.swap_vert_rounded),
