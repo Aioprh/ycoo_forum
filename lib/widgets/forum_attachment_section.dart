@@ -1,4 +1,5 @@
 import 'package:flutter/material.dart';
+import 'package:flutter/services.dart';
 
 import '../services/attachment_download_service.dart';
 import '../services/site_config.dart';
@@ -72,6 +73,14 @@ class _Tile extends StatelessWidget {
     ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text(ok ? '已开始下载：${item.name}' : '附件下载失败')));
   }
 
+  Future<void> _copyLink(BuildContext context) async {
+    final url = item.url.trim();
+    if (url.isEmpty) return;
+    await Clipboard.setData(ClipboardData(text: url));
+    if (!context.mounted) return;
+    ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('附件下载链接已复制')));
+  }
+
   @override
   Widget build(BuildContext context) {
     final c = Theme.of(context).colorScheme;
@@ -82,23 +91,29 @@ class _Tile extends StatelessWidget {
     ].join(' · ');
     return Padding(
       padding: const EdgeInsets.only(bottom: 9),
-      child: Material(
-        color: c.surfaceContainerHighest.withValues(alpha: .55),
-        borderRadius: BorderRadius.circular(14),
-        child: InkWell(
+      child: GestureDetector(
+        behavior: HitTestBehavior.opaque,
+        onLongPress: () => _copyLink(context),
+        child: Material(
+          color: c.surfaceContainerHighest.withValues(alpha: .55),
           borderRadius: BorderRadius.circular(14),
-          onTap: () => _download(context),
-          child: Padding(
-            padding: const EdgeInsets.all(12),
-            child: Row(children: [
-              Container(width: 44, height: 44, decoration: BoxDecoration(color: c.primaryContainer, borderRadius: BorderRadius.circular(11)), child: Icon(_icon(item.name), color: c.primary)),
-              const SizedBox(width: 12),
-              Expanded(child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
-                Text(item.name.isEmpty ? '论坛附件' : item.name, maxLines: 2, overflow: TextOverflow.ellipsis, style: const TextStyle(fontWeight: FontWeight.w600)),
-                if (meta.isNotEmpty) Padding(padding: const EdgeInsets.only(top: 4), child: Text(meta, style: TextStyle(fontSize: 12, color: c.onSurfaceVariant))),
-              ])),
-              Icon(Icons.cloud_download_outlined, color: c.primary),
-            ]),
+          child: InkWell(
+            borderRadius: BorderRadius.circular(14),
+            onTap: () => _download(context),
+            child: Padding(
+              padding: const EdgeInsets.all(12),
+              child: Row(children: [
+                Container(width: 44, height: 44, decoration: BoxDecoration(color: c.primaryContainer, borderRadius: BorderRadius.circular(11)), child: Icon(_icon(item.name), color: c.primary)),
+                const SizedBox(width: 12),
+                Expanded(child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
+                  Text(item.name.isEmpty ? '论坛附件' : item.name, maxLines: 2, overflow: TextOverflow.ellipsis, style: const TextStyle(fontWeight: FontWeight.w600)),
+                  if (meta.isNotEmpty) Padding(padding: const EdgeInsets.only(top: 4), child: Text(meta, style: TextStyle(fontSize: 12, color: c.onSurfaceVariant))),
+                  const SizedBox(height: 2),
+                  Text('长按复制下载链接', style: TextStyle(fontSize: 10.5, color: c.onSurfaceVariant)),
+                ])),
+                Icon(Icons.cloud_download_outlined, color: c.primary),
+              ]),
+            ),
           ),
         ),
       ),
