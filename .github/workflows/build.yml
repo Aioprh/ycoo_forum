@@ -113,26 +113,31 @@ jobs:
           git config user.name "github-actions[bot]"
           git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
           REMOTE="https://x-access-token:${GITHUB_TOKEN}@github.com/${GITHUB_REPOSITORY}"
-          # sed 之后的 pubspec 是未暂存改动, rebase 会因此拒绝;
+          # 修复评论 UI 提交中唯一导致 flutter analyze 失败的空值调用。
+          # doc.text 在 html 0.15.x 中是 String?，必须先做空值兜底。
+          if grep -q 'final decoded = doc.text.trim();' lib/widgets/native_comment_list_v2.dart; then
+            sed -i 's/final decoded = doc.text.trim();/final decoded = (doc.text ?? '\''\'').trim();/' lib/widgets/native_comment_list_v2.dart
+            echo "已修复 native_comment_list_v2.dart 的 nullable trim 构建错误"
+          fi
+          # sed 之后的 pubspec/源码都是未暂存改动, rebase 会因此拒绝;
           # 开启 autostash 由 git 自动保存/还原未暂存改动, 避免构建失败。
-          # 反复 pull --rebase + push, 兼容并发的其它 CI 运行(版本号回写)。
           for attempt in 1 2 3; do
             git -c rebase.autostash=true pull --rebase --no-edit "$REMOTE" "${GITHUB_REF_NAME}" || true
-            git add pubspec.yaml
+            git add pubspec.yaml lib/widgets/native_comment_list_v2.dart
             if git diff --cached --quiet; then
-              echo "版本号无变化，跳过提交"
+              echo "版本号及源码无变化，跳过提交"
               exit 0
             fi
-            git commit -m "chore: bump version to ${{ steps.bump.outputs.new_version }} [skip ci]"
+            git commit -m "chore: bump version and fix comment UI build [skip ci]"
             if git push "$REMOTE" "HEAD:${GITHUB_REF_NAME}"; then
-              echo "已推送版本号提交"
+              echo "已推送版本号/构建修复提交"
               exit 0
             fi
             echo "push 被拒绝(可能并发), 尝试第 ${attempt} 次"
             git reset --soft HEAD~1 || true
             sleep 2
           done
-          echo "版本号提交在重试后仍失败"
+          echo "版本号/构建修复提交在重试后仍失败"
           exit 1
 
       - name: 拉取依赖
