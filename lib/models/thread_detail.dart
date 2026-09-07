@@ -20,13 +20,15 @@ class ThreadDetail {
   String get commentsHtml {
     final sanitized = _sanitizeForumHtml(_commentsHtml);
     if (sanitized.trim().isEmpty) return '';
-    if (sanitized.contains('class="comments-section"')) {
-      return sanitized.replaceFirst(
+    final compacted = _compactCommentHtml(sanitized);
+    if (compacted.trim().isEmpty) return '';
+    if (compacted.contains('class="comments-section"')) {
+      return compacted.replaceFirst(
         'class="comments-section"',
         'class="comments-section" data-tid="$tid" data-fid="$fid"',
       );
     }
-    return '<div class="comments-section" data-tid="$tid" data-fid="$fid">$sanitized</div>';
+    return '<div class="comments-section" data-tid="$tid" data-fid="$fid">$compacted</div>';
   }
 
   final bool _paid;
@@ -87,6 +89,49 @@ class ThreadDetail {
       }
     }
   }
+}
+
+/// 评论正文只保留内容附近的一点留白，避免论坛模板中的连续换行占位
+/// 把一条很短的评论撑成大块空白。
+String _compactCommentHtml(String html) {
+  final root = dom.Element.html('<div>$html</div>');
+
+  for (final body in root.querySelectorAll('.p-body').toList()) {
+    var previousWasBreak = false;
+    for (final node in List<dom.Node>.from(body.nodes)) {
+      if (node is dom.Element && node.localName?.toLowerCase() == 'br') {
+        if (previousWasBreak) {
+          node.remove();
+        } else {
+          previousWasBreak = true;
+        }
+      } else if (node is dom.Text) {
+        previousWasBreak = node.text?.trim().isEmpty == true;
+      } else {
+        previousWasBreak = false;
+      }
+    }
+
+    for (final e in body.querySelectorAll('p, div, section, article').toList()) {
+      final hasMedia = e.querySelector('img,video,iframe,audio,table,pre') != null;
+      if (e.text.trim().isEmpty && !hasMedia) e.remove();
+    }
+
+    while (body.nodes.isNotEmpty && _isEmptyBreakNode(body.nodes.first)) {
+      body.nodes.first.remove();
+    }
+    while (body.nodes.isNotEmpty && _isEmptyBreakNode(body.nodes.last)) {
+      body.nodes.last.remove();
+    }
+  }
+
+  return root.innerHtml.trim();
+}
+
+bool _isEmptyBreakNode(dom.Node node) {
+  if (node is dom.Element) return node.localName?.toLowerCase() == 'br';
+  if (node is dom.Text) return node.text?.trim().isEmpty == true;
+  return false;
 }
 
 String _sanitizeForumHtml(String html) {
