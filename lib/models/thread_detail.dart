@@ -74,8 +74,6 @@ class ThreadDetail {
         _commentsHtml = commentsHtml,
         this.authorUid = authorUid,
         _paid = isPaid {
-    // Discuz 评论分页第 2 页开始通常只包含回帖。
-    // 楼主信息和正文必须沿用第 1 页，不能被当前页第一条回复覆盖。
     if (commentPage <= 1) {
       _firstPageCache[tid] = this;
     } else {
@@ -91,12 +89,21 @@ class ThreadDetail {
   }
 }
 
-/// 评论正文只保留内容附近的一点留白，避免论坛模板中的连续换行占位
-/// 把一条很短的评论撑成大块空白。
+/// 评论正文高度完全跟随实际内容。
+/// 纯文字评论直接压平成一个文本节点，避免论坛模板中的 p/div/br 占位节点
+/// 在 Flutter 中产生额外高度；包含图片、附件或链接的评论仍保留 HTML 结构。
 String _compactCommentHtml(String html) {
   final root = dom.Element.html('<div>$html</div>');
 
   for (final body in root.querySelectorAll('.p-body').toList()) {
+    final hasRichContent = body.querySelector('img,video,iframe,audio,table,pre,a') != null;
+
+    if (!hasRichContent) {
+      final text = body.text.replaceAll(RegExp(r'\s+'), ' ').trim();
+      body.innerHtml = _escapeCommentText(text);
+      continue;
+    }
+
     var previousWasBreak = false;
     for (final node in List<dom.Node>.from(body.nodes)) {
       if (node is dom.Element && node.localName?.toLowerCase() == 'br') {
@@ -113,7 +120,7 @@ String _compactCommentHtml(String html) {
     }
 
     for (final e in body.querySelectorAll('p, div, section, article').toList()) {
-      final hasMedia = e.querySelector('img,video,iframe,audio,table,pre') != null;
+      final hasMedia = e.querySelector('img,video,iframe,audio,table,pre,a') != null;
       if (e.text.trim().isEmpty && !hasMedia) e.remove();
     }
 
@@ -126,6 +133,14 @@ String _compactCommentHtml(String html) {
   }
 
   return root.innerHtml.trim();
+}
+
+String _escapeCommentText(String text) {
+  return text
+      .replaceAll('&', '&amp;')
+      .replaceAll('<', '&lt;')
+      .replaceAll('>', '&gt;')
+      .replaceAll('"', '&quot;');
 }
 
 bool _isEmptyBreakNode(dom.Node node) {
@@ -171,7 +186,6 @@ String _sanitizeForumHtml(String html) {
         child.remove();
       } else {
         walk(child);
-        // 清理掉子节点清理后留下的空布局容器。
         if (emptyLayoutNode(child)) child.remove();
       }
     }
