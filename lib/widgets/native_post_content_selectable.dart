@@ -1,6 +1,5 @@
 import 'package:flutter/gestures.dart';
 import 'package:flutter/material.dart';
-import 'package:flutter/services.dart';
 import 'package:html/dom.dart' as dom;
 import 'package:html/parser.dart' as html_parser;
 import 'package:url_launcher/url_launcher.dart';
@@ -18,11 +17,38 @@ class NativePostContent extends StatelessWidget {
   Widget build(BuildContext context) {
     final body = html_parser.parse(html).body;
     if (body == null) return const SizedBox.shrink();
-    final nodes = body.nodes
-        .where((node) => node is! dom.Text || (node.text ?? '').trim().isNotEmpty)
-        .toList();
+    final nodes = body.nodes.where(_hasRenderableNode).toList();
     return _NodeList(nodes: nodes, onLinkTap: onLinkTap);
   }
+}
+
+bool _hasRenderableNode(dom.Node node) {
+  if (node is dom.Text) return (node.text ?? '').trim().isNotEmpty;
+  if (node is! dom.Element) return false;
+  final tag = (node.localName ?? '').toLowerCase();
+  if (tag == 'br') return false;
+  if (tag == 'ul' || tag == 'ol') {
+    return node.children.any(_hasRenderableListItem);
+  }
+  if (tag == 'li') return _hasRenderableListItem(node);
+  return true;
+}
+
+bool _hasRenderableListItem(dom.Element item) {
+  final visibleText = _visibleListText(item);
+  if (visibleText.isNotEmpty) return true;
+  return item.querySelector('img,video,iframe,audio,table,pre') != null;
+}
+
+String _visibleListText(dom.Element element) {
+  var text = element.text.replaceAll(RegExp(r'\s+'), '').trim();
+  // 去掉论坛模板可能留下的列表/项目符号、零宽字符和常见占位符。
+  text = text
+      .replaceAll(RegExp(r'[\u200B-\u200D\uFEFF]'), '')
+      .replaceAll(RegExp(r'^[•●○◦▪▫‣⁃∙·・\-–—*_.,。．、]+'), '')
+      .replaceAll(RegExp(r'[•●○◦▪▫‣⁃∙·・]'), '')
+      .trim();
+  return text;
 }
 
 class _NodeList extends StatelessWidget {
@@ -63,7 +89,7 @@ class _NodeWidget extends StatelessWidget {
     final tag = (e.localName ?? '').toLowerCase();
     switch (tag) {
       case 'br':
-        return const SizedBox(height: 4);
+        return const SizedBox.shrink();
       case 'p':
         return _TextBlock(nodes: e.nodes, onLinkTap: onLinkTap);
       case 'h1':
@@ -93,7 +119,7 @@ class _NodeWidget extends StatelessWidget {
           margin: const EdgeInsets.only(bottom: 10),
           padding: const EdgeInsets.only(left: 12),
           decoration: BoxDecoration(
-            border: Border(left: BorderSide(color: Theme.of(context).colorScheme.outlineVariant, width: 3)),
+            border: Border(left: BorderSide(color: Theme.of(context).colorScheme.outlineVariant, width: 3),),
           ),
           child: _TextBlock(nodes: e.nodes, onLinkTap: onLinkTap),
         );
@@ -124,7 +150,7 @@ class _NodeWidget extends StatelessWidget {
       case 'dd':
         return Padding(
           padding: const EdgeInsets.only(bottom: 8),
-          child: _NodeList(nodes: e.nodes, onLinkTap: onLinkTap),
+          child: _NodeList(nodes: e.nodes.where(_hasRenderableNode).toList(), onLinkTap: onLinkTap),
         );
       default:
         return _TextBlock(nodes: e.nodes, onLinkTap: onLinkTap);
@@ -188,11 +214,7 @@ class _TextBlock extends StatelessWidget {
         _appendNodes(spans, node.nodes, next, scheme);
         return;
       }
-      spans.add(TextSpan(
-        text: node.text,
-        style: next.copyWith(color: scheme.primary, decoration: TextDecoration.underline),
-        recognizer: TapGestureRecognizer()..onTap = () => _openUrl(href),
-      ));
+      spans.add(TextSpan(text: node.text, style: next.copyWith(color: scheme.primary, decoration: TextDecoration.underline), recognizer: TapGestureRecognizer()..onTap = () => _openUrl(href)));
       return;
     }
     _appendNodes(spans, node.nodes, next, scheme);
@@ -236,10 +258,7 @@ class _ListBlock extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    final items = element.children
-        .where((e) => e.localName?.toLowerCase() == 'li')
-        .where((e) => _hasVisibleListContent(e))
-        .toList();
+    final items = element.children.where((e) => e.localName?.toLowerCase() == 'li').where(_hasRenderableListItem).toList();
     if (items.isEmpty) return const SizedBox.shrink();
 
     var index = 1;
@@ -260,12 +279,6 @@ class _ListBlock extends StatelessWidget {
         ],
       ),
     );
-  }
-
-  bool _hasVisibleListContent(dom.Element element) {
-    final text = element.text.replaceAll(RegExp(r'\s+'), '').trim();
-    if (text.isNotEmpty) return true;
-    return element.querySelector('img,video,iframe,audio,table,pre,a') != null;
   }
 }
 
