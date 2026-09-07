@@ -8,9 +8,6 @@ import 'package:url_launcher/url_launcher.dart';
 import '../services/auth_service.dart';
 import '../services/site_config.dart';
 
-/// 帖子/评论正文的原生渲染器。
-///
-/// 文字使用 SelectableText.rich，保留链接点击能力，同时恢复长按、拖选和复制。
 class NativePostContent extends StatelessWidget {
   final String html;
   final ValueChanged<String>? onLinkTap;
@@ -141,83 +138,47 @@ class _TextBlock extends StatelessWidget {
   final TextStyle? style;
   final EdgeInsets padding;
 
-  const _TextBlock({
-    required this.nodes,
-    this.onLinkTap,
-    this.style,
-    this.padding = const EdgeInsets.only(bottom: 9),
-  });
+  const _TextBlock({required this.nodes, this.onLinkTap, this.style, this.padding = const EdgeInsets.only(bottom: 9)});
 
   @override
   Widget build(BuildContext context) {
     final scheme = Theme.of(context).colorScheme;
     final spans = <InlineSpan>[];
-    _appendNodes(
-      spans,
-      nodes,
-      (style ?? DefaultTextStyle.of(context).style).copyWith(
-        fontSize: style?.fontSize ?? 16,
-        height: style?.height ?? 1.62,
-      ),
-      scheme,
-    );
+    _appendNodes(spans, nodes, (style ?? DefaultTextStyle.of(context).style).copyWith(fontSize: style?.fontSize ?? 16, height: style?.height ?? 1.62), scheme);
     if (spans.isEmpty) return const SizedBox.shrink();
-
     return Padding(
       padding: padding,
       child: SelectableText.rich(
         TextSpan(children: spans),
         selectionColor: scheme.primary.withValues(alpha: .22),
-        contextMenuBuilder: (context, editableTextState) => AdaptiveTextSelectionToolbar.editableText(
-          editableTextState: editableTextState,
-        ),
+        contextMenuBuilder: (context, editableTextState) => AdaptiveTextSelectionToolbar.editableText(editableTextState: editableTextState),
       ),
     );
   }
 
-  void _appendNodes(
-    List<InlineSpan> spans,
-    List<dom.Node> nodes,
-    TextStyle current,
-    ColorScheme scheme,
-  ) {
+  void _appendNodes(List<InlineSpan> spans, List<dom.Node> nodes, TextStyle current, ColorScheme scheme) {
     for (final node in nodes) {
       _appendNode(spans, node, current, scheme);
     }
   }
 
-  void _appendNode(
-    List<InlineSpan> spans,
-    dom.Node node,
-    TextStyle current,
-    ColorScheme scheme,
-  ) {
+  void _appendNode(List<InlineSpan> spans, dom.Node node, TextStyle current, ColorScheme scheme) {
     if (node is dom.Text) {
       _appendTextWithLinks(spans, node.text ?? '', current, scheme);
       return;
     }
     if (node is! dom.Element) return;
-
     final tag = (node.localName ?? '').toLowerCase();
     if (tag == 'br') {
       spans.add(const TextSpan(text: '\n'));
       return;
     }
     if (tag == 'img') return;
-
     var next = current;
-    if (tag == 'strong' || tag == 'b') {
-      next = current.copyWith(fontWeight: FontWeight.w800);
-    } else if (tag == 'em' || tag == 'i') {
-      next = current.copyWith(fontStyle: FontStyle.italic);
-    } else if (tag == 'del' || tag == 's') {
-      next = current.copyWith(decoration: TextDecoration.lineThrough);
-    } else if (tag == 'code') {
-      next = current.copyWith(
-        fontFamily: 'monospace',
-        backgroundColor: scheme.surfaceContainerHighest,
-      );
-    }
+    if (tag == 'strong' || tag == 'b') next = current.copyWith(fontWeight: FontWeight.w800);
+    else if (tag == 'em' || tag == 'i') next = current.copyWith(fontStyle: FontStyle.italic);
+    else if (tag == 'del' || tag == 's') next = current.copyWith(decoration: TextDecoration.lineThrough);
+    else if (tag == 'code') next = current.copyWith(fontFamily: 'monospace', backgroundColor: scheme.surfaceContainerHighest);
 
     if (tag == 'a') {
       final href = node.attributes['href']?.trim() ?? '';
@@ -227,54 +188,32 @@ class _TextBlock extends StatelessWidget {
         _appendNodes(spans, node.nodes, next, scheme);
         return;
       }
-      spans.add(
-        TextSpan(
-          text: node.text,
-          style: next.copyWith(color: scheme.primary, decoration: TextDecoration.underline),
-          recognizer: TapGestureRecognizer()..onTap = () => _openUrl(href),
-        ),
-      );
+      spans.add(TextSpan(
+        text: node.text,
+        style: next.copyWith(color: scheme.primary, decoration: TextDecoration.underline),
+        recognizer: TapGestureRecognizer()..onTap = () => _openUrl(href),
+      ));
       return;
     }
-
     _appendNodes(spans, node.nodes, next, scheme);
   }
 
-  void _appendTextWithLinks(
-    List<InlineSpan> spans,
-    String text,
-    TextStyle style,
-    ColorScheme scheme,
-  ) {
+  void _appendTextWithLinks(List<InlineSpan> spans, String text, TextStyle style, ColorScheme scheme) {
     if (text.isEmpty) return;
     const trailing = '.,!?;:)]}，。！？；：、）》】」』”’';
     final regexp = RegExp(r'https?://[^\s<>　]+', caseSensitive: false);
     var cursor = 0;
     for (final match in regexp.allMatches(text)) {
-      if (match.start > cursor) {
-        spans.add(TextSpan(text: text.substring(cursor, match.start), style: style));
-      }
+      if (match.start > cursor) spans.add(TextSpan(text: text.substring(cursor, match.start), style: style));
       final raw = match.group(0)!;
       var end = raw.length;
-      while (end > 0 && trailing.contains(raw[end - 1])) {
-        end--;
-      }
+      while (end > 0 && trailing.contains(raw[end - 1])) end--;
       final href = raw.substring(0, end);
-      spans.add(
-        TextSpan(
-          text: href,
-          style: style.copyWith(color: scheme.primary, decoration: TextDecoration.underline),
-          recognizer: TapGestureRecognizer()..onTap = () => _openUrl(href),
-        ),
-      );
-      if (end < raw.length) {
-        spans.add(TextSpan(text: raw.substring(end), style: style));
-      }
+      spans.add(TextSpan(text: href, style: style.copyWith(color: scheme.primary, decoration: TextDecoration.underline), recognizer: TapGestureRecognizer()..onTap = () => _openUrl(href)));
+      if (end < raw.length) spans.add(TextSpan(text: raw.substring(end), style: style));
       cursor = match.end;
     }
-    if (cursor < text.length) {
-      spans.add(TextSpan(text: text.substring(cursor), style: style));
-    }
+    if (cursor < text.length) spans.add(TextSpan(text: text.substring(cursor), style: style));
   }
 
   Future<void> _openUrl(String href) async {
@@ -297,6 +236,12 @@ class _ListBlock extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    final items = element.children
+        .where((e) => e.localName?.toLowerCase() == 'li')
+        .where((e) => _hasVisibleListContent(e))
+        .toList();
+    if (items.isEmpty) return const SizedBox.shrink();
+
     var index = 1;
     return Padding(
       padding: const EdgeInsets.only(bottom: 9),
@@ -304,7 +249,7 @@ class _ListBlock extends StatelessWidget {
         crossAxisAlignment: CrossAxisAlignment.start,
         mainAxisSize: MainAxisSize.min,
         children: [
-          for (final child in element.children.where((e) => e.localName?.toLowerCase() == 'li'))
+          for (final child in items)
             Row(
               crossAxisAlignment: CrossAxisAlignment.start,
               children: [
@@ -315,6 +260,12 @@ class _ListBlock extends StatelessWidget {
         ],
       ),
     );
+  }
+
+  bool _hasVisibleListContent(dom.Element element) {
+    final text = element.text.replaceAll(RegExp(r'\s+'), '').trim();
+    if (text.isNotEmpty) return true;
+    return element.querySelector('img,video,iframe,audio,table,pre,a') != null;
   }
 }
 
@@ -346,9 +297,7 @@ class _ImageBlock extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    if (src.isEmpty) {
-      return alt?.trim().isNotEmpty == true ? Padding(padding: const EdgeInsets.only(bottom: 10), child: Text(alt!)) : const SizedBox.shrink();
-    }
+    if (src.isEmpty) return alt?.trim().isNotEmpty == true ? Padding(padding: const EdgeInsets.only(bottom: 10), child: Text(alt!)) : const SizedBox.shrink();
     final cookie = AuthService.instance.authCookie;
     final headers = <String, String>{'Referer': SiteConfig.base};
     if (cookie != null && cookie.isNotEmpty) headers['Cookie'] = cookie;
@@ -359,19 +308,11 @@ class _ImageBlock extends StatelessWidget {
         width: double.infinity,
         fit: BoxFit.contain,
         headers: headers,
-        errorBuilder: (_, __, ___) => Padding(
-          padding: const EdgeInsets.only(bottom: 10),
-          child: Text(alt?.trim().isNotEmpty == true ? alt! : '图片加载失败'),
-        ),
-        loadingBuilder: (context, child, progress) => progress == null
-            ? child
-            : const Padding(padding: EdgeInsets.all(18), child: Center(child: CircularProgressIndicator(strokeWidth: 2))),
+        errorBuilder: (_, __, ___) => Padding(padding: const EdgeInsets.only(bottom: 10), child: Text(alt?.trim().isNotEmpty == true ? alt! : '图片加载失败')),
+        loadingBuilder: (context, child, progress) => progress == null ? child : const Padding(padding: EdgeInsets.all(18), child: Center(child: CircularProgressIndicator(strokeWidth: 2))),
       ),
     );
-    return Padding(
-      padding: const EdgeInsets.only(bottom: 10),
-      child: onTap == null ? image : GestureDetector(onTap: onTap, child: image),
-    );
+    return Padding(padding: const EdgeInsets.only(bottom: 10), child: onTap == null ? image : GestureDetector(onTap: onTap, child: image));
   }
 }
 
@@ -382,9 +323,7 @@ String _imageUrl(dom.Element element) {
     if (raw.isEmpty || raw.startsWith('data:')) continue;
     var value = raw;
     if (value.startsWith('//')) value = 'https:$value';
-    if (!value.startsWith('http://') && !value.startsWith('https://')) {
-      value = key == 'comiis_loadimages' ? SiteConfig.resolve(value) : SiteConfig.resolveCdn(value);
-    }
+    if (!value.startsWith('http://') && !value.startsWith('https://')) value = key == 'comiis_loadimages' ? SiteConfig.resolve(value) : SiteConfig.resolveCdn(value);
     if (value.isNotEmpty && !_placeholder(value)) return value;
   }
   return '';
