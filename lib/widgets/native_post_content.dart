@@ -1,7 +1,9 @@
 import 'package:flutter/gestures.dart';
 import 'package:flutter/material.dart';
+import 'package:flutter/services.dart';
 import 'package:html/dom.dart' as dom;
 import 'package:html/parser.dart' as html_parser;
+import 'package:url_launcher/url_launcher.dart';
 
 import '../services/auth_service.dart';
 import '../services/site_config.dart';
@@ -92,7 +94,13 @@ class _NodeWidget extends StatelessWidget {
         final src = _imageUrl(e);
         return src.isEmpty
             ? _missingImage(context, e.attributes['alt'])
-            : _ImageBlock(src: src, alt: e.attributes['alt'], onTap: (onLinkTap != null && src.isNotEmpty) ? () => onLinkTap!(src) : null);
+            : _ImageBlock(
+                src: src,
+                alt: e.attributes['alt'],
+                onTap: (onLinkTap != null && src.isNotEmpty)
+                    ? () => onLinkTap!(src)
+                    : null,
+              );
       case 'hr':
         return const Padding(
           padding: EdgeInsets.symmetric(vertical: 12),
@@ -216,27 +224,32 @@ class _InlineContent extends StatelessWidget {
           node.localName?.toLowerCase() == 'a' &&
           _isAttachmentLink(node.attributes['href'])) {
         flushText();
-        children.add(_AttachmentCard(
-          href: (node.attributes['href'] ?? '').trim(),
-          title: node.text.trim(),
-          onTap: (onLinkTap != null) ? () => onLinkTap!((node.attributes['href'] ?? '').trim()) : null,
-        ));
+        final href = (node.attributes['href'] ?? '').trim();
+        children.add(
+          _AttachmentCard(
+            href: href,
+            title: node.text.trim(),
+            onTap: onLinkTap == null ? null : () => onLinkTap!(href),
+          ),
+        );
         continue;
       }
       if (node is dom.Element && node.localName?.toLowerCase() == 'img') {
         flushText();
         final src = _imageUrl(node);
         if (src.isNotEmpty) {
-          children.add(_ImageBlock(
-            src: src,
-            alt: node.attributes['alt'],
-            onTap:
-                (onLinkTap != null) ? () => onLinkTap!(src) : null,
-          ));
+          children.add(
+            _ImageBlock(
+              src: src,
+              alt: node.attributes['alt'],
+              onTap: onLinkTap == null ? null : () => onLinkTap!(src),
+            ),
+          );
         }
         continue;
       }
       _appendSpan(
+        context,
         spans,
         node,
         DefaultTextStyle.of(context)
@@ -254,7 +267,12 @@ class _InlineContent extends StatelessWidget {
   }
 
   void _appendSpan(
-      List<InlineSpan> spans, dom.Node node, TextStyle style, ColorScheme scheme) {
+    BuildContext context,
+    List<InlineSpan> spans,
+    dom.Node node,
+    TextStyle style,
+    ColorScheme scheme,
+  ) {
     if (node is dom.Text) {
       final text = _nodeText(node);
       if (text.isNotEmpty) spans.add(TextSpan(text: text, style: style));
@@ -285,7 +303,17 @@ class _InlineContent extends StatelessWidget {
     if (tag == 'a') {
       final href = e.attributes['href']?.trim() ?? '';
       final recognizer = TapGestureRecognizer()
-        ..onTap = () => onLinkTap?.call(href);
+        ..onTap = () async {
+          if (href.isEmpty) return;
+          if (onLinkTap != null) {
+            onLinkTap!(href);
+            return;
+          }
+          final uri = Uri.tryParse(href);
+          if (uri != null && (uri.scheme == 'http' || uri.scheme == 'https')) {
+            await launchUrl(uri, mode: LaunchMode.externalApplication);
+          }
+        };
       spans.add(
         TextSpan(
           text: e.text,
@@ -303,7 +331,7 @@ class _InlineContent extends StatelessWidget {
       return;
     }
     for (final child in e.nodes) {
-      _appendSpan(spans, child, next, scheme);
+      _appendSpan(context, spans, child, next, scheme);
     }
   }
 }
@@ -425,19 +453,9 @@ class _ImageBlock extends StatelessWidget {
                   Row(
                     mainAxisSize: MainAxisSize.min,
                     children: [
-                      Icon(
-                        Icons.download_rounded,
-                        size: 15,
-                        color: Theme.of(context).colorScheme.primary,
-                      ),
+                      Icon(Icons.download_rounded, size: 15, color: Theme.of(context).colorScheme.primary),
                       const SizedBox(width: 4),
-                      Text(
-                        '点击查看大图',
-                        style: TextStyle(
-                          fontSize: 12.5,
-                          color: Theme.of(context).colorScheme.primary,
-                        ),
-                      ),
+                      Text('点击查看大图', style: TextStyle(fontSize: 12.5, color: Theme.of(context).colorScheme.primary)),
                     ],
                   ),
                 ],
@@ -450,9 +468,7 @@ class _ImageBlock extends StatelessWidget {
 class _Quote extends StatelessWidget {
   final List<dom.Node> children;
   final ValueChanged<String>? onLinkTap;
-
   const _Quote({required this.children, this.onLinkTap});
-
   @override
   Widget build(BuildContext context) {
     final c = Theme.of(context).colorScheme;
@@ -462,10 +478,7 @@ class _Quote extends StatelessWidget {
       padding: const EdgeInsets.fromLTRB(14, 11, 14, 2),
       decoration: BoxDecoration(
         color: c.primaryContainer.withValues(alpha: .34),
-        borderRadius: const BorderRadius.only(
-          topRight: Radius.circular(14),
-          bottomRight: Radius.circular(14),
-        ),
+        borderRadius: const BorderRadius.only(topRight: Radius.circular(14), bottomRight: Radius.circular(14)),
         border: Border(left: BorderSide(color: c.primary, width: 3)),
       ),
       child: _NodeList(nodes: children, onLinkTap: onLinkTap),
@@ -477,26 +490,15 @@ class _ListBlock extends StatelessWidget {
   final dom.Element element;
   final bool ordered;
   final ValueChanged<String>? onLinkTap;
-
-  const _ListBlock({
-    required this.element,
-    required this.ordered,
-    this.onLinkTap,
-  });
-
+  const _ListBlock({required this.element, required this.ordered, this.onLinkTap});
   @override
   Widget build(BuildContext context) {
-    final items = element.children
-        .where((e) => e.localName?.toLowerCase() == 'li')
-        .toList();
+    final items = element.children.where((e) => e.localName?.toLowerCase() == 'li').toList();
     return Padding(
       padding: const EdgeInsets.only(bottom: 10),
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
-        children: [
-          for (var i = 0; i < items.length; i++)
-            _ListItem(item: items[i], ordered: ordered, index: i, onLinkTap: onLinkTap),
-        ],
+        children: [for (var i = 0; i < items.length; i++) _ListItem(item: items[i], ordered: ordered, index: i, onLinkTap: onLinkTap)],
       ),
     );
   }
@@ -507,42 +509,19 @@ class _ListItem extends StatelessWidget {
   final bool ordered;
   final int index;
   final ValueChanged<String>? onLinkTap;
-
-  const _ListItem({
-    required this.item,
-    required this.ordered,
-    required this.index,
-    this.onLinkTap,
-  });
-
+  const _ListItem({required this.item, required this.ordered, required this.index, this.onLinkTap});
   @override
   Widget build(BuildContext context) {
-    // 该 li 里是否直接包含图片（可能被 span/a 等包裹），
-    // 若包含则整行渲染为图片，避免 _InlineContent 把 wrapped img 丢弃。
     final img = item.querySelector('img');
     if (img != null) {
       final src = _imageUrl(img);
-      if (src.isNotEmpty) {
-        return _ImageBlock(
-          src: src,
-          alt: img.attributes['alt'],
-          onTap: (onLinkTap != null) ? () => onLinkTap!(src) : null,
-        );
-      }
+      if (src.isNotEmpty) return _ImageBlock(src: src, alt: img.attributes['alt'], onTap: onLinkTap == null ? null : () => onLinkTap!(src));
     }
     return Row(
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
-        SizedBox(
-          width: 25,
-          child: Text(
-            ordered ? '${index + 1}.' : '•',
-            style: const TextStyle(fontSize: 16, height: 1.62),
-          ),
-        ),
-        Expanded(
-          child: _InlineContent(item.nodes, onLinkTap: onLinkTap),
-        ),
+        SizedBox(width: 25, child: Text(ordered ? '${index + 1}.' : '•', style: const TextStyle(fontSize: 16, height: 1.62))),
+        Expanded(child: _InlineContent(item.nodes, onLinkTap: onLinkTap)),
       ],
     );
   }
@@ -551,54 +530,31 @@ class _ListItem extends StatelessWidget {
 class _CodeBlock extends StatelessWidget {
   final String text;
   const _CodeBlock({required this.text});
-
   @override
   Widget build(BuildContext context) => Container(
         width: double.infinity,
         margin: const EdgeInsets.only(bottom: 13),
         padding: const EdgeInsets.all(14),
-        decoration: BoxDecoration(
-          color: Theme.of(context).colorScheme.surfaceContainerHighest,
-          borderRadius: BorderRadius.circular(14),
-        ),
-        child: SingleChildScrollView(
-          scrollDirection: Axis.horizontal,
-          child: SelectableText(
-            text,
-            style: const TextStyle(
-              fontFamily: 'monospace',
-              fontSize: 13.5,
-              height: 1.55,
-            ),
-          ),
-        ),
+        decoration: BoxDecoration(color: Theme.of(context).colorScheme.surfaceContainerHighest, borderRadius: BorderRadius.circular(14)),
+        child: SingleChildScrollView(scrollDirection: Axis.horizontal, child: SelectableText(text, style: const TextStyle(fontFamily: 'monospace', fontSize: 13.5, height: 1.55))),
       );
 }
 
 class _InlineCode extends StatelessWidget {
   final String text;
   const _InlineCode({required this.text});
-
   @override
   Widget build(BuildContext context) => Container(
         padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 2),
-        decoration: BoxDecoration(
-          color: Theme.of(context).colorScheme.surfaceContainerHighest,
-          borderRadius: BorderRadius.circular(6),
-        ),
-        child: Text(
-          text,
-          style: const TextStyle(fontFamily: 'monospace', fontSize: 14),
-        ),
+        decoration: BoxDecoration(color: Theme.of(context).colorScheme.surfaceContainerHighest, borderRadius: BorderRadius.circular(6)),
+        child: Text(text, style: const TextStyle(fontFamily: 'monospace', fontSize: 14)),
       );
 }
 
 class _TableBlock extends StatelessWidget {
   final dom.Element element;
   final ValueChanged<String>? onLinkTap;
-
   const _TableBlock({required this.element, this.onLinkTap});
-
   @override
   Widget build(BuildContext context) {
     final rows = element.querySelectorAll('tr');
@@ -609,20 +565,13 @@ class _TableBlock extends StatelessWidget {
         scrollDirection: Axis.horizontal,
         child: Table(
           defaultColumnWidth: const IntrinsicColumnWidth(),
-          border: TableBorder.all(
-            color: Theme.of(context).colorScheme.outlineVariant,
-          ),
+          border: TableBorder.all(color: Theme.of(context).colorScheme.outlineVariant),
           children: [
             for (final row in rows)
               TableRow(
                 children: [
-                  for (final cell in row.children.where(
-                    (e) => e.localName == 'td' || e.localName == 'th',
-                  ))
-                    Padding(
-                      padding: const EdgeInsets.all(8),
-                      child: _InlineContent(cell.nodes, onLinkTap: onLinkTap),
-                    ),
+                  for (final cell in row.children.where((e) => e.localName == 'td' || e.localName == 'th'))
+                    Padding(padding: const EdgeInsets.all(8), child: _InlineContent(cell.nodes, onLinkTap: onLinkTap)),
                 ],
               ),
           ],
@@ -632,17 +581,17 @@ class _TableBlock extends StatelessWidget {
   }
 }
 
-/// 正文里的附件链接: 以清晰可点的卡片展示, 点击触发下载。
 class _AttachmentCard extends StatelessWidget {
   final String href;
   final String title;
   final VoidCallback? onTap;
+  const _AttachmentCard({required this.href, required this.title, this.onTap});
 
-  const _AttachmentCard({
-    required this.href,
-    required this.title,
-    this.onTap,
-  });
+  Future<void> _copyLink(BuildContext context) async {
+    await Clipboard.setData(ClipboardData(text: href));
+    if (!context.mounted) return;
+    ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('附件下载链接已复制')));
+  }
 
   @override
   Widget build(BuildContext context) {
@@ -651,14 +600,9 @@ class _AttachmentCard extends StatelessWidget {
       final uri = Uri.tryParse(href);
       final tid = int.tryParse(uri?.queryParameters['tid'] ?? '') ?? 0;
       if (tid > 0) {
-        return ForumAttachmentSection(
-          tid: tid,
-          cookie: AuthService.instance.authCookie,
-          referer: SiteConfig.base,
-        );
+        return ForumAttachmentSection(tid: tid, cookie: AuthService.instance.authCookie, referer: SiteConfig.base);
       }
     }
-
     final c = Theme.of(context).colorScheme;
     final label = title.isNotEmpty ? title : '下载附件';
     return Padding(
@@ -669,20 +613,14 @@ class _AttachmentCard extends StatelessWidget {
         child: InkWell(
           borderRadius: BorderRadius.circular(12),
           onTap: onTap,
+          onLongPress: () => _copyLink(context),
           child: Padding(
             padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 12),
             child: Row(
               children: [
                 Icon(Icons.attach_file_rounded, color: c.primary, size: 24),
                 const SizedBox(width: 12),
-                Expanded(
-                  child: Text(
-                    label,
-                    maxLines: 2,
-                    overflow: TextOverflow.ellipsis,
-                    style: const TextStyle(fontSize: 14.5, height: 1.3),
-                  ),
-                ),
+                Expanded(child: Text(label, maxLines: 2, overflow: TextOverflow.ellipsis, style: const TextStyle(fontSize: 14.5, height: 1.3))),
                 const SizedBox(width: 8),
                 Icon(Icons.download_rounded, color: c.primary, size: 20),
               ],
