@@ -10,7 +10,6 @@ import '../services/site_config.dart';
 class NativePostContent extends StatelessWidget {
   final String html;
   final ValueChanged<String>? onLinkTap;
-
   const NativePostContent({super.key, required this.html, this.onLinkTap});
 
   @override
@@ -38,14 +37,12 @@ bool _hasRenderableListItem(dom.Element item) {
   return item.querySelector('img,video,iframe,audio,table,pre') != null;
 }
 
-String _visibleListText(dom.Element element) {
-  return element.text
-      .replaceAll(RegExp(r'\s+'), '')
-      .replaceAll(RegExp(r'[\u200B-\u200D\uFEFF]'), '')
-      .replaceAll(RegExp(r'^[•●○◦▪▫‣⁃∙·・\-–—*_.,。．、]+'), '')
-      .replaceAll(RegExp(r'[•●○◦▪▫‣⁃∙·・]'), '')
-      .trim();
-}
+String _visibleListText(dom.Element element) => element.text
+    .replaceAll(RegExp(r'\s+'), '')
+    .replaceAll(RegExp(r'[\u200B-\u200D\uFEFF]'), '')
+    .replaceAll(RegExp(r'^[•●○◦▪▫‣⁃∙·・\-–—*_.,。．、]+'), '')
+    .replaceAll(RegExp(r'[•●○◦▪▫‣⁃∙·・]'), '')
+    .trim();
 
 class _NodeList extends StatelessWidget {
   final List<dom.Node> nodes;
@@ -78,16 +75,14 @@ class _NodeWidget extends StatelessWidget {
       case 'br':
         return const SizedBox.shrink();
       case 'p':
-        return _TextBlock(nodes: e.nodes, onLinkTap: onLinkTap);
+        return e.querySelector('img,video,iframe,audio') != null
+            ? _NodeList(nodes: e.nodes.where(_hasRenderableNode).toList(), onLinkTap: onLinkTap)
+            : _TextBlock(nodes: e.nodes, onLinkTap: onLinkTap);
       case 'h1': case 'h2': case 'h3': case 'h4': case 'h5': case 'h6':
         return _TextBlock(
           nodes: e.nodes,
           onLinkTap: onLinkTap,
-          style: TextStyle(
-            fontSize: switch (tag) {'h1' => 24, 'h2' => 21, 'h3' => 19, _ => 17},
-            height: 1.35,
-            fontWeight: FontWeight.w800,
-          ),
+          style: TextStyle(fontSize: switch (tag) {'h1' => 24, 'h2' => 21, 'h3' => 19, _ => 17}, height: 1.35, fontWeight: FontWeight.w800),
           padding: const EdgeInsets.only(top: 6, bottom: 10),
         );
       case 'blockquote':
@@ -96,7 +91,7 @@ class _NodeWidget extends StatelessWidget {
           margin: const EdgeInsets.only(bottom: 10),
           padding: const EdgeInsets.only(left: 12),
           decoration: BoxDecoration(border: Border(left: BorderSide(color: Theme.of(context).colorScheme.outlineVariant, width: 3))),
-          child: _TextBlock(nodes: e.nodes, onLinkTap: onLinkTap),
+          child: _NodeList(nodes: e.nodes.where(_hasRenderableNode).toList(), onLinkTap: onLinkTap),
         );
       case 'ul': case 'ol':
         return _ListBlock(element: e, ordered: tag == 'ol', onLinkTap: onLinkTap);
@@ -108,10 +103,7 @@ class _NodeWidget extends StatelessWidget {
         return _imageWidget(context, e, e);
       case 'a':
         final images = e.querySelectorAll('img');
-        if (images.isNotEmpty) {
-          final image = images.first;
-          return _imageWidget(context, image, e);
-        }
+        if (images.isNotEmpty) return _imageWidget(context, images.first, e);
         return _TextBlock(nodes: e.nodes, onLinkTap: onLinkTap);
       case 'hr':
         return const Padding(padding: EdgeInsets.symmetric(vertical: 10), child: Divider(height: 1));
@@ -132,9 +124,7 @@ class _NodeWidget extends StatelessWidget {
     return _ImageBlock(
       src: src,
       alt: image.attributes['alt'],
-      onTap: href != null && href.isNotEmpty
-          ? () => _openLink(href)
-          : (onLinkTap == null ? null : () => onLinkTap!(src)),
+      onTap: href != null && href.isNotEmpty ? () => _openLink(href) : (onLinkTap == null ? null : () => onLinkTap!(src)),
     );
   }
 
@@ -144,9 +134,7 @@ class _NodeWidget extends StatelessWidget {
       return;
     }
     final uri = Uri.tryParse(href);
-    if (uri != null && (uri.scheme == 'http' || uri.scheme == 'https')) {
-      await launchUrl(uri, mode: LaunchMode.externalApplication);
-    }
+    if (uri != null && (uri.scheme == 'http' || uri.scheme == 'https')) await launchUrl(uri, mode: LaunchMode.externalApplication);
   }
 }
 
@@ -253,10 +241,7 @@ class _ListBlock extends StatelessWidget {
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         mainAxisSize: MainAxisSize.min,
-        children: [
-          for (final child in items)
-            _ListItemBlock(element: child, ordered: ordered, index: index++, onLinkTap: onLinkTap),
-        ],
+        children: [for (final child in items) _ListItemBlock(element: child, ordered: ordered, index: index++, onLinkTap: onLinkTap)],
       ),
     );
   }
@@ -273,10 +258,7 @@ class _ListItemBlock extends StatelessWidget {
   Widget build(BuildContext context) {
     final hasMedia = element.querySelector('img,video,iframe,audio,table,pre') != null;
     if (hasMedia && _visibleListText(element).isEmpty) {
-      return Padding(
-        padding: const EdgeInsets.only(bottom: 8),
-        child: _NodeList(nodes: element.nodes.where(_hasRenderableNode).toList(), onLinkTap: onLinkTap),
-      );
+      return Padding(padding: const EdgeInsets.only(bottom: 8), child: _NodeList(nodes: element.nodes.where(_hasRenderableNode).toList(), onLinkTap: onLinkTap));
     }
     return Row(
       crossAxisAlignment: CrossAxisAlignment.start,
@@ -327,10 +309,7 @@ class _ImageBlock extends StatelessWidget {
         loadingBuilder: (context, child, progress) => progress == null ? child : const Padding(padding: EdgeInsets.all(18), child: Center(child: CircularProgressIndicator(strokeWidth: 2))),
       ),
     );
-    return Padding(
-      padding: const EdgeInsets.only(bottom: 10),
-      child: onTap == null ? image : GestureDetector(onTap: onTap, child: image),
-    );
+    return Padding(padding: const EdgeInsets.only(bottom: 10), child: onTap == null ? image : GestureDetector(onTap: onTap, child: image));
   }
 }
 
