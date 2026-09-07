@@ -399,7 +399,7 @@ class _CommentCardState extends State<_CommentCard> {
       }
     }
     if (nodes.isEmpty) {
-      final decoded = (doc.text ?? ').trim();
+      final decoded = doc.text.trim();
       if (decoded.contains('replyfloor')) {
         doc = parser.parseFragment(decoded);
         for (final selector in selectors) {
