@@ -108,13 +108,26 @@ String _sanitizeForumHtml(String html) {
     return false;
   }
 
+  bool emptyLayoutNode(dom.Element e) {
+    final tag = (e.localName ?? '').toLowerCase();
+    const layoutTags = {
+      'p', 'div', 'section', 'article', 'main', 'figure', 'figcaption',
+      'dl', 'dt', 'dd', 'blockquote', 'center',
+    };
+    if (!layoutTags.contains(tag)) return false;
+    if (e.text.trim().isNotEmpty) return false;
+    return e.querySelector('img,video,iframe,audio,table,pre,a,code') == null;
+  }
+
   void walk(dom.Element e) {
     final children = List<dom.Element>.from(e.children);
     for (final child in children) {
-      if (removable(child)) {
+      if (removable(child) || emptyLayoutNode(child)) {
         child.remove();
       } else {
         walk(child);
+        // 清理掉子节点清理后留下的空布局容器。
+        if (emptyLayoutNode(child)) child.remove();
       }
     }
   }
