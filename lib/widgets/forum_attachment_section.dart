@@ -1,4 +1,5 @@
 import 'package:flutter/material.dart';
+import 'package:flutter/services.dart';
 
 import '../services/attachment_download_service.dart';
 import '../services/site_config.dart';
@@ -32,7 +33,10 @@ class ForumAttachmentSection extends StatelessWidget {
           children: [
             Padding(
               padding: const EdgeInsets.only(left: 4, top: 8, bottom: 8),
-              child: Text('本帖附件 · ${items.length}', style: Theme.of(context).textTheme.titleSmall?.copyWith(fontWeight: FontWeight.w700)),
+              child: Text(
+                '本帖附件 · ${items.length}',
+                style: Theme.of(context).textTheme.titleSmall?.copyWith(fontWeight: FontWeight.w700),
+              ),
             ),
             for (final item in items)
               _Tile(item: item, cookie: cookie, referer: referer),
@@ -69,7 +73,19 @@ class _Tile extends StatelessWidget {
       filename: item.name,
     );
     if (!context.mounted) return;
-    ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text(ok ? '已开始下载：${item.name}' : '附件下载失败')));
+    ScaffoldMessenger.of(context).showSnackBar(
+      SnackBar(content: Text(ok ? '已开始下载：${item.name}' : '附件下载失败')),
+    );
+  }
+
+  Future<void> _copyUrl(BuildContext context) async {
+    final url = item.url.trim();
+    if (url.isEmpty) return;
+    await Clipboard.setData(ClipboardData(text: url));
+    if (!context.mounted) return;
+    ScaffoldMessenger.of(context).showSnackBar(
+      const SnackBar(content: Text('附件下载链接已复制')),
+    );
   }
 
   @override
@@ -88,15 +104,38 @@ class _Tile extends StatelessWidget {
         child: InkWell(
           borderRadius: BorderRadius.circular(14),
           onTap: () => _download(context),
+          onLongPress: () => _copyUrl(context),
           child: Padding(
             padding: const EdgeInsets.all(12),
             child: Row(children: [
-              Container(width: 44, height: 44, decoration: BoxDecoration(color: c.primaryContainer, borderRadius: BorderRadius.circular(11)), child: Icon(_icon(item.name), color: c.primary)),
+              Container(
+                width: 44,
+                height: 44,
+                decoration: BoxDecoration(color: c.primaryContainer, borderRadius: BorderRadius.circular(11)),
+                child: Icon(_icon(item.name), color: c.primary),
+              ),
               const SizedBox(width: 12),
-              Expanded(child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
-                Text(item.name.isEmpty ? '论坛附件' : item.name, maxLines: 2, overflow: TextOverflow.ellipsis, style: const TextStyle(fontWeight: FontWeight.w600)),
-                if (meta.isNotEmpty) Padding(padding: const EdgeInsets.only(top: 4), child: Text(meta, style: TextStyle(fontSize: 12, color: c.onSurfaceVariant))),
-              ])),
+              Expanded(
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Text(
+                      item.name.isEmpty ? '论坛附件' : item.name,
+                      maxLines: 2,
+                      overflow: TextOverflow.ellipsis,
+                      style: const TextStyle(fontWeight: FontWeight.w600),
+                    ),
+                    if (meta.isNotEmpty)
+                      Padding(
+                        padding: const EdgeInsets.only(top: 4),
+                        child: Text(
+                          meta,
+                          style: TextStyle(fontSize: 12, color: c.onSurfaceVariant),
+                        ),
+                      ),
+                  ],
+                ),
+              ),
               Icon(Icons.cloud_download_outlined, color: c.primary),
             ]),
           ),
