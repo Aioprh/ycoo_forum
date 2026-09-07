@@ -3,6 +3,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:html/dom.dart' as dom;
 import 'package:html/parser.dart' as html_parser;
+import 'package:url_launcher/url_launcher.dart';
 
 import '../services/auth_service.dart';
 import '../services/site_config.dart';
@@ -161,7 +162,7 @@ class _InlineContent extends StatelessWidget {
       spans.add(TextSpan(
         text: e.text,
         style: style.copyWith(color: scheme.primary, decoration: TextDecoration.underline),
-        recognizer: onLinkTap == null ? null : (TapGestureRecognizer()..onTap = () => onLinkTap!(href)),
+        recognizer: TapGestureRecognizer()..onTap = () => _handleLinkTap(href, onLinkTap),
       ));
       return;
     }
@@ -201,13 +202,39 @@ List<InlineSpan> _linkSpans(String text, TextStyle style, ValueChanged<String>? 
     result.add(TextSpan(
       text: raw,
       style: style.copyWith(color: scheme.primary, decoration: TextDecoration.underline),
-      recognizer: onLinkTap == null ? null : (TapGestureRecognizer()..onTap = () => onLinkTap(url)),
+      recognizer: TapGestureRecognizer()..onTap = () => _handleLinkTap(url, onLinkTap),
     ));
     if (trailing.isNotEmpty) result.add(TextSpan(text: trailing, style: style));
     last = m.end;
   }
   if (last < text.length) result.add(TextSpan(text: text.substring(last), style: style));
   return result;
+}
+
+Future<void> _handleLinkTap(String url, ValueChanged<String>? onLinkTap) async {
+  final value = url.trim();
+  if (value.isEmpty) return;
+  final uri = Uri.tryParse(value);
+  if (uri == null) return;
+  // 图片和附件仍交给页面层处理：图片预览、附件下载。
+  if (_isImageUrl(uri) || _isAttachmentLink(value)) {
+    onLinkTap?.call(value);
+    return;
+  }
+  // 普通正文链接直接打开系统默认浏览器，不再只弹出“链接：xxx”。
+  try {
+    final launched = await launchUrl(uri, mode: LaunchMode.externalApplication);
+    if (!launched) onLinkTap?.call(value);
+  } catch (_) {
+    onLinkTap?.call(value);
+  }
+}
+
+bool _isImageUrl(Uri uri) {
+  final query = uri.query.toLowerCase();
+  if (query.contains('down=1') || query.contains('download=1') || query.contains('dl=1')) return false;
+  final path = uri.path.toLowerCase();
+  return RegExp(r'\.(jpe?g|png|gif|webp|bmp|svg|heic|heif|avif)$').hasMatch(path) || query.contains('mod=image');
 }
 
 String _normalizeLink(String raw) {
@@ -327,7 +354,7 @@ class _TableBlock extends StatelessWidget {
   }
 }
 
-/// Attachment card: tap to download, or copy the exact URL for external use.
+/// Attachment card: tap to download, long press to copy the exact URL.
 class _AttachmentCard extends StatelessWidget {
   final String href;
   final String title;
@@ -353,25 +380,27 @@ class _AttachmentCard extends StatelessWidget {
 
     return Padding(
       padding:const EdgeInsets.only(bottom:13),
-      child:Material(
-        color:c.secondaryContainer.withValues(alpha:.45),
-        borderRadius:BorderRadius.circular(12),
-        child:InkWell(
+      child:GestureDetector(
+        onLongPress: copyLink,
+        child:Material(
+          color:c.secondaryContainer.withValues(alpha:.45),
           borderRadius:BorderRadius.circular(12),
-          onTap:onTap,
-          child:Padding(
-            padding:const EdgeInsets.symmetric(horizontal:14,vertical:12),
-            child:Row(children:[
-              Icon(Icons.attach_file_rounded,color:c.primary,size:24),
-              const SizedBox(width:12),
-              Expanded(child:Column(crossAxisAlignment:CrossAxisAlignment.start,children:[
-                Text(label,maxLines:2,overflow:TextOverflow.ellipsis,style:const TextStyle(fontSize:14.5,height:1.3)),
-                const SizedBox(height:3),
-                Text(href,maxLines:1,overflow:TextOverflow.ellipsis,style:TextStyle(fontSize:11,color:c.onSurfaceVariant)),
-              ])),
-              IconButton(tooltip:'复制下载链接',onPressed:copyLink,icon:const Icon(Icons.link_rounded)),
-              Icon(Icons.download_rounded,color:c.primary,size:20),
-            ]),
+          child:InkWell(
+            borderRadius:BorderRadius.circular(12),
+            onTap:onTap,
+            child:Padding(
+              padding:const EdgeInsets.symmetric(horizontal:14,vertical:12),
+              child:Row(children:[
+                Icon(Icons.attach_file_rounded,color:c.primary,size:24),
+                const SizedBox(width:12),
+                Expanded(child:Column(crossAxisAlignment:CrossAxisAlignment.start,children:[
+                  Text(label,maxLines:2,overflow:TextOverflow.ellipsis,style:const TextStyle(fontSize:14.5,height:1.3)),
+                  const SizedBox(height:3),
+                  Text(href,maxLines:1,overflow:TextOverflow.ellipsis,style:TextStyle(fontSize:11,color:c.onSurfaceVariant)),
+                ])),
+                Icon(Icons.download_rounded,color:c.primary,size:20),
+              ]),
+            ),
           ),
         ),
       ),
