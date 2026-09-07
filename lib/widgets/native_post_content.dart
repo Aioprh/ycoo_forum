@@ -22,8 +22,6 @@ class NativePostContent extends StatelessWidget {
     final nodes = body.nodes
         .where((node) => node is! dom.Text || _nodeText(node).trim().isNotEmpty)
         .toList();
-    // SelectionArea 会与 TextSpan 的 TapGestureRecognizer 抢手势。
-    // 正文改为普通 Text.rich，使链接点击优先正常触发。
     return _NodeList(nodes: nodes, onLinkTap: onLinkTap);
   }
 }
@@ -33,90 +31,178 @@ String _nodeText(dom.Node node) => node.text ?? '';
 class _NodeList extends StatelessWidget {
   final List<dom.Node> nodes;
   final ValueChanged<String>? onLinkTap;
+
   const _NodeList({required this.nodes, this.onLinkTap});
 
   @override
-  Widget build(BuildContext context) => Column(
-        crossAxisAlignment: CrossAxisAlignment.start,
-        children: [for (final node in nodes) _NodeWidget(node: node, onLinkTap: onLinkTap)],
-      );
+  Widget build(BuildContext context) {
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        for (final node in nodes)
+          _NodeWidget(node: node, onLinkTap: onLinkTap),
+      ],
+    );
+  }
 }
 
 class _NodeWidget extends StatelessWidget {
   final dom.Node node;
   final ValueChanged<String>? onLinkTap;
+
   const _NodeWidget({required this.node, this.onLinkTap});
 
   @override
   Widget build(BuildContext context) {
     if (node is dom.Text) {
-      final text = _nodeText(node).trim();
-      return text.isEmpty ? const SizedBox.shrink() : _Paragraph(text);
+      final text = _nodeText(node);
+      if (text.trim().isEmpty) return const SizedBox.shrink();
+      return _Block(
+        child: _InlineContent([node], onLinkTap: onLinkTap),
+      );
     }
+
     if (node is! dom.Element) return const SizedBox.shrink();
+
     final e = node as dom.Element;
     final tag = e.localName?.toLowerCase() ?? '';
     switch (tag) {
-      case 'br': return const SizedBox(height: 6);
-      case 'p': return _Block(child: _InlineContent(e.nodes, onLinkTap: onLinkTap));
-      case 'h1': case 'h2': case 'h3': case 'h4': case 'h5': case 'h6':
-        return _Heading(level: int.tryParse(tag.substring(1)) ?? 3, children: e.nodes, onLinkTap: onLinkTap);
-      case 'blockquote': return _Quote(children: e.nodes, onLinkTap: onLinkTap);
-      case 'ul': return _ListBlock(element: e, ordered: false, onLinkTap: onLinkTap);
-      case 'ol': return _ListBlock(element: e, ordered: true, onLinkTap: onLinkTap);
-      case 'pre': return _CodeBlock(text: e.text);
-      case 'code': return _InlineCode(text: e.text);
+      case 'br':
+        return const SizedBox(height: 6);
+      case 'p':
+        return _Block(
+          child: _InlineContent(e.nodes, onLinkTap: onLinkTap),
+        );
+      case 'h1':
+      case 'h2':
+      case 'h3':
+      case 'h4':
+      case 'h5':
+      case 'h6':
+        return _Heading(
+          level: int.tryParse(tag.substring(1)) ?? 3,
+          children: e.nodes,
+          onLinkTap: onLinkTap,
+        );
+      case 'blockquote':
+        return _Quote(children: e.nodes, onLinkTap: onLinkTap);
+      case 'ul':
+        return _ListBlock(element: e, ordered: false, onLinkTap: onLinkTap);
+      case 'ol':
+        return _ListBlock(element: e, ordered: true, onLinkTap: onLinkTap);
+      case 'pre':
+        return _CodeBlock(text: e.text);
+      case 'code':
+        return _InlineCode(text: e.text);
       case 'img':
         final src = _imageUrl(e);
-        return src.isEmpty ? _missingImage(context, e.attributes['alt']) : _ImageBlock(src: src, alt: e.attributes['alt'], onTap: onLinkTap == null ? null : () => onLinkTap!(src));
-      case 'hr': return const Padding(padding: EdgeInsets.symmetric(vertical: 12), child: Divider(height: 1));
-      case 'table': return _TableBlock(element: e, onLinkTap: onLinkTap);
-      case 'div': case 'section': case 'article': case 'main': case 'figure': case 'figcaption': case 'dl': case 'dt': case 'dd':
-        return Padding(padding: const EdgeInsets.only(bottom: 10), child: _NodeList(nodes: e.nodes, onLinkTap: onLinkTap));
-      default: return _Block(child: _InlineContent(e.nodes, onLinkTap: onLinkTap));
+        return src.isEmpty
+            ? _missingImage(context, e.attributes['alt'])
+            : _ImageBlock(
+                src: src,
+                alt: e.attributes['alt'],
+                onTap: onLinkTap == null ? null : () => onLinkTap!(src),
+              );
+      case 'hr':
+        return const Padding(
+          padding: EdgeInsets.symmetric(vertical: 12),
+          child: Divider(height: 1),
+        );
+      case 'table':
+        return _TableBlock(element: e, onLinkTap: onLinkTap);
+      case 'div':
+      case 'section':
+      case 'article':
+      case 'main':
+      case 'figure':
+      case 'figcaption':
+      case 'dl':
+      case 'dt':
+      case 'dd':
+        return Padding(
+          padding: const EdgeInsets.only(bottom: 10),
+          child: _NodeList(nodes: e.nodes, onLinkTap: onLinkTap),
+        );
+      default:
+        return _Block(
+          child: _InlineContent(e.nodes, onLinkTap: onLinkTap),
+        );
     }
   }
 
   Widget _missingImage(BuildContext context, String? alt) {
     final text = alt?.trim();
     if (text == null || text.isEmpty) return const SizedBox.shrink();
-    return Padding(padding: const EdgeInsets.only(bottom: 14), child: Text(text, style: TextStyle(color: Theme.of(context).colorScheme.onSurfaceVariant)));
+    return Padding(
+      padding: const EdgeInsets.only(bottom: 14),
+      child: Text(
+        text,
+        style: TextStyle(color: Theme.of(context).colorScheme.onSurfaceVariant),
+      ),
+    );
   }
 }
 
 class _Block extends StatelessWidget {
   final Widget child;
-  const _Block({required this.child});
-  @override
-  Widget build(BuildContext context) => Padding(padding: const EdgeInsets.only(bottom: 11), child: child);
-}
 
-class _Paragraph extends StatelessWidget {
-  final String text;
-  const _Paragraph(this.text);
+  const _Block({required this.child});
+
   @override
-  Widget build(BuildContext context) => Padding(padding: const EdgeInsets.only(bottom: 11), child: Text(text, style: const TextStyle(fontSize: 16, height: 1.62)));
+  Widget build(BuildContext context) {
+    return Padding(
+      padding: const EdgeInsets.only(bottom: 11),
+      child: child,
+    );
+  }
 }
 
 class _Heading extends StatelessWidget {
   final int level;
   final List<dom.Node> children;
   final ValueChanged<String>? onLinkTap;
-  const _Heading({required this.level, required this.children, this.onLinkTap});
+
+  const _Heading({
+    required this.level,
+    required this.children,
+    this.onLinkTap,
+  });
+
   @override
   Widget build(BuildContext context) {
-    final size = switch (level) { 1 => 24.0, 2 => 21.0, 3 => 19.0, _ => 17.0 };
-    return Padding(padding: const EdgeInsets.only(top: 7, bottom: 10), child: DefaultTextStyle.merge(style: TextStyle(fontSize: size, height: 1.35, fontWeight: FontWeight.w800), child: _InlineContent(children, onLinkTap: onLinkTap)));
+    final size = switch (level) {
+      1 => 24.0,
+      2 => 21.0,
+      3 => 19.0,
+      _ => 17.0,
+    };
+
+    return Padding(
+      padding: const EdgeInsets.only(top: 7, bottom: 10),
+      child: DefaultTextStyle.merge(
+        style: TextStyle(
+          fontSize: size,
+          height: 1.35,
+          fontWeight: FontWeight.w800,
+        ),
+        child: _InlineContent(children, onLinkTap: onLinkTap),
+      ),
+    );
   }
 }
 
 class _InlineContent extends StatelessWidget {
   final List<dom.Node> nodes;
   final ValueChanged<String>? onLinkTap;
+
   const _InlineContent(this.nodes, {this.onLinkTap});
 
-  static final RegExp _plainUrl = RegExp(r'https?://[^\s<>　]+', caseSensitive: false);
-  static const String _trailingPunctuation = '.,!?;:)]}，。！？；：、）》】」』”’';
+  static final RegExp _plainUrl = RegExp(
+    r'https?://[^\s<>　]+',
+    caseSensitive: false,
+  );
+  static const String _trailingPunctuation =
+      '.,!?;:)]}，。！？；：、）》】」』”’';
 
   @override
   Widget build(BuildContext context) {
@@ -126,80 +212,183 @@ class _InlineContent extends StatelessWidget {
 
     void flushText() {
       if (spans.isEmpty) return;
-      children.add(Text.rich(TextSpan(style: DefaultTextStyle.of(context).style, children: List<InlineSpan>.from(spans)), selectionColor: scheme.primary.withValues(alpha: .22)));
+      children.add(
+        Text.rich(
+          TextSpan(
+            style: DefaultTextStyle.of(context).style,
+            children: List<InlineSpan>.from(spans),
+          ),
+          selectionColor: scheme.primary.withValues(alpha: .22),
+        ),
+      );
       spans.clear();
     }
 
     for (final node in nodes) {
-      if (node is dom.Element && node.localName?.toLowerCase() == 'a' && _isAttachmentLink(node.attributes['href'])) {
+      if (node is dom.Element &&
+          node.localName?.toLowerCase() == 'a' &&
+          _isAttachmentLink(node.attributes['href'])) {
         flushText();
         final href = (node.attributes['href'] ?? '').trim();
-        children.add(_AttachmentCard(href: href, title: node.text.trim(), onTap: onLinkTap == null ? null : () => onLinkTap!(href)));
+        children.add(
+          _AttachmentCard(
+            href: href,
+            title: node.text.trim(),
+            onTap: onLinkTap == null ? null : () => onLinkTap!(href),
+          ),
+        );
         continue;
       }
+
       if (node is dom.Element && node.localName?.toLowerCase() == 'img') {
         flushText();
         final src = _imageUrl(node);
-        if (src.isNotEmpty) children.add(_ImageBlock(src: src, alt: node.attributes['alt'], onTap: onLinkTap == null ? null : () => onLinkTap!(src)));
+        if (src.isNotEmpty) {
+          children.add(
+            _ImageBlock(
+              src: src,
+              alt: node.attributes['alt'],
+              onTap: onLinkTap == null ? null : () => onLinkTap!(src),
+            ),
+          );
+        }
         continue;
       }
-      _appendSpan(context, spans, node, DefaultTextStyle.of(context).style.copyWith(fontSize: 16, height: 1.62), scheme);
+
+      _appendSpan(
+        spans,
+        node,
+        DefaultTextStyle.of(context)
+            .style
+            .copyWith(fontSize: 16, height: 1.62),
+        scheme,
+      );
     }
+
     flushText();
-    return Column(crossAxisAlignment: CrossAxisAlignment.start, children: children);
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: children,
+    );
   }
 
-  void _appendSpan(BuildContext context, List<InlineSpan> spans, dom.Node node, TextStyle style, ColorScheme scheme) {
+  void _appendSpan(
+    List<InlineSpan> spans,
+    dom.Node node,
+    TextStyle style,
+    ColorScheme scheme,
+  ) {
     if (node is dom.Text) {
       _appendTextWithLinks(spans, _nodeText(node), style, scheme);
       return;
     }
     if (node is! dom.Element) return;
-    final e = node as dom.Element;
+
+    final e = node;
     final tag = e.localName?.toLowerCase() ?? '';
     if (tag == 'img') return;
 
     var next = style;
-    if (tag == 'strong' || tag == 'b') next = style.copyWith(fontWeight: FontWeight.w800);
-    if (tag == 'em' || tag == 'i') next = style.copyWith(fontStyle: FontStyle.italic);
-    if (tag == 'del' || tag == 's') next = style.copyWith(decoration: TextDecoration.lineThrough);
-    if (tag == 'code') next = style.copyWith(fontFamily: 'monospace', backgroundColor: scheme.surfaceContainerHighest);
+    if (tag == 'strong' || tag == 'b') {
+      next = style.copyWith(fontWeight: FontWeight.w800);
+    }
+    if (tag == 'em' || tag == 'i') {
+      next = style.copyWith(fontStyle: FontStyle.italic);
+    }
+    if (tag == 'del' || tag == 's') {
+      next = style.copyWith(decoration: TextDecoration.lineThrough);
+    }
+    if (tag == 'code') {
+      next = style.copyWith(
+        fontFamily: 'monospace',
+        backgroundColor: scheme.surfaceContainerHighest,
+      );
+    }
+
     if (tag == 'a') {
       final href = e.attributes['href']?.trim() ?? '';
       if (href.isEmpty) return;
       final uri = Uri.tryParse(href);
-      final valid = uri != null && (uri.scheme == 'http' || uri.scheme == 'https');
-      final recognizer = TapGestureRecognizer()..onTap = valid ? () => _openUrl(href) : null;
-      spans.add(TextSpan(text: e.text, style: style.copyWith(color: scheme.primary, decoration: TextDecoration.underline), recognizer: recognizer));
+      final valid = uri != null &&
+          (uri.scheme == 'http' || uri.scheme == 'https');
+      final recognizer = TapGestureRecognizer()
+        ..onTap = valid ? () => _openUrl(href) : null;
+      spans.add(
+        TextSpan(
+          text: e.text,
+          style: style.copyWith(
+            color: scheme.primary,
+            decoration: TextDecoration.underline,
+          ),
+          recognizer: recognizer,
+        ),
+      );
       return;
     }
+
     if (tag == 'br') {
       spans.add(const TextSpan(text: '\n'));
       return;
     }
-    for (final child in e.nodes) _appendSpan(context, spans, child, next, scheme);
+
+    for (final child in e.nodes) {
+      _appendSpan(spans, child, next, scheme);
+    }
   }
 
-  void _appendTextWithLinks(List<InlineSpan> spans, String text, TextStyle style, ColorScheme scheme) {
+  void _appendTextWithLinks(
+    List<InlineSpan> spans,
+    String text,
+    TextStyle style,
+    ColorScheme scheme,
+  ) {
     if (text.isEmpty) return;
+
     var cursor = 0;
     for (final match in _plainUrl.allMatches(text)) {
-      if (match.start > cursor) spans.add(TextSpan(text: text.substring(cursor, match.start), style: style));
-      var url = match.group(0)!;
+      if (match.start > cursor) {
+        spans.add(
+          TextSpan(
+            text: text.substring(cursor, match.start),
+            style: style,
+          ),
+        );
+      }
+
+      final url = match.group(0)!;
       var displayEnd = url.length;
-      while (displayEnd > 0 && _trailingPunctuation.contains(url[displayEnd - 1])) displayEnd--;
+      while (displayEnd > 0 &&
+          _trailingPunctuation.contains(url[displayEnd - 1])) {
+        displayEnd--;
+      }
+
       final cleanUrl = url.substring(0, displayEnd);
       final tail = url.substring(displayEnd);
       if (cleanUrl.isEmpty) {
         spans.add(TextSpan(text: url, style: style));
       } else {
-        final recognizer = TapGestureRecognizer()..onTap = () => _openUrl(cleanUrl);
-        spans.add(TextSpan(text: cleanUrl, style: style.copyWith(color: scheme.primary, decoration: TextDecoration.underline), recognizer: recognizer));
-        if (tail.isNotEmpty) spans.add(TextSpan(text: tail, style: style));
+        final recognizer = TapGestureRecognizer()
+          ..onTap = () => _openUrl(cleanUrl);
+        spans.add(
+          TextSpan(
+            text: cleanUrl,
+            style: style.copyWith(
+              color: scheme.primary,
+              decoration: TextDecoration.underline,
+            ),
+            recognizer: recognizer,
+          ),
+        );
+        if (tail.isNotEmpty) {
+          spans.add(TextSpan(text: tail, style: style));
+        }
       }
       cursor = match.end;
     }
-    if (cursor < text.length) spans.add(TextSpan(text: text.substring(cursor), style: style));
+
+    if (cursor < text.length) {
+      spans.add(TextSpan(text: text.substring(cursor), style: style));
+    }
   }
 
   Future<void> _openUrl(String href) async {
@@ -207,28 +396,46 @@ class _InlineContent extends StatelessWidget {
       onLinkTap?.call(href);
       return;
     }
+
     final uri = Uri.tryParse(href);
-    if (uri == null || (uri.scheme != 'http' && uri.scheme != 'https')) return;
+    if (uri == null || (uri.scheme != 'http' && uri.scheme != 'https')) {
+      return;
+    }
     await launchUrl(uri, mode: LaunchMode.externalApplication);
   }
 }
 
 String _imageUrl(dom.Element e) {
-  const candidates = ['comiis_loadimages', 'data-src', 'data-original', 'data-url', 'lazy-src', 'original', 'zoomfile', 'file', 'src'];
+  const candidates = [
+    'comiis_loadimages',
+    'data-src',
+    'data-original',
+    'data-url',
+    'lazy-src',
+    'original',
+    'zoomfile',
+    'file',
+    'src',
+  ];
+
   String normalize(String value, {bool forumPath = false}) {
     var v = value.trim();
     if (v.isEmpty || v.startsWith('data:')) return '';
-    if (v.contains(',')) v = v.split(',').first.trim().split(RegExp(r'\s+')).first;
+    if (v.contains(',')) {
+      v = v.split(',').first.trim().split(RegExp(r'\s+')).first;
+    }
     if (v.startsWith('//')) return 'https:$v';
     if (v.startsWith('http://') || v.startsWith('https://')) return v;
     return forumPath ? SiteConfig.resolve(v) : SiteConfig.resolveCdn(v);
   }
+
   for (final key in candidates) {
     final value = e.attributes[key];
     if (value == null || value.trim().isEmpty) continue;
     final url = normalize(value, forumPath: key == 'comiis_loadimages');
     if (url.isNotEmpty && !_looksLikePlaceholder(url)) return url;
   }
+
   final srcset = e.attributes['srcset'];
   if (srcset != null) {
     final url = normalize(srcset);
@@ -239,38 +446,135 @@ String _imageUrl(dom.Element e) {
 
 bool _looksLikePlaceholder(String url) {
   final value = url.toLowerCase();
-  return value.contains('none.gif') || value.contains('none.png') || value.contains('loading.gif') || value.contains('lazyload') || value.contains('placeholder') || value.endsWith('/spacer.gif');
+  return value.contains('none.gif') ||
+      value.contains('none.png') ||
+      value.contains('loading.gif') ||
+      value.contains('lazyload') ||
+      value.contains('placeholder') ||
+      value.endsWith('/spacer.gif');
 }
 
 bool _isAttachmentLink(String? href) {
   if (href == null || href.isEmpty) return false;
   final u = href.toLowerCase();
-  return u.contains('attachment.php') || u.contains('mod=attachment') || u.contains('aid=') || u.contains('noupdate=yes') || u.contains('/attachment/') || u.contains('/download/');
+  return u.contains('attachment.php') ||
+      u.contains('mod=attachment') ||
+      u.contains('aid=') ||
+      u.contains('noupdate=yes') ||
+      u.contains('/attachment/') ||
+      u.contains('/download/');
 }
 
 class _ImageBlock extends StatelessWidget {
   final String src;
   final String? alt;
   final VoidCallback? onTap;
+
   const _ImageBlock({required this.src, this.alt, this.onTap});
+
   @override
   Widget build(BuildContext context) {
     final cookie = AuthService.instance.authCookie;
-    final headers = <String, String>{'Accept': 'image/avif,image/webp,image/apng,image/svg+xml,image/*,*/*;q=0.8', 'Referer': SiteConfig.base};
-    if (cookie != null && cookie.isNotEmpty) headers['Cookie'] = cookie;
-    final image = ClipRRect(borderRadius: BorderRadius.circular(14), child: Image.network(src, width: double.infinity, fit: BoxFit.contain, headers: headers, errorBuilder: (_, __, ___) => Container(width: double.infinity, constraints: const BoxConstraints(minHeight: 48), padding: const EdgeInsets.all(14), color: Theme.of(context).colorScheme.surfaceContainerHighest, child: Text(alt?.isNotEmpty == true ? alt! : '图片加载失败\n$src')), loadingBuilder: (context, child, progress) => progress == null ? child : const Padding(padding: EdgeInsets.all(24), child: Center(child: CircularProgressIndicator(strokeWidth: 2)))));
-    return Padding(padding: const EdgeInsets.only(bottom: 14), child: onTap == null ? image : GestureDetector(onTap: onTap, child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [image, const SizedBox(height: 6), Row(mainAxisSize: MainAxisSize.min, children: [Icon(Icons.download_rounded, size: 15, color: Theme.of(context).colorScheme.primary), const SizedBox(width: 4), Text('点击查看大图', style: TextStyle(fontSize: 12.5, color: Theme.of(context).colorScheme.primary))])]));
+    final headers = <String, String>{
+      'Accept': 'image/avif,image/webp,image/apng,image/svg+xml,image/*,*/*;q=0.8',
+      'Referer': SiteConfig.base,
+    };
+    if (cookie != null && cookie.isNotEmpty) {
+      headers['Cookie'] = cookie;
+    }
+
+    final image = ClipRRect(
+      borderRadius: BorderRadius.circular(14),
+      child: Image.network(
+        src,
+        width: double.infinity,
+        fit: BoxFit.contain,
+        headers: headers,
+        errorBuilder: (_, __, ___) => Container(
+          width: double.infinity,
+          constraints: const BoxConstraints(minHeight: 48),
+          padding: const EdgeInsets.all(14),
+          color: Theme.of(context).colorScheme.surfaceContainerHighest,
+          child: Text(
+            alt?.isNotEmpty == true ? alt! : '图片加载失败\n$src',
+          ),
+        ),
+        loadingBuilder: (context, child, progress) {
+          if (progress == null) return child;
+          return const Padding(
+            padding: EdgeInsets.all(24),
+            child: Center(
+              child: CircularProgressIndicator(strokeWidth: 2),
+            ),
+          );
+        },
+      ),
+    );
+
+    if (onTap == null) {
+      return Padding(
+        padding: const EdgeInsets.only(bottom: 14),
+        child: image,
+      );
+    }
+
+    return Padding(
+      padding: const EdgeInsets.only(bottom: 14),
+      child: GestureDetector(
+        onTap: onTap,
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            image,
+            const SizedBox(height: 6),
+            Row(
+              mainAxisSize: MainAxisSize.min,
+              children: [
+                Icon(
+                  Icons.download_rounded,
+                  size: 15,
+                  color: Theme.of(context).colorScheme.primary,
+                ),
+                const SizedBox(width: 4),
+                Text(
+                  '点击查看大图',
+                  style: TextStyle(
+                    fontSize: 12.5,
+                    color: Theme.of(context).colorScheme.primary,
+                  ),
+                ),
+              ],
+            ),
+          ],
+        ),
+      ),
+    );
   }
 }
 
 class _Quote extends StatelessWidget {
   final List<dom.Node> children;
   final ValueChanged<String>? onLinkTap;
+
   const _Quote({required this.children, this.onLinkTap});
+
   @override
   Widget build(BuildContext context) {
     final c = Theme.of(context).colorScheme;
-    return Container(width: double.infinity, margin: const EdgeInsets.only(bottom: 13), padding: const EdgeInsets.fromLTRB(14, 11, 14, 2), decoration: BoxDecoration(color: c.primaryContainer.withValues(alpha: .34), borderRadius: const BorderRadius.only(topRight: Radius.circular(14), bottomRight: Radius.circular(14)), border: Border(left: BorderSide(color: c.primary, width: 3))), child: _NodeList(nodes: children, onLinkTap: onLinkTap));
+    return Container(
+      width: double.infinity,
+      margin: const EdgeInsets.only(bottom: 13),
+      padding: const EdgeInsets.fromLTRB(14, 11, 14, 2),
+      decoration: BoxDecoration(
+        color: c.primaryContainer.withValues(alpha: .34),
+        borderRadius: const BorderRadius.only(
+          topRight: Radius.circular(14),
+          bottomRight: Radius.circular(14),
+        ),
+        border: Border(left: BorderSide(color: c.primary, width: 3)),
+      ),
+      child: _NodeList(nodes: children, onLinkTap: onLinkTap),
+    );
   }
 }
 
@@ -278,11 +582,33 @@ class _ListBlock extends StatelessWidget {
   final dom.Element element;
   final bool ordered;
   final ValueChanged<String>? onLinkTap;
-  const _ListBlock({required this.element, required this.ordered, this.onLinkTap});
+
+  const _ListBlock({
+    required this.element,
+    required this.ordered,
+    this.onLinkTap,
+  });
+
   @override
   Widget build(BuildContext context) {
-    final items = element.children.where((e) => e.localName?.toLowerCase() == 'li').toList();
-    return Padding(padding: const EdgeInsets.only(bottom: 10), child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [for (var i = 0; i < items.length; i++) _ListItem(item: items[i], ordered: ordered, index: i, onLinkTap: onLinkTap)]));
+    final items = element.children
+        .where((e) => e.localName?.toLowerCase() == 'li')
+        .toList();
+    return Padding(
+      padding: const EdgeInsets.only(bottom: 10),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          for (var i = 0; i < items.length; i++)
+            _ListItem(
+              item: items[i],
+              ordered: ordered,
+              index: i,
+              onLinkTap: onLinkTap,
+            ),
+        ],
+      ),
+    );
   }
 }
 
@@ -291,41 +617,137 @@ class _ListItem extends StatelessWidget {
   final bool ordered;
   final int index;
   final ValueChanged<String>? onLinkTap;
-  const _ListItem({required this.item, required this.ordered, required this.index, this.onLinkTap});
+
+  const _ListItem({
+    required this.item,
+    required this.ordered,
+    required this.index,
+    this.onLinkTap,
+  });
+
   @override
   Widget build(BuildContext context) {
     final img = item.querySelector('img');
     if (img != null) {
       final src = _imageUrl(img);
-      if (src.isNotEmpty) return _ImageBlock(src: src, alt: img.attributes['alt'], onTap: onLinkTap == null ? null : () => onLinkTap!(src));
+      if (src.isNotEmpty) {
+        return _ImageBlock(
+          src: src,
+          alt: img.attributes['alt'],
+          onTap: onLinkTap == null ? null : () => onLinkTap!(src),
+        );
+      }
     }
-    return Row(crossAxisAlignment: CrossAxisAlignment.start, children: [SizedBox(width: 25, child: Text(ordered ? '${index + 1}.' : '•', style: const TextStyle(fontSize: 16, height: 1.62))), Expanded(child: _InlineContent(item.nodes, onLinkTap: onLinkTap))]);
+
+    return Row(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        SizedBox(
+          width: 25,
+          child: Text(
+            ordered ? '${index + 1}.' : '•',
+            style: const TextStyle(fontSize: 16, height: 1.62),
+          ),
+        ),
+        Expanded(
+          child: _InlineContent(item.nodes, onLinkTap: onLinkTap),
+        ),
+      ],
+    );
   }
 }
 
 class _CodeBlock extends StatelessWidget {
   final String text;
+
   const _CodeBlock({required this.text});
+
   @override
-  Widget build(BuildContext context) => Container(width: double.infinity, margin: const EdgeInsets.only(bottom: 13), padding: const EdgeInsets.all(14), decoration: BoxDecoration(color: Theme.of(context).colorScheme.surfaceContainerHighest, borderRadius: BorderRadius.circular(14)), child: SingleChildScrollView(scrollDirection: Axis.horizontal, child: SelectableText(text, style: const TextStyle(fontFamily: 'monospace', fontSize: 13.5, height: 1.55))));
+  Widget build(BuildContext context) {
+    return Container(
+      width: double.infinity,
+      margin: const EdgeInsets.only(bottom: 13),
+      padding: const EdgeInsets.all(14),
+      decoration: BoxDecoration(
+        color: Theme.of(context).colorScheme.surfaceContainerHighest,
+        borderRadius: BorderRadius.circular(14),
+      ),
+      child: SingleChildScrollView(
+        scrollDirection: Axis.horizontal,
+        child: SelectableText(
+          text,
+          style: const TextStyle(
+            fontFamily: 'monospace',
+            fontSize: 13.5,
+            height: 1.55,
+          ),
+        ),
+      ),
+    );
+  }
 }
 
 class _InlineCode extends StatelessWidget {
   final String text;
+
   const _InlineCode({required this.text});
+
   @override
-  Widget build(BuildContext context) => Container(padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 2), decoration: BoxDecoration(color: Theme.of(context).colorScheme.surfaceContainerHighest, borderRadius: BorderRadius.circular(6)), child: Text(text, style: const TextStyle(fontFamily: 'monospace', fontSize: 14)));
+  Widget build(BuildContext context) {
+    return Container(
+      padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 2),
+      decoration: BoxDecoration(
+        color: Theme.of(context).colorScheme.surfaceContainerHighest,
+        borderRadius: BorderRadius.circular(6),
+      ),
+      child: Text(
+        text,
+        style: const TextStyle(fontFamily: 'monospace', fontSize: 14),
+      ),
+    );
+  }
 }
 
 class _TableBlock extends StatelessWidget {
   final dom.Element element;
   final ValueChanged<String>? onLinkTap;
+
   const _TableBlock({required this.element, this.onLinkTap});
+
   @override
   Widget build(BuildContext context) {
     final rows = element.querySelectorAll('tr');
     if (rows.isEmpty) return const SizedBox.shrink();
-    return Padding(padding: const EdgeInsets.only(bottom: 13), child: SingleChildScrollView(scrollDirection: Axis.horizontal, child: Table(defaultColumnWidth: const IntrinsicColumnWidth(), border: TableBorder.all(color: Theme.of(context).colorScheme.outlineVariant), children: [for (final row in rows) TableRow(children: [for (final cell in row.children.where((e) => e.localName == 'td' || e.localName == 'th')) Padding(padding: const EdgeInsets.all(8), child: _InlineContent(cell.nodes, onLinkTap: onLinkTap))])]));
+
+    return Padding(
+      padding: const EdgeInsets.only(bottom: 13),
+      child: SingleChildScrollView(
+        scrollDirection: Axis.horizontal,
+        child: Table(
+          defaultColumnWidth: const IntrinsicColumnWidth(),
+          border: TableBorder.all(
+            color: Theme.of(context).colorScheme.outlineVariant,
+          ),
+          children: [
+            for (final row in rows)
+              TableRow(
+                children: [
+                  for (final cell in row.children.where(
+                    (e) => e.localName == 'td' || e.localName == 'th',
+                  ))
+                    Padding(
+                      padding: const EdgeInsets.all(8),
+                      child: _InlineContent(
+                        cell.nodes,
+                        onLinkTap: onLinkTap,
+                      ),
+                    ),
+                ],
+              ),
+          ],
+        ),
+      ),
+    );
   }
 }
 
@@ -333,22 +755,68 @@ class _AttachmentCard extends StatelessWidget {
   final String href;
   final String title;
   final VoidCallback? onTap;
-  const _AttachmentCard({required this.href, required this.title, this.onTap});
+
+  const _AttachmentCard({
+    required this.href,
+    required this.title,
+    this.onTap,
+  });
+
   Future<void> _copyLink(BuildContext context) async {
     await Clipboard.setData(ClipboardData(text: href));
     if (!context.mounted) return;
-    ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('附件下载链接已复制')));
+    ScaffoldMessenger.of(context).showSnackBar(
+      const SnackBar(content: Text('附件下载链接已复制')),
+    );
   }
+
   @override
   Widget build(BuildContext context) {
     final lower = href.toLowerCase();
     if (lower.contains('ycoo=all')) {
       final uri = Uri.tryParse(href);
       final tid = int.tryParse(uri?.queryParameters['tid'] ?? '') ?? 0;
-      if (tid > 0) return ForumAttachmentSection(tid: tid, cookie: AuthService.instance.authCookie, referer: SiteConfig.base);
+      if (tid > 0) {
+        return ForumAttachmentSection(
+          tid: tid,
+          cookie: AuthService.instance.authCookie,
+          referer: SiteConfig.base,
+        );
+      }
     }
+
     final c = Theme.of(context).colorScheme;
     final label = title.isNotEmpty ? title : '下载附件';
-    return Padding(padding: const EdgeInsets.only(bottom: 13), child: Material(color: c.secondaryContainer.withValues(alpha: .45), borderRadius: BorderRadius.circular(12), child: InkWell(borderRadius: BorderRadius.circular(12), onTap: onTap, onLongPress: () => _copyLink(context), child: Padding(padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 12), child: Row(children: [Icon(Icons.attach_file_rounded, color: c.primary, size: 24), const SizedBox(width: 12), Expanded(child: Text(label, maxLines: 2, overflow: TextOverflow.ellipsis, style: const TextStyle(fontSize: 14.5, height: 1.3))), const SizedBox(width: 8), Icon(Icons.download_rounded, color: c.primary, size: 20)]))));
+    return Padding(
+      padding: const EdgeInsets.only(bottom: 13),
+      child: Material(
+        color: c.secondaryContainer.withValues(alpha: .45),
+        borderRadius: BorderRadius.circular(12),
+        child: InkWell(
+          borderRadius: BorderRadius.circular(12),
+          onTap: onTap,
+          onLongPress: () => _copyLink(context),
+          child: Padding(
+            padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 12),
+            child: Row(
+              children: [
+                Icon(Icons.attach_file_rounded, color: c.primary, size: 24),
+                const SizedBox(width: 12),
+                Expanded(
+                  child: Text(
+                    label,
+                    maxLines: 2,
+                    overflow: TextOverflow.ellipsis,
+                    style: const TextStyle(fontSize: 14.5, height: 1.3),
+                  ),
+                ),
+                const SizedBox(width: 8),
+                Icon(Icons.download_rounded, color: c.primary, size: 20),
+              ],
+            ),
+          ),
+        ),
+      ),
+    );
   }
 }
