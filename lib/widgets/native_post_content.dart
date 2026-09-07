@@ -305,8 +305,9 @@ class _InlineContent extends StatelessWidget {
       final recognizer = TapGestureRecognizer()
         ..onTap = () async {
           if (href.isEmpty) return;
-          if (onLinkTap != null) {
-            onLinkTap!(href);
+          // 普通正文链接直接交给系统默认浏览器；图片/附件仍由帖子页回调处理。
+          if (_isAttachmentLink(href)) {
+            onLinkTap?.call(href);
             return;
           }
           final uri = Uri.tryParse(href);
