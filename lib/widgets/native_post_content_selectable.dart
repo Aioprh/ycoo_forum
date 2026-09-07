@@ -10,6 +10,7 @@ import '../services/site_config.dart';
 class NativePostContent extends StatelessWidget {
   final String html;
   final ValueChanged<String>? onLinkTap;
+
   const NativePostContent({super.key, required this.html, this.onLinkTap});
 
   @override
@@ -28,13 +29,26 @@ bool _hasRenderableNode(dom.Node node) {
   if (tag == 'br') return false;
   if (tag == 'ul' || tag == 'ol') return node.children.any(_hasRenderableListItem);
   if (tag == 'li') return _hasRenderableListItem(node);
+  if (tag == 'img') return _isRealInlineImage(node);
+  if (tag == 'a') {
+    if (node.querySelector('img') != null) {
+      final image = node.querySelector('img')!;
+      return _isRealInlineImage(image);
+    }
+  }
   return true;
 }
 
 bool _hasRenderableListItem(dom.Element item) {
   final text = _visibleListText(item);
   if (text.isNotEmpty) return true;
-  return item.querySelector('img,video,iframe,audio,table,pre') != null;
+  return item.querySelector('img,video,iframe,audio,table,pre')?.let(_isRenderableMedia) ?? false;
+}
+
+bool _isRenderableMedia(dom.Element e) {
+  final tag = (e.localName ?? '').toLowerCase();
+  if (tag != 'img') return true;
+  return _isRealInlineImage(e);
 }
 
 String _visibleListText(dom.Element element) => element.text
@@ -44,9 +58,73 @@ String _visibleListText(dom.Element element) => element.text
     .replaceAll(RegExp(r'[•●○◦▪▫‣⁃∙·・]'), '')
     .trim();
 
+bool _isRealInlineImage(dom.Element image) {
+  final src = _rawImageCandidate(image);
+  if (src.isEmpty) return false;
+  if (_isPlaceholderImageUrl(src)) return false;
+
+  final parent = image.parent;
+  if (parent is dom.Element && (parent.localName ?? '').toLowerCase() == 'a') {
+    final href = parent.attributes['href']?.trim() ?? '';
+    final hrefUri = Uri.tryParse(_normalizeImageCandidate(href, forumPath: false));
+    if (_isFileAttachmentUrl(hrefUri) && !_isImageEndpoint(hrefUri) && !_isImageFileName(hrefUri)) {
+      // Discuz/Comiis 非图片附件通常会在正文里放一个文件类型占位图，
+      // 真正的附件已经由 ForumAttachmentSection 独立展示，正文不要再显示占位图。
+      return false;
+    }
+  }
+  return true;
+}
+
+String _rawImageCandidate(dom.Element image) {
+  const keys = ['comiis_loadimages', 'data-src', 'data-original', 'data-url', 'lazy-src', 'original', 'zoomfile', 'file', 'src'];
+  for (final key in keys) {
+    final value = image.attributes[key]?.trim() ?? '';
+    if (value.isNotEmpty && !value.startsWith('data:')) return value;
+  }
+  return image.attributes['srcset']?.trim() ?? '';
+}
+
+String _normalizeImageCandidate(String value, {required bool forumPath}) {
+  var v = value.trim();
+  if (v.isEmpty || v.startsWith('data:')) return '';
+  if (v.contains(',')) v = v.split(',').first.trim().split(RegExp(r'\s+')).first;
+  if (v.startsWith('//')) return 'https:$v';
+  if (v.startsWith('http://') || v.startsWith('https://')) return v;
+  return forumPath ? SiteConfig.resolve(v) : SiteConfig.resolveCdn(v);
+}
+
+bool _isFileAttachmentUrl(Uri? uri) {
+  if (uri == null) return false;
+  final path = uri.path.toLowerCase();
+  final q = uri.queryParameters;
+  final mod = (q['mod'] ?? '').toLowerCase();
+  return path.endsWith('attachment.php') || path.contains('/attachment/') || mod == 'attachment' || q.containsKey('aid');
+}
+
+bool _isImageEndpoint(Uri? uri) {
+  if (uri == null) return false;
+  final q = uri.queryParameters;
+  final mod = (q['mod'] ?? '').toLowerCase();
+  final action = (q['action'] ?? '').toLowerCase();
+  return mod == 'image' || action == 'image';
+}
+
+bool _isImageFileName(Uri? uri) {
+  if (uri == null) return false;
+  final value = '${uri.path} ${uri.queryParameters['filename'] ?? ''} ${uri.queryParameters['_f'] ?? ''}'.toLowerCase();
+  return RegExp(r'\.(?:jpe?g|png|gif|webp|bmp|svg|heic|heif|avif)(?:$|[?#\s])').hasMatch(value);
+}
+
+bool _isPlaceholderImageUrl(String url) {
+  final v = url.toLowerCase();
+  return v.contains('none.gif') || v.contains('none.png') || v.contains('loading.gif') || v.contains('lazyload') || v.contains('placeholder') || v.endsWith('/spacer.gif') || v.contains('/filetype/') || v.contains('/common/filetype/') || v.contains('/icon_') || v.endsWith('question.png');
+}
+
 class _NodeList extends StatelessWidget {
   final List<dom.Node> nodes;
   final ValueChanged<String>? onLinkTap;
+
   const _NodeList({required this.nodes, this.onLinkTap});
 
   @override
@@ -60,6 +138,7 @@ class _NodeList extends StatelessWidget {
 class _NodeWidget extends StatelessWidget {
   final dom.Node node;
   final ValueChanged<String>? onLinkTap;
+
   const _NodeWidget({required this.node, this.onLinkTap});
 
   @override
@@ -103,7 +182,10 @@ class _NodeWidget extends StatelessWidget {
         return _imageWidget(context, e, e);
       case 'a':
         final images = e.querySelectorAll('img');
-        if (images.isNotEmpty) return _imageWidget(context, images.first, e);
+        if (images.isNotEmpty) {
+          if (!_isRealInlineImage(images.first)) return const SizedBox.shrink();
+          return _imageWidget(context, images.first, e);
+        }
         return _TextBlock(nodes: e.nodes, onLinkTap: onLinkTap);
       case 'hr':
         return const Padding(padding: EdgeInsets.symmetric(vertical: 10), child: Divider(height: 1));
@@ -118,6 +200,7 @@ class _NodeWidget extends StatelessWidget {
   }
 
   Widget _imageWidget(BuildContext context, dom.Element image, dom.Element link) {
+    if (!_isRealInlineImage(image)) return const SizedBox.shrink();
     final src = _imageUrl(image);
     if (src.isEmpty) return const SizedBox.shrink();
     final href = link.localName?.toLowerCase() == 'a' ? link.attributes['href']?.trim() : null;
@@ -143,6 +226,7 @@ class _TextBlock extends StatelessWidget {
   final ValueChanged<String>? onLinkTap;
   final TextStyle? style;
   final EdgeInsets padding;
+
   const _TextBlock({required this.nodes, this.onLinkTap, this.style, this.padding = const EdgeInsets.only(bottom: 9)});
 
   @override
@@ -273,6 +357,7 @@ class _ListItemBlock extends StatelessWidget {
 class _CodeBlock extends StatelessWidget {
   final String text;
   const _CodeBlock({required this.text});
+
   @override
   Widget build(BuildContext context) {
     final c = Theme.of(context).colorScheme;
@@ -305,7 +390,7 @@ class _ImageBlock extends StatelessWidget {
         width: double.infinity,
         fit: BoxFit.contain,
         headers: headers,
-        errorBuilder: (_, __, ___) => alt?.trim().isNotEmpty == true ? Padding(padding: const EdgeInsets.only(bottom: 10), child: Text(alt!)) : const SizedBox.shrink(),
+        errorBuilder: (_, __, ___) => const SizedBox.shrink(),
         loadingBuilder: (context, child, progress) => progress == null ? child : const Padding(padding: EdgeInsets.all(18), child: Center(child: CircularProgressIndicator(strokeWidth: 2))),
       ),
     );
@@ -341,7 +426,7 @@ String _imageUrl(dom.Element element) {
 
 bool _placeholder(String url) {
   final v = url.toLowerCase();
-  return v.contains('none.gif') || v.contains('none.png') || v.contains('loading.gif') || v.contains('lazyload') || v.contains('placeholder') || v.endsWith('/spacer.gif');
+  return v.contains('none.gif') || v.contains('none.png') || v.contains('loading.gif') || v.contains('lazyload') || v.contains('placeholder') || v.endsWith('/spacer.gif') || v.contains('/filetype/') || v.contains('/common/filetype/') || v.contains('/icon_') || v.endsWith('question.png');
 }
 
 bool _isAttachmentLink(String href) {
