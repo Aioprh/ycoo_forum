@@ -298,9 +298,79 @@ class _CreateThreadPageState extends State<CreateThreadPage> {
   }
 
   Future<void> _chooseEmoji() async {
-    const emojis = ['😀','😂','😎','👍','❤️','🎉','😅','🤔','🔥','👏','🥳','🙏','✨','💡','🌟','🤣','😭','😇'];
-    final emoji = await showModalBottomSheet<String>(context: context, showDragHandle: true, builder: (context) => SafeArea(child: Padding(padding: const EdgeInsets.all(16), child: Wrap(alignment: WrapAlignment.center, spacing: 4, runSpacing: 4, children: emojis.map((e) => IconButton(iconSize: 30, onPressed: () => Navigator.pop(context, e), icon: Text(e))).toList()))));
-    if (emoji != null) _insert(emoji);
+    const categories = <String, List<String>>{
+      '常用': ['😀','😃','😄','😁','😆','😅','😂','🤣','😊','😇','🙂','🙃','😉','😌','😍','🥰','😘','😗','😙','😚','😋','😛','😝','😜','🤪','🤨','🧐','🤓','😎','🤩','🥳','😏','😒','😞','😔','😟','😕','🙁','☹️','😣','😖','😫','😩','🥺','😢','😭','😤','😠','😡','🤬','🤯','😳','🥵','🥶','😱','😨','😰','😥','😓','🤗','🤔','🫡','🤭','🤫','🤥','😶','😐','😑','😬','🙄','😯','😦','😧','😮','😲','🥱','😴','🤤','😪','😵','🤐','🥴','🤢','🤮','🤧','😷','🤒','🤕'],
+      '手势': ['👍','👎','👌','✌️','🤞','🤟','🤘','🤙','👈','👉','👆','👇','☝️','✋','🤚','🖐️','🖖','👋','🤏','💪','👏','🙌','👐','🤲','🙏','✍️','🤝','💅','👊','✊','🤌','🫶','🫰','👀','👂','👃','🧠','❤️','🩷','🧡','💛','💚','💙','💜','🖤','🤍','🤎','💔','❣️','💕','💞','💓','💗','💖','💘','💝','💟'],
+      '动物': ['🐶','🐱','🐭','🐹','🐰','🦊','🐻','🐼','🐨','🐯','🦁','🐮','🐷','🐸','🐵','🙈','🙉','🙊','🐒','🐔','🐧','🐦','🐤','🐣','🐥','🦆','🦅','🦉','🦇','🐺','🐗','🐴','🦄','🐝','🐛','🦋','🐌','🐞','🐜','🪲','🪳','🕷️','🦂','🐢','🐍','🦎','🦖','🦕','🐙','🦑','🦀','🦞','🐠','🐟','🐡','🦈','🐳','🐋','🐊','🐘','🦏','🦛','🐪','🐫','🦒','🦘','🦬','🐄','🐎','🐖','🐏','🐑','🦙','🐐','🦌','🐕','🐈','🐓','🦃','🦜','🦢','🦩','🦚'],
+      '食物': ['🍏','🍎','🍐','🍊','🍋','🍌','🍉','🍇','🍓','🫐','🍈','🍒','🍑','🥭','🍍','🥥','🥝','🍅','🥑','🍆','🥔','🥕','🌽','🌶️','🫑','🥒','🥬','🥦','🧄','🧅','🍞','🥐','🥖','🥨','🧀','🥚','🍳','🧈','🥞','🧇','🥓','🥩','🍗','🍔','🍟','🍕','🌭','🥪','🌮','🌯','🥗','🍿','🍣','🍱','🍜','🍲','🍛','🍚','🍙','🍘','🍥','🥟','🍤','🍦','🍧','🍨','🍩','🍪','🎂','🍰','🧁','🍫','🍬','🍭','☕','🍵','🧋','🥤','🧃','🫖'],
+      '活动': ['⚽','🏀','🏈','⚾','🥎','🎾','🏐','🏉','🥏','🎱','🏓','🏸','🏒','🏑','🥍','🏏','🥊','🥋','⛳','🏹','🎣','🤿','🎽','🛹','🛷','⛸️','🎿','🏆','🥇','🥈','🥉','🏅','🎖️','🎮','🕹️','🎲','🧩','♟️','🎯','🎳','🎹','🎸','🎺','🎻','🥁','🎤','🎧','🎼','🎨','🎬','🎭','🎪','🎟️','🎫','🎉','🎊','🎈','🎂','🎁','🎀'],
+      '旅行': ['🚗','🚕','🚙','🚌','🚎','🏎️','🚓','🚑','🚒','🚐','🛻','🚚','🚛','🚜','🛵','🏍️','🚲','🛴','🚨','🚔','🚍','🚘','🚖','✈️','🛫','🛬','🛩️','🚀','🛸','🚁','⛵','🚤','🛥️','🚢','🚂','🚆','🚇','🚉','🏠','🏡','🏢','🏥','🏦','🏨','🏪','🏫','🏰','🗼','🗽','⛪','🕌','🛕','⛩️','🌋','🏝️','🏖️','🏜️','🏕️','⛺','🗺️','🧭'],
+      '物品': ['⌚','📱','💻','⌨️','🖥️','🖨️','🖱️','💽','💾','📷','📸','📹','🎥','📺','📻','🎙️','☎️','📞','📟','🔋','🔌','💡','🔦','🕯️','📖','📚','📒','📓','📕','📗','📘','📙','📔','📎','🖇️','📌','📍','✂️','📝','✏️','🖊️','🖋️','📐','📏','🔒','🔓','🔑','🔨','🛠️','⚙️','🔧','🧰','🧲','🧪','🔭','🔬','💊','💰','💎','🎁','🎈','🛍️'],
+      '符号': ['❤️','🩷','🧡','💛','💚','💙','💜','🖤','🤍','🤎','💯','🔥','✨','⭐','🌟','💫','⚡','☀️','🌈','☁️','❄️','☔','☕','✅','❌','⭕','❗','❓','‼️','⁉️','⚠️','🚫','💤','💥','💦','💨','💬','💭','🗨️','✔️','➕','➖','✖️','➗','♻️','©️','®️','™️','🔴','🟠','🟡','🟢','🔵','🟣','⚫','⚪','🟤','🔶','🔷','🔺','🔻','⬆️','⬇️','⬅️','➡️','↩️','↪️','🔄','🔃'],
+      '人物': ['👶','🧒','👦','👧','🧑','👱','👨','👩','🧔','👵','👴','🧓','👮','👷','💂','🕵️','👩‍⚕️','👨‍⚕️','👩‍🏫','👨‍🏫','👩‍💻','👨‍💻','👩‍🎨','👨‍🎨','👩‍🚀','👨‍🚀','👩‍🍳','👨‍🍳','🧑‍🔧','🧑‍🚒','🧑‍✈️','🧑‍⚖️','🧙','🧚','🧛','🧜','🧝','🧞','🧟','🦸','🦹','🥷','🤴','👸','🤵','👰','🎅','🤰','🙇','💁','🙅','🙆','🙋','🧏','🤦','🤷','🙎','💇','💆','🧘','🏃','🚶','🧗','🏋️','🤸','⛹️','🤾','🏌️','🏄','🏊','🤽','🚣','🧖','🛀','🧑‍🤝‍🧑','👫','👬','👭'],
+    };
+
+    var selectedCategory = categories.keys.first;
+    final selected = await showModalBottomSheet<String>(
+      context: context,
+      isScrollControlled: true,
+      showDragHandle: true,
+      builder: (sheetContext) => StatefulBuilder(
+        builder: (context, setSheetState) {
+          final scheme = Theme.of(context).colorScheme;
+          final items = categories[selectedCategory]!;
+          return SafeArea(
+            child: SizedBox(
+              height: MediaQuery.sizeOf(context).height * .68,
+              child: Padding(
+                padding: const EdgeInsets.fromLTRB(14, 2, 14, 12),
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    const Padding(padding: EdgeInsets.symmetric(horizontal: 4), child: Text('Emoji', style: TextStyle(fontSize: 21, fontWeight: FontWeight.w900))),
+                    const SizedBox(height: 2),
+                    Padding(padding: const EdgeInsets.symmetric(horizontal: 4), child: Text('Unicode 原生表情 · 点击即可插入正文', style: TextStyle(fontSize: 12, color: scheme.onSurfaceVariant))),
+                    const SizedBox(height: 10),
+                    SizedBox(
+                      height: 42,
+                      child: ListView.separated(
+                        scrollDirection: Axis.horizontal,
+                        itemCount: categories.length,
+                        separatorBuilder: (_, __) => const SizedBox(width: 6),
+                        itemBuilder: (_, index) {
+                          final name = categories.keys.elementAt(index);
+                          return ChoiceChip(
+                            label: Text(name),
+                            selected: name == selectedCategory,
+                            onSelected: (_) => setSheetState(() => selectedCategory = name),
+                          );
+                        },
+                      ),
+                    ),
+                    const SizedBox(height: 6),
+                    Expanded(
+                      child: GridView.builder(
+                        padding: const EdgeInsets.symmetric(vertical: 8),
+                        gridDelegate: const SliverGridDelegateWithFixedCrossAxisCount(crossAxisCount: 7, mainAxisSpacing: 4, crossAxisSpacing: 4),
+                        itemCount: items.length,
+                        itemBuilder: (_, index) => InkWell(
+                          borderRadius: BorderRadius.circular(12),
+                          onTap: () => Navigator.pop(sheetContext, items[index]),
+                          child: Center(child: Text(items[index], style: const TextStyle(fontSize: 28))),
+                        ),
+                      ),
+                    ),
+                    const SizedBox(height: 4),
+                    Container(width: double.infinity, padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 9), decoration: BoxDecoration(color: scheme.surfaceContainerHighest.withOpacity(.55), borderRadius: BorderRadius.circular(14)), child: Text('${categories.length} 个分类 · ${categories.values.fold<int>(0, (sum, list) => sum + list.length)} 个常用 Unicode Emoji', textAlign: TextAlign.center, style: TextStyle(fontSize: 11, color: scheme.onSurfaceVariant))),
+                  ],
+                ),
+              ),
+            ),
+          );
+        },
+      ),
+    );
+    if (selected != null) _insert(selected);
   }
 
   Widget _tool(IconData icon, String label, VoidCallback action) => IconButton(tooltip: label, onPressed: _submitting || _uploading ? null : action, style: IconButton.styleFrom(minimumSize: const Size(40, 40)), icon: Icon(icon, size: 20));
@@ -425,7 +495,7 @@ class _CreateThreadPageState extends State<CreateThreadPage> {
         const Divider(height: 1), const SizedBox(height: 12),
         DropdownButtonFormField<int>(value: _price, decoration: const InputDecoration(labelText: '主题售价', prefixIcon: Icon(Icons.monetization_on_outlined)), items: const [0, 1, 2, 3, 5, 10, 20].map((v) => DropdownMenuItem(value: v, child: Text(v == 0 ? '免费' : '$v 星币'))).toList(), onChanged: _reward > 0 ? null : (v) => setState(() { _price = v ?? 0; _dirty = true; })),
         const SizedBox(height: 10),
-        DropdownButtonFormField<int>(value: _reward, decoration: InputDecoration(labelText: '悬赏奖励', helperText: _reward > 0 ? '将奖励给最佳回复' : null, prefixIcon: const Icon(Icons.card_giftcard)), items: const [0, 2, 3, 5, 8, 10, 20, 30, 50].map((v) => DropdownMenuItem(value: v, child: Text(v == 0 ? '不悬赏' : '悬赏 $v 星币'))).toList(), onChanged: _price > 0 ? null : (v) => setState(() { _reward = v ?? 0; _dirty = true; })),
+        DropdownButtonFormField<int>(value: _reward, decoration: InputDecoration(labelText: '悬赏奖励', helperText: _reward > 0 ? '将奖励给最佳回复' : null, prefixIcon: const Icon(Icons.card_gift_card)), items: const [0, 2, 3, 5, 8, 10, 20, 30, 50].map((v) => DropdownMenuItem(value: v, child: Text(v == 0 ? '不悬赏' : '悬赏 $v 星币'))).toList(), onChanged: _price > 0 ? null : (v) => setState(() { _reward = v ?? 0; _dirty = true; })),
         const SizedBox(height: 10),
         DropdownButtonFormField<int>(value: _readperm, decoration: const InputDecoration(labelText: '阅读权限', prefixIcon: Icon(Icons.lock_outline_rounded)), items: const [0, 10, 20, 30, 50, 80, 100, 255].map((v) => DropdownMenuItem(value: v, child: Text(v == 0 ? '不限' : '$v 级'))).toList(), onChanged: (v) => setState(() { _readperm = v ?? 0; _dirty = true; })),
         const SizedBox(height: 10), _scheduleCard(context), const SizedBox(height: 8), const Divider(height: 1),
