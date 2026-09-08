@@ -232,7 +232,7 @@ class _CreateThreadPageState extends State<CreateThreadPage> {
         focusedBorder: OutlineInputBorder(borderRadius: BorderRadius.circular(16), borderSide: BorderSide(color: scheme.primary)),
       );
 
-  Widget _advanced(ColorScheme scheme) => Card(
+  Widget _buildAdvanced(ColorScheme scheme) => Card(
         margin: EdgeInsets.zero,
         child: ExpansionTile(
           leading: const Icon(Icons.tune_rounded),
@@ -338,7 +338,7 @@ class _CreateThreadPageState extends State<CreateThreadPage> {
                   validator: (value) => value == null || value.trim().isEmpty ? '请输入正文' : null,
                 ),
                 const SizedBox(height: 12),
-                _advanced(scheme),
+                _buildAdvanced(scheme),
                 if (_error != null) ...[
                   const SizedBox(height: 12),
                   Container(
