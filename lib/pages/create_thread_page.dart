@@ -8,7 +8,6 @@ import '../models/board.dart';
 import '../services/api_service.dart';
 import '../services/attachment_upload_service.dart';
 import '../services/auth_service.dart';
-import '../services/official_smiley_service.dart';
 import '../services/post_draft_service.dart';
 import '../services/site_fallback_service.dart';
 import '../services/thread_publish_service.dart';
@@ -299,42 +298,9 @@ class _CreateThreadPageState extends State<CreateThreadPage> {
   }
 
   Future<void> _chooseEmoji() async {
-    final fid = _fid;
-    if (fid == null) {
-      if (mounted) setState(() => _error = '请先选择发布版块');
-      return;
-    }
-    final future = OfficialSmileyService.instance.fetch(fid);
-    final smileys = await showModalBottomSheet<List<OfficialSmiley>>(
-      context: context,
-      isScrollControlled: true,
-      showDragHandle: true,
-      builder: (context) => SafeArea(
-        child: FutureBuilder<List<OfficialSmiley>>(
-          future: future,
-          builder: (context, snapshot) {
-            if (snapshot.connectionState != ConnectionState.done) {
-              return const SizedBox(height: 180, child: Center(child: CircularProgressIndicator()));
-            }
-            if (snapshot.hasError || snapshot.data == null || snapshot.data!.isEmpty) {
-              return const SizedBox(height: 180, child: Center(child: Text('暂时无法加载论坛官方表情')));
-            }
-            final items = snapshot.data!;
-            return SizedBox(
-              height: MediaQuery.sizeOf(context).height * .55,
-              child: Column(children: [
-                const Padding(padding: EdgeInsets.fromLTRB(18, 4, 18, 10), child: Row(children: [Icon(Icons.emoji_emotions_outlined), SizedBox(width: 10), Text('论坛官方表情', style: TextStyle(fontSize: 17, fontWeight: FontWeight.w800))])),
-                Expanded(child: GridView.builder(padding: const EdgeInsets.fromLTRB(14, 4, 14, 18), gridDelegate: const SliverGridDelegateWithFixedCrossAxisCount(crossAxisCount: 6, mainAxisSpacing: 8, crossAxisSpacing: 8, childAspectRatio: 1), itemCount: items.length, itemBuilder: (context, index) {
-                  final item = items[index];
-                  return InkWell(borderRadius: BorderRadius.circular(12), onTap: () => Navigator.pop(context, [item]), child: Padding(padding: const EdgeInsets.all(5), child: Image.network(item.imageUrl, fit: BoxFit.contain, errorBuilder: (_, __, ___) => const Icon(Icons.broken_image_outlined))));
-                })),
-              ]),
-            );
-          },
-        ),
-      ),
-    );
-    if (smileys != null && smileys.isNotEmpty) _insert(smileys.first.code);
+    const emojis = ['😀','😂','😎','👍','❤️','🎉','😅','🤔','🔥','👏','🥳','🙏','✨','💡','🌟','🤣','😭','😇'];
+    final emoji = await showModalBottomSheet<String>(context: context, showDragHandle: true, builder: (context) => SafeArea(child: Padding(padding: const EdgeInsets.all(16), child: Wrap(alignment: WrapAlignment.center, spacing: 4, runSpacing: 4, children: emojis.map((e) => IconButton(tooltip: e, iconSize: 30, onPressed: () => Navigator.pop(context, e), icon: Text(e))).toList()))));
+    if (emoji != null) _insert(emoji);
   }
 
   Widget _tool(IconData icon, String label, VoidCallback action) => IconButton(tooltip: label, onPressed: _submitting || _uploading ? null : action, style: IconButton.styleFrom(minimumSize: const Size(40, 40)), icon: Icon(icon, size: 20));
@@ -356,7 +322,7 @@ class _CreateThreadPageState extends State<CreateThreadPage> {
           const SizedBox(width: 6),
           _tool(Icons.format_bold_rounded, '粗体', () => _insert('[b]{text}[/b]')),
           _tool(Icons.format_italic_rounded, '斜体', () => _insert('[i]{text}[/i]')),
-          _tool(Icons.emoji_emotions_outlined, '论坛表情', _chooseEmoji),
+          _tool(Icons.emoji_emotions_outlined, '表情', _chooseEmoji),
           _tool(Icons.palette_outlined, '颜色', _chooseColor),
           _tool(Icons.image_outlined, '图片 URL', _insertImage),
           _tool(Icons.video_library_outlined, '视频', _insertVideo),
@@ -544,7 +510,7 @@ class _CreateThreadPageState extends State<CreateThreadPage> {
           const Divider(height: 1), const SizedBox(height: 12),
           DropdownButtonFormField<int>(value: _price, decoration: const InputDecoration(labelText: '主题售价', prefixIcon: Icon(Icons.monetization_on_outlined)), items: const [0, 1, 2, 3, 5, 10, 20].map((v) => DropdownMenuItem(value: v, child: Text(v == 0 ? '免费' : '$v 星币'))).toList(), onChanged: _reward > 0 ? null : (v) => setState(() { _price = v ?? 0; _dirty = true; })),
           const SizedBox(height: 10),
-          DropdownButtonFormField<int>(value: _reward, decoration: InputDecoration(labelText: '悬赏奖励', helperText: _reward > 0 ? '将奖励给最佳回复' : null, prefixIcon: const Icon(Icons.card_giftcard_rounded)), items: const [0, 2, 3, 5, 8, 10, 20, 30, 50].map((v) => DropdownMenuItem(value: v, child: Text(v == 0 ? '不悬赏' : '悬赏 $v 星币'))).toList(), onChanged: _price > 0 ? null : (v) => setState(() { _reward = v ?? 0; _dirty = true; })),
+          DropdownButtonFormField<int>(value: _reward, decoration: InputDecoration(labelText: '悬赏奖励', helperText: _reward > 0 ? '将奖励给最佳回复' : null, prefixIcon: const Icon(Icons.card_gift_card_rounded)), items: const [0, 2, 3, 5, 8, 10, 20, 30, 50].map((v) => DropdownMenuItem(value: v, child: Text(v == 0 ? '不悬赏' : '悬赏 $v 星币'))).toList(), onChanged: _price > 0 ? null : (v) => setState(() { _reward = v ?? 0; _dirty = true; })),
           const SizedBox(height: 10),
           DropdownButtonFormField<int>(value: _readperm, decoration: const InputDecoration(labelText: '阅读权限', prefixIcon: Icon(Icons.lock_outline_rounded)), items: const [0, 10, 20, 30, 50, 80, 100, 255].map((v) => DropdownMenuItem(value: v, child: Text(v == 0 ? '不限' : '$v 级'))).toList(), onChanged: (v) => setState(() { _readperm = v ?? 0; _dirty = true; })),
           const SizedBox(height: 10), _scheduleCard(context), const SizedBox(height: 8), const Divider(height: 1),
