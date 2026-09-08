@@ -74,7 +74,6 @@ jobs:
           EOF
           chmod 600 android/keystore/ycoo_forum_release.jks android/key.properties
           keytool -list -keystore android/keystore/ycoo_forum_release.jks -storepass "$KEYSTORE_PASSWORD" -alias "$KEY_ALIAS" >/dev/null
-          echo "固定 Release 签名验证通过"
 
       - name: 自动计算构建版本号
         id: bump
@@ -83,7 +82,7 @@ jobs:
           current=$(grep -E '^version:' pubspec.yaml | awk '{print $2}')
           name_part="${current%%+*}"
           build_part="${current##*+}"
-          if [ -z "$name_part" ]; then name_part="1.0.0"; fi
+          [ -n "$name_part" ] || name_part="1.0.0"
           if [ "$build_part" = "$current" ] || ! [[ "$build_part" =~ ^[0-9]+$ ]]; then build_part="0"; fi
           IFS='.' read -r major minor patch <<< "$name_part"
           major=${major:-1}; minor=${minor:-0}; patch=${patch:-0}
@@ -92,7 +91,6 @@ jobs:
           if [ "$minor" -ge 10 ]; then minor=0; major=$((major + 1)); fi
           new_version="${major}.${minor}.${patch}+${new_build}"
           sed -i "s/^version:.*/version: ${new_version}/" pubspec.yaml
-          echo "新版本号: ${new_version}"
           echo "new_version=${new_version}" >> "$GITHUB_OUTPUT"
 
       - name: 提交并推送新版本号
@@ -100,7 +98,6 @@ jobs:
         env:
           GITHUB_TOKEN: ${{ github.token }}
         run: |
-          set -o pipefail
           git config user.name "github-actions[bot]"
           git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
           REMOTE="https://x-access-token:${GITHUB_TOKEN}@github.com/${GITHUB_REPOSITORY}"
@@ -122,6 +119,7 @@ jobs:
         shell: python
         run: |
           from pathlib import Path
+          import subprocess
 
           def replace_once(path, old, new):
               p = Path(path)
@@ -138,53 +136,42 @@ jobs:
 
           changed = False
 
-          # create_group_thread_page.dart：error Container 后多余一个右括号
-          changed |= replace_once(
-              'lib/pages/create_group_thread_page.dart',
+          changed |= replace_once('lib/pages/create_group_thread_page.dart',
               "Expanded(child: Text(_error!, style: TextStyle(color: scheme.onErrorContainer)))])),\n            ],",
-              "Expanded(child: Text(_error!, style: TextStyle(color: scheme.onErrorContainer)))]),\n            ],",
-          )
+              "Expanded(child: Text(_error!, style: TextStyle(color: scheme.onErrorContainer)))]),\n            ],")
 
-          # upload_album_page.dart：图片 Wrap/Container 后多余一个右括号
-          changed |= replace_once(
-              'lib/pages/upload_album_page.dart',
+          changed |= replace_once('lib/pages/upload_album_page.dart',
               "                    ]),\n                  ),\n                ),\n            if (_busy) ...[",
-              "                    ]),\n                  ),\n            if (_busy) ...[",
-          )
+              "                    ]),\n                  ),\n            if (_busy) ...[")
 
-          # write_blog_page.dart：编辑器 Container 后多余一个右括号
-          changed |= replace_once(
-              'lib/pages/write_blog_page.dart',
+          changed |= replace_once('lib/pages/upload_album_page.dart',
+              "Expanded(child: Text(_error!, style: TextStyle(color: scheme.onErrorContainer)))]),\n            ],",
+              "Expanded(child: Text(_error!, style: TextStyle(color: scheme.onErrorContainer)))])),\n            ],")
+
+          changed |= replace_once('lib/pages/write_blog_page.dart',
               "                ]),\n              ),\n            ),\n              if (_error != null) ...[",
-              "                ]),\n              ),\n              if (_error != null) ...[",
-          )
+              "                ]),\n              ),\n              if (_error != null) ...[")
 
-          # create_thread_page.dart：运行时 _reward 不能出现在 const InputDecoration 中
-          changed |= replace_once(
-              'lib/pages/create_thread_page.dart',
+          changed |= replace_once('lib/pages/write_blog_page.dart',
+              "Expanded(child: Text(_error!, style: TextStyle(color: scheme.onErrorContainer)))]),\n              ],",
+              "Expanded(child: Text(_error!, style: TextStyle(color: scheme.onErrorContainer)))])),\n              ],")
+
+          changed |= replace_once('lib/pages/write_doing_page.dart',
+              "Expanded(child: Text(_error!, style: TextStyle(color: scheme.onErrorContainer)))]),\n            ],",
+              "Expanded(child: Text(_error!, style: TextStyle(color: scheme.onErrorContainer)))])),\n            ],")
+
+          changed |= replace_once('lib/pages/create_thread_page.dart',
               "DropdownButtonFormField<int>(value: _reward, isExpanded: true, decoration: const InputDecoration(labelText: '悬赏奖励', helperText: _reward > 0 ? '将奖励给最佳回复' : null, prefixIcon: Icon(Icons.card_gift_card_rounded)),",
-              "DropdownButtonFormField<int>(value: _reward, isExpanded: true, decoration: InputDecoration(labelText: '悬赏奖励', helperText: _reward > 0 ? '将奖励给最佳回复' : null, prefixIcon: const Icon(Icons.card_gift_card_rounded)),",
-          )
+              "DropdownButtonFormField<int>(value: _reward, isExpanded: true, decoration: InputDecoration(labelText: '悬赏奖励', helperText: _reward > 0 ? '将奖励给最佳回复' : null, prefixIcon: const Icon(Icons.card_gift_card_rounded)),")
 
-          # group_service.dart：不存在 _clean 方法
-          changed |= replace_once(
-              'lib/services/group_service.dart',
+          changed |= replace_once('lib/services/group_service.dart',
               "        final name = _clean(a.text);",
-              "        final name = a.text.trim();",
-          )
-
-          # write_doing_page.dart：build 中尾部缺少一个右括号
-          changed |= replace_once(
-              'lib/pages/write_doing_page.dart',
-              "            ],\n          ],\n        ),\n      ),\n    );",
-              "            ],\n          ],\n        ),\n      ),\n    );",
-          )
+              "        final name = a.text.trim();")
 
           if changed:
-              import subprocess
               subprocess.run(['git', 'config', 'user.name', 'github-actions[bot]'], check=True)
               subprocess.run(['git', 'config', 'user.email', '41898282+github-actions[bot]@users.noreply.github.com'], check=True)
-              subprocess.run(['git', 'add', 'lib/pages/create_group_thread_page.dart', 'lib/pages/upload_album_page.dart', 'lib/pages/write_blog_page.dart', 'lib/pages/create_thread_page.dart', 'lib/services/group_service.dart', 'lib/pages/write_doing_page.dart'], check=True)
+              subprocess.run(['git', 'add', 'lib/pages/create_group_thread_page.dart', 'lib/pages/upload_album_page.dart', 'lib/pages/write_blog_page.dart', 'lib/pages/write_doing_page.dart', 'lib/pages/create_thread_page.dart', 'lib/services/group_service.dart'], check=True)
               subprocess.run(['git', 'commit', '-m', 'fix: repair remaining Dart syntax errors'], check=True)
               subprocess.run(['git', 'push', 'origin', 'HEAD:main'], check=True)
 
@@ -201,7 +188,6 @@ jobs:
         shell: bash
         run: |
           for apk in build/app/outputs/flutter-apk/app-*-release.apk; do
-            echo "验证: $apk"
             apksigner verify --verbose --print-certs "$apk" | grep -E 'Signer #1 certificate (DN|SHA-256)' || true
           done
 
