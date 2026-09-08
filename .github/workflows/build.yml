@@ -119,60 +119,59 @@ jobs:
         shell: python
         run: |
           from pathlib import Path
+          import re
           import subprocess
 
-          def replace_once(path, old, new):
+          changed = []
+
+          def edit(path, transform):
               p = Path(path)
               text = p.read_text(encoding='utf-8')
-              count = text.count(old)
-              if count == 0:
+              new = transform(text)
+              if new != text:
+                  p.write_text(new, encoding='utf-8')
+                  changed.append(path)
+                  print(f'{path}: 已修复')
+              else:
                   print(f'{path}: 已修复或无需修改')
-                  return False
-              if count != 1:
-                  raise SystemExit(f'{path}: 目标片段出现 {count} 次，拒绝盲改')
-              p.write_text(text.replace(old, new), encoding='utf-8')
-              print(f'{path}: 已修复')
-              return True
 
-          changed = False
+          # 这些文件此前的 JSX/Flutter widget 层级少/多了一个右括号，直接按
+          # 锚点修复，避免对相似代码做全局替换。
+          edit('lib/pages/create_group_thread_page.dart', lambda s: s.replace(
+              "Expanded(child: Text(_error!, style: TextStyle(color: scheme.onErrorContainer)))]),\n            ],",
+              "Expanded(child: Text(_error!, style: TextStyle(color: scheme.onErrorContainer)))])),\n            ],", 1))
 
-          changed |= replace_once('lib/pages/create_group_thread_page.dart',
-              "Expanded(child: Text(_error!, style: TextStyle(color: scheme.onErrorContainer)))])),\n            ],",
-              "Expanded(child: Text(_error!, style: TextStyle(color: scheme.onErrorContainer)))]),\n            ],")
-
-          changed |= replace_once('lib/pages/upload_album_page.dart',
+          edit('lib/pages/upload_album_page.dart', lambda s: s.replace(
               "                    ]),\n                  ),\n                ),\n            if (_busy) ...[",
-              "                    ]),\n                  ),\n            if (_busy) ...[")
-
-          changed |= replace_once('lib/pages/upload_album_page.dart',
+              "                    ]),\n                  ),\n            if (_busy) ...[", 1).replace(
               "Expanded(child: Text(_error!, style: TextStyle(color: scheme.onErrorContainer)))]),\n            ],",
-              "Expanded(child: Text(_error!, style: TextStyle(color: scheme.onErrorContainer)))])),\n            ],")
+              "Expanded(child: Text(_error!, style: TextStyle(color: scheme.onErrorContainer)))])),\n            ],", 1))
 
-          changed |= replace_once('lib/pages/write_blog_page.dart',
+          edit('lib/pages/write_blog_page.dart', lambda s: s.replace(
               "                ]),\n              ),\n            ),\n              if (_error != null) ...[",
-              "                ]),\n              ),\n              if (_error != null) ...[")
-
-          changed |= replace_once('lib/pages/write_blog_page.dart',
+              "                ]),\n              ),\n              if (_error != null) ...[", 1).replace(
               "Expanded(child: Text(_error!, style: TextStyle(color: scheme.onErrorContainer)))]),\n              ],",
-              "Expanded(child: Text(_error!, style: TextStyle(color: scheme.onErrorContainer)))])),\n              ],")
+              "Expanded(child: Text(_error!, style: TextStyle(color: scheme.onErrorContainer)))])),\n              ],", 1))
 
-          changed |= replace_once('lib/pages/write_doing_page.dart',
+          edit('lib/pages/write_doing_page.dart', lambda s: s.replace(
               "Expanded(child: Text(_error!, style: TextStyle(color: scheme.onErrorContainer)))]),\n            ],",
-              "Expanded(child: Text(_error!, style: TextStyle(color: scheme.onErrorContainer)))])),\n            ],")
+              "Expanded(child: Text(_error!, style: TextStyle(color: scheme.onErrorContainer)))])),\n            ],", 1))
 
-          changed |= replace_once('lib/pages/create_thread_page.dart',
-              "DropdownButtonFormField<int>(value: _reward, isExpanded: true, decoration: const InputDecoration(labelText: '悬赏奖励', helperText: _reward > 0 ? '将奖励给最佳回复' : null, prefixIcon: Icon(Icons.card_gift_card_rounded)),",
-              "DropdownButtonFormField<int>(value: _reward, isExpanded: true, decoration: InputDecoration(labelText: '悬赏奖励', helperText: _reward > 0 ? '将奖励给最佳回复' : null, prefixIcon: const Icon(Icons.card_gift_card_rounded)),")
+          def fix_reward(s):
+              old = "decoration: const InputDecoration(labelText: '悬赏奖励', helperText: _reward > 0 ? '将奖励给最佳回复' : null, prefixIcon: Icon(Icons.card_gift_card_rounded))"
+              new = "decoration: InputDecoration(labelText: '悬赏奖励', helperText: _reward > 0 ? '将奖励给最佳回复' : null, prefixIcon: const Icon(Icons.card_gift_card_rounded))"
+              return s.replace(old, new, 1)
+          edit('lib/pages/create_thread_page.dart', fix_reward)
 
-          changed |= replace_once('lib/services/group_service.dart',
+          edit('lib/services/group_service.dart', lambda s: s.replace(
               "        final name = _clean(a.text);",
-              "        final name = a.text.trim();")
+              "        final name = a.text.trim();", 1))
 
           if changed:
               subprocess.run(['git', 'config', 'user.name', 'github-actions[bot]'], check=True)
               subprocess.run(['git', 'config', 'user.email', '41898282+github-actions[bot]@users.noreply.github.com'], check=True)
-              subprocess.run(['git', 'add', 'lib/pages/create_group_thread_page.dart', 'lib/pages/upload_album_page.dart', 'lib/pages/write_blog_page.dart', 'lib/pages/write_doing_page.dart', 'lib/pages/create_thread_page.dart', 'lib/services/group_service.dart'], check=True)
-              subprocess.run(['git', 'commit', '-m', 'fix: repair remaining Dart syntax errors'], check=True)
+              subprocess.run(['git', 'add', *changed], check=True)
+              subprocess.run(['git', 'commit', '-m', 'fix: repair Dart source syntax before analyze'], check=True)
               subprocess.run(['git', 'push', 'origin', 'HEAD:main'], check=True)
 
       - name: 静态分析
