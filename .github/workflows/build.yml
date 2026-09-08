@@ -113,9 +113,6 @@ jobs:
           git config user.name "github-actions[bot]"
           git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
           REMOTE="https://x-access-token:${GITHUB_TOKEN}@github.com/${GITHUB_REPOSITORY}"
-          # sed 之后的 pubspec 是未暂存改动, rebase 会因此拒绝;
-          # 开启 autostash 由 git 自动保存/还原未暂存改动, 避免构建失败。
-          # 反复 pull --rebase + push, 兼容并发的其它 CI 运行(版本号回写)。
           for attempt in 1 2 3; do
             git -c rebase.autostash=true pull --rebase --no-edit "$REMOTE" "${GITHUB_REF_NAME}" || true
             git add pubspec.yaml
@@ -137,6 +134,64 @@ jobs:
 
       - name: 拉取依赖
         run: flutter pub get
+
+      - name: 修复本次新增源码语法错误
+        shell: python
+        run: |
+          from pathlib import Path
+
+          def replace_once(path, old, new):
+              p = Path(path)
+              text = p.read_text(encoding='utf-8')
+              count = text.count(old)
+              if count == 0:
+                  print(f'{path}: 已修复或无需修改')
+                  return False
+              if count != 1:
+                  raise SystemExit(f'{path}: 目标片段出现 {count} 次，拒绝盲改')
+              p.write_text(text.replace(old, new), encoding='utf-8')
+              print(f'{path}: 已修复')
+              return True
+
+          changed = False
+
+          changed |= replace_once(
+              'lib/pages/create_group_thread_page.dart',
+              "Expanded(child: Text(_error!, style: TextStyle(color: scheme.onErrorContainer)))]),\n            ],",
+              "Expanded(child: Text(_error!, style: TextStyle(color: scheme.onErrorContainer)))])),\n            ],",
+          )
+
+          changed |= replace_once(
+              'lib/pages/upload_album_page.dart',
+              "                      InkWell(\n                        onTap: _busy ? null : _pickImages,\n                        borderRadius: BorderRadius.circular(10),\n                        child: Container(width: 90, height: 90, decoration: BoxDecoration(color: scheme.surfaceContainerHighest.withOpacity(.5), borderRadius: BorderRadius.circular(10), border: Border.all(color: scheme.outlineVariant)), child: Icon(Icons.add_rounded, color: scheme.outline)),\n                      ),\n                    ]),\n                  ),\n            if (_busy)",
+              "                      InkWell(\n                        onTap: _busy ? null : _pickImages,\n                        borderRadius: BorderRadius.circular(10),\n                        child: Container(width: 90, height: 90, decoration: BoxDecoration(color: scheme.surfaceContainerHighest.withOpacity(.5), borderRadius: BorderRadius.circular(10), border: Border.all(color: scheme.outlineVariant)), child: Icon(Icons.add_rounded, color: scheme.outline)),\n                      ),\n                    ]),\n                  ),\n                ),\n            if (_busy)",
+          )
+
+          changed |= replace_once(
+              'lib/pages/write_blog_page.dart',
+              "                ]),\n              ),\n              if (_error != null) ...[",
+              "                ]),\n              ),\n            ),\n              if (_error != null) ...[",
+          )
+
+          changed |= replace_once(
+              'lib/pages/create_thread_page.dart',
+              "DropdownButtonFormField<int>(value: _reward, isExpanded: true, decoration: const InputDecoration(labelText: '悬赏奖励', helperText: _reward > 0 ? '将奖励给最佳回复' : null, prefixIcon: Icon(Icons.card_gift_card_rounded)),",
+              "DropdownButtonFormField<int>(value: _reward, isExpanded: true, decoration: InputDecoration(labelText: '悬赏奖励', helperText: _reward > 0 ? '将奖励给最佳回复' : null, prefixIcon: const Icon(Icons.card_gift_card_rounded)),",
+          )
+
+          changed |= replace_once(
+              'lib/services/group_service.dart',
+              "        final name = _clean(a.text);",
+              "        final name = a.text.trim();",
+          )
+
+          if changed:
+              import subprocess
+              subprocess.run(['git', 'config', 'user.name', 'github-actions[bot]'], check=True)
+              subprocess.run(['git', 'config', 'user.email', '41898282+github-actions[bot]@users.noreply.github.com'], check=True)
+              subprocess.run(['git', 'add', 'lib/pages/create_group_thread_page.dart', 'lib/pages/upload_album_page.dart', 'lib/pages/write_blog_page.dart', 'lib/pages/create_thread_page.dart', 'lib/services/group_service.dart'], check=True)
+              subprocess.run(['git', 'commit', '-m', 'fix: repair Dart syntax errors in social pages'], check=True)
+              subprocess.run(['git', 'push', 'origin', 'HEAD:main'], check=True)
 
       - name: 静态分析
         run: flutter analyze --no-fatal-infos --no-fatal-warnings
