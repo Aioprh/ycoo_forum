@@ -203,6 +203,7 @@ class _UploadAlbumPageState extends State<UploadAlbumPage> {
                       ),
                     ]),
                   ),
+                ),
             if (_busy) ...[
               const SizedBox(height: 14),
               const LinearProgressIndicator(minHeight: 3),

@@ -49,7 +49,7 @@ class GroupService {
         if (!lower.contains('mod=forumdisplay') && !lower.contains('mod=viewthread') && !RegExp(r'[\?&]fid=\d+', caseSensitive: false).hasMatch(href)) continue;
         final fid = int.tryParse(RegExp(r'(?:fid=|%26fid%3D|[\?&]fid=)\s*(\d+)', caseSensitive: false).firstMatch(href)?.group(1) ?? '') ?? 0;
         final gid = int.tryParse(RegExp(r'(?:gid=|%26gid%3D|[\?&]gid=)\s*(\d+)', caseSensitive: false).firstMatch(href)?.group(1) ?? '') ?? 0;
-        final name = _clean(a.text);
+        final name = a.text.trim();
         if (fid <= 0 || name.isEmpty || name.contains('更多') || name.length > 40 || !seen.add(fid)) continue;
         result.add(CircleGroup(groupId: gid, fid: fid, name: name));
         if (result.length >= 100) break;
