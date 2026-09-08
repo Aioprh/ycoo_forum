@@ -299,7 +299,7 @@ class _CreateThreadPageState extends State<CreateThreadPage> {
 
   Future<void> _chooseEmoji() async {
     const emojis = ['😀','😂','😎','👍','❤️','🎉','😅','🤔','🔥','👏','🥳','🙏','✨','💡','🌟','🤣','😭','😇'];
-    final emoji = await showModalBottomSheet<String>(context: context, showDragHandle: true, builder: (context) => SafeArea(child: Padding(padding: const EdgeInsets.all(16), child: Wrap(alignment: WrapAlignment.center, spacing: 4, runSpacing: 4, children: emojis.map((e) => IconButton(tooltip: e, iconSize: 30, onPressed: () => Navigator.pop(context, e), icon: Text(e))).toList()))));
+    final emoji = await showModalBottomSheet<String>(context: context, showDragHandle: true, builder: (context) => SafeArea(child: Padding(padding: const EdgeInsets.all(16), child: Wrap(alignment: WrapAlignment.center, spacing: 4, runSpacing: 4, children: emojis.map((e) => IconButton(iconSize: 30, onPressed: () => Navigator.pop(context, e), icon: Text(e))).toList()))));
     if (emoji != null) _insert(emoji);
   }
 
@@ -322,7 +322,6 @@ class _CreateThreadPageState extends State<CreateThreadPage> {
           const SizedBox(width: 6),
           _tool(Icons.format_bold_rounded, '粗体', () => _insert('[b]{text}[/b]')),
           _tool(Icons.format_italic_rounded, '斜体', () => _insert('[i]{text}[/i]')),
-          _tool(Icons.emoji_emotions_outlined, '表情', _chooseEmoji),
           _tool(Icons.palette_outlined, '颜色', _chooseColor),
           _tool(Icons.image_outlined, '图片 URL', _insertImage),
           _tool(Icons.video_library_outlined, '视频', _insertVideo),
@@ -331,6 +330,7 @@ class _CreateThreadPageState extends State<CreateThreadPage> {
           _tool(Icons.alternate_email_rounded, '@好友', _insertMention),
           _tool(Icons.format_quote_rounded, '引用', () => _insert('[quote]{text}[/quote]')),
           _tool(Icons.code_rounded, '代码', () => _insert('[code]{text}[/code]')),
+          _tool(Icons.emoji_emotions_outlined, '表情', _chooseEmoji),
           const SizedBox(width: 6),
         ])),
         Container(height: 1, color: scheme.outlineVariant.withOpacity(.45)),
@@ -346,85 +346,28 @@ class _CreateThreadPageState extends State<CreateThreadPage> {
     final image = _isImage(a);
     return GestureDetector(
       onTap: _submitting || _uploading ? null : () => _insertAttachment(a),
-      child: Container(
-        key: ValueKey(a.aid),
-        width: 116,
-        margin: const EdgeInsets.only(right: 10),
-        decoration: BoxDecoration(color: scheme.surfaceContainerHighest.withOpacity(.45), borderRadius: BorderRadius.circular(18), border: Border.all(color: scheme.outlineVariant.withOpacity(.55))),
-        clipBehavior: Clip.antiAlias,
-        child: Stack(children: [
-          SizedBox(height: 126, width: 116, child: image ? Image.file(File(a.localPath!), fit: BoxFit.cover, errorBuilder: (_, __, ___) => _filePreview(scheme)) : _filePreview(scheme)),
-          Positioned(right: 5, top: 5, child: Material(color: scheme.scrim.withOpacity(.58), shape: const CircleBorder(), child: InkWell(onTap: _submitting || _uploading ? null : () => _removeAttachment(a.aid), child: const Padding(padding: EdgeInsets.all(4), child: Icon(Icons.close_rounded, color: Colors.white, size: 17))))),
-          Positioned(left: 7, right: 7, bottom: 7, child: Container(padding: const EdgeInsets.symmetric(horizontal: 7, vertical: 5), decoration: BoxDecoration(color: scheme.scrim.withOpacity(.62), borderRadius: BorderRadius.circular(9)), child: Text(a.name, maxLines: 1, overflow: TextOverflow.ellipsis, style: const TextStyle(color: Colors.white, fontSize: 10, fontWeight: FontWeight.w600)))),
-        ]),
-      ),
+      child: Container(key: ValueKey(a.aid), width: 116, margin: const EdgeInsets.only(right: 10), decoration: BoxDecoration(color: scheme.surfaceContainerHighest.withOpacity(.45), borderRadius: BorderRadius.circular(18), border: Border.all(color: scheme.outlineVariant.withOpacity(.55))), clipBehavior: Clip.antiAlias, child: Stack(children: [
+        SizedBox(height: 126, width: 116, child: image ? Image.file(File(a.localPath!), fit: BoxFit.cover, errorBuilder: (_, __, ___) => _filePreview(scheme)) : _filePreview(scheme)),
+        Positioned(right: 5, top: 5, child: Material(color: scheme.scrim.withOpacity(.58), shape: const CircleBorder(), child: InkWell(onTap: _submitting || _uploading ? null : () => _removeAttachment(a.aid), child: const Padding(padding: EdgeInsets.all(4), child: Icon(Icons.close_rounded, color: Colors.white, size: 17))))),
+        Positioned(left: 7, right: 7, bottom: 7, child: Container(padding: const EdgeInsets.symmetric(horizontal: 7, vertical: 5), decoration: BoxDecoration(color: scheme.scrim.withOpacity(.62), borderRadius: BorderRadius.circular(9)), child: Text(a.name, maxLines: 1, overflow: TextOverflow.ellipsis, style: const TextStyle(color: Colors.white, fontSize: 10, fontWeight: FontWeight.w600)))),
+      ])),
     );
   }
 
   Widget _attachmentCard(BuildContext context) {
     final scheme = Theme.of(context).colorScheme;
-    return Container(
-      decoration: BoxDecoration(color: scheme.surface, borderRadius: BorderRadius.circular(22), border: Border.all(color: scheme.outlineVariant.withOpacity(.65))),
-      padding: const EdgeInsets.fromLTRB(16, 14, 16, 12),
-      child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
-        Row(children: [
-          Container(width: 34, height: 34, decoration: BoxDecoration(color: scheme.secondaryContainer, borderRadius: BorderRadius.circular(10)), child: Icon(Icons.photo_library_outlined, size: 19, color: scheme.onSecondaryContainer)),
-          const SizedBox(width: 10),
-          const Expanded(child: Text('图片与附件', style: TextStyle(fontSize: 16, fontWeight: FontWeight.w800))),
-          PopupMenuButton<String>(
-            enabled: !_submitting && !_uploading,
-            tooltip: '添加',
-            icon: const Icon(Icons.add_circle_outline_rounded),
-            onSelected: (value) => value == 'image' ? _pickAttachments(imagesOnly: true) : _pickAttachments(),
-            itemBuilder: (_) => const [
-              PopupMenuItem(value: 'image', child: ListTile(leading: Icon(Icons.photo_library_outlined), title: Text('从图库选择'), contentPadding: EdgeInsets.zero)),
-              PopupMenuItem(value: 'file', child: ListTile(leading: Icon(Icons.attach_file_rounded), title: Text('选择文件'), contentPadding: EdgeInsets.zero)),
-            ],
-          ),
-        ]),
-        const SizedBox(height: 5),
-        const Text('点按缩略图插入正文 · 长按拖动可调整顺序 · 单个文件最大 10 MB', style: TextStyle(fontSize: 12)),
-        if (_uploading) ...[
-          const SizedBox(height: 12),
-          const LinearProgressIndicator(minHeight: 3),
-          const SizedBox(height: 6),
-          Text(_uploadStatus, maxLines: 1, overflow: TextOverflow.ellipsis, style: const TextStyle(fontSize: 11)),
-        ],
-        if (_attachments.isNotEmpty) ...[
-          const SizedBox(height: 12),
-          SizedBox(height: 126, child: ReorderableListView.builder(scrollDirection: Axis.horizontal, buildDefaultDragHandles: false, itemCount: _attachments.length, onReorder: _reorderAttachment, itemBuilder: (context, index) => ReorderableDragStartListener(index: index, enabled: !_uploading && !_submitting, child: _attachmentTile(context, _attachments[index])))),
-        ] else if (!_uploading) ...[
-          const SizedBox(height: 12),
-          InkWell(
-            onTap: _submitting ? null : () => _pickAttachments(imagesOnly: true),
-            borderRadius: BorderRadius.circular(17),
-            child: Container(
-              width: double.infinity,
-              padding: const EdgeInsets.symmetric(vertical: 18),
-              decoration: BoxDecoration(color: scheme.surfaceContainerHighest.withOpacity(.35), borderRadius: BorderRadius.circular(17), border: Border.all(color: scheme.outlineVariant)),
-              child: Column(children: [Icon(Icons.add_photo_alternate_outlined, size: 28, color: scheme.primary), const SizedBox(height: 7), const Text('添加图片', style: TextStyle(fontWeight: FontWeight.w700)), const SizedBox(height: 3), Text('点击从图库选择图片', style: TextStyle(fontSize: 11, color: scheme.onSurfaceVariant))]),
-            ),
-          ),
-        ],
-      ]),
-    );
+    return Container(decoration: BoxDecoration(color: scheme.surface, borderRadius: BorderRadius.circular(22), border: Border.all(color: scheme.outlineVariant.withOpacity(.65))), padding: const EdgeInsets.fromLTRB(16, 14, 16, 12), child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
+      Row(children: [Container(width: 34, height: 34, decoration: BoxDecoration(color: scheme.secondaryContainer, borderRadius: BorderRadius.circular(10)), child: Icon(Icons.photo_library_outlined, size: 19, color: scheme.onSecondaryContainer)), const SizedBox(width: 10), const Expanded(child: Text('图片与附件', style: TextStyle(fontSize: 16, fontWeight: FontWeight.w800))), PopupMenuButton<String>(enabled: !_submitting && !_uploading, tooltip: '添加', icon: const Icon(Icons.add_circle_outline_rounded), onSelected: (value) => value == 'image' ? _pickAttachments(imagesOnly: true) : _pickAttachments(), itemBuilder: (_) => const [PopupMenuItem(value: 'image', child: ListTile(leading: Icon(Icons.photo_library_outlined), title: Text('从图库选择'), contentPadding: EdgeInsets.zero)), PopupMenuItem(value: 'file', child: ListTile(leading: Icon(Icons.attach_file_rounded), title: Text('选择文件'), contentPadding: EdgeInsets.zero))])]),
+      const SizedBox(height: 5),
+      const Text('点按缩略图插入正文 · 长按拖动可调整顺序 · 单个文件最大 10 MB', style: TextStyle(fontSize: 12)),
+      if (_uploading) ...[const SizedBox(height: 12), const LinearProgressIndicator(minHeight: 3), const SizedBox(height: 6), Text(_uploadStatus, maxLines: 1, overflow: TextOverflow.ellipsis, style: const TextStyle(fontSize: 11))],
+      if (_attachments.isNotEmpty) ...[const SizedBox(height: 12), SizedBox(height: 126, child: ReorderableListView.builder(scrollDirection: Axis.horizontal, buildDefaultDragHandles: false, itemCount: _attachments.length, onReorder: _reorderAttachment, itemBuilder: (context, index) => ReorderableDragStartListener(index: index, enabled: !_uploading && !_submitting, child: _attachmentTile(context, _attachments[index]))))] else if (!_uploading) ...[const SizedBox(height: 12), InkWell(onTap: _submitting ? null : () => _pickAttachments(imagesOnly: true), borderRadius: BorderRadius.circular(17), child: Container(width: double.infinity, padding: const EdgeInsets.symmetric(vertical: 18), decoration: BoxDecoration(color: scheme.surfaceContainerHighest.withOpacity(.35), borderRadius: BorderRadius.circular(17), border: Border.all(color: scheme.outlineVariant)), child: Column(children: [Icon(Icons.add_photo_alternate_outlined, size: 28, color: scheme.primary), const SizedBox(height: 7), const Text('添加图片', style: TextStyle(fontWeight: FontWeight.w700)), const SizedBox(height: 3), Text('点击从图库选择图片', style: TextStyle(fontSize: 11, color: scheme.onSurfaceVariant))])))],
+    ]));
   }
 
-  String _scheduleLabel() {
-    final value = _scheduledAt;
-    if (value == null) return '立即发布';
-    final local = value.toLocal();
-    return '${local.year}-${local.month.toString().padLeft(2, '0')}-${local.day.toString().padLeft(2, '0')} ${local.hour.toString().padLeft(2, '0')}:${local.minute.toString().padLeft(2, '0')} 发布';
-  }
+  String _scheduleLabel() { final value = _scheduledAt; if (value == null) return '立即发布'; final local = value.toLocal(); return '${local.year}-${local.month.toString().padLeft(2, '0')}-${local.day.toString().padLeft(2, '0')} ${local.hour.toString().padLeft(2, '0')}:${local.minute.toString().padLeft(2, '0')} 发布'; }
 
-  String _scheduleRelativeLabel(DateTime value) {
-    final minutes = value.difference(DateTime.now()).inMinutes;
-    if (minutes < 60) return '约 $minutes 分钟后发布';
-    final hours = minutes ~/ 60;
-    final remain = minutes % 60;
-    if (hours < 24) return remain == 0 ? '约 $hours 小时后发布' : '约 $hours 小时 $remain 分钟后发布';
-    return '约 ${hours ~/ 24} 天后发布';
-  }
+  String _scheduleRelativeLabel(DateTime value) { final minutes = value.difference(DateTime.now()).inMinutes; if (minutes < 60) return '约 $minutes 分钟后发布'; final hours = minutes ~/ 60; final remain = minutes % 60; if (hours < 24) return remain == 0 ? '约 $hours 小时后发布' : '约 $hours 小时 $remain 分钟后发布'; return '约 ${hours ~/ 24} 天后发布'; }
 
   Future<DateTime?> _pickCustomSchedule(DateTime initial) async {
     final now = DateTime.now();
@@ -440,38 +383,24 @@ class _CreateThreadPageState extends State<CreateThreadPage> {
   Future<void> _chooseSchedule() async {
     final now = DateTime.now();
     final current = _scheduledAt != null && _scheduledAt!.isAfter(now) ? _scheduledAt!.toLocal() : now.add(const Duration(minutes: 10));
-    final selected = await showModalBottomSheet<DateTime>(
-      context: context,
-      isScrollControlled: true,
-      showDragHandle: true,
-      builder: (sheetContext) {
-        var minutes = current.difference(now).inMinutes.clamp(5, 180).toDouble();
-        DateTime custom = current;
-        var customMode = false;
-        return StatefulBuilder(builder: (context, setSheetState) {
-          final scheme = Theme.of(context).colorScheme;
-          final preview = customMode ? custom : now.add(Duration(minutes: minutes.round()));
-          return SafeArea(child: Padding(padding: const EdgeInsets.fromLTRB(18, 4, 18, 18), child: Column(mainAxisSize: MainAxisSize.min, crossAxisAlignment: CrossAxisAlignment.start, children: [
-            const Text('定时发布', style: TextStyle(fontSize: 21, fontWeight: FontWeight.w900)),
-            const SizedBox(height: 4),
-            Text('选择发布时间，设置后会自动保存到草稿。', style: TextStyle(fontSize: 12, color: scheme.onSurfaceVariant)),
-            const SizedBox(height: 14),
-            Row(children: [Expanded(child: ChoiceChip(label: const Text('按时长定时'), selected: !customMode, onSelected: (_) => setSheetState(() => customMode = false))), const SizedBox(width: 8), Expanded(child: ChoiceChip(label: const Text('指定时间'), selected: customMode, onSelected: (_) => setSheetState(() => customMode = true)))]),
-            const SizedBox(height: 14),
-            if (!customMode) ...[
-              Center(child: Text('${minutes.round()} 分钟', style: TextStyle(fontSize: 30, fontWeight: FontWeight.w900, color: scheme.primary))),
-              Center(child: Text(_scheduleRelativeLabel(preview), style: TextStyle(fontSize: 12, color: scheme.onSurfaceVariant))),
-              Slider(value: minutes, min: 5, max: 180, divisions: 35, label: '${minutes.round()} 分钟', onChanged: (value) => setSheetState(() => minutes = value)),
-              Row(children: [for (final value in const [10, 30, 60, 120]) Expanded(child: Padding(padding: const EdgeInsets.symmetric(horizontal: 3), child: OutlinedButton(onPressed: () => setSheetState(() => minutes = value.toDouble()), child: Text(value >= 60 ? '${value ~/ 60} 小时' : '$value 分钟'))))]),
-            ] else ...[
-              Container(width: double.infinity, padding: const EdgeInsets.all(14), decoration: BoxDecoration(color: scheme.primaryContainer.withOpacity(.55), borderRadius: BorderRadius.circular(17)), child: Row(children: [Icon(Icons.event_available_rounded, color: scheme.primary), const SizedBox(width: 10), Expanded(child: Text(_scheduleLabelFor(custom), style: const TextStyle(fontWeight: FontWeight.w800))), IconButton(onPressed: () async { final picked = await _pickCustomSchedule(custom); if (picked != null) setSheetState(() => custom = picked); }, icon: const Icon(Icons.edit_calendar_rounded))])),
-            ],
-            const SizedBox(height: 16),
-            Row(children: [if (_scheduledAt != null) ...[Expanded(child: OutlinedButton(onPressed: () => Navigator.pop(sheetContext, DateTime.fromMillisecondsSinceEpoch(0)), child: const Text('取消定时'))), const SizedBox(width: 10)], Expanded(flex: 2, child: FilledButton.icon(onPressed: () => Navigator.pop(sheetContext, preview), icon: const Icon(Icons.schedule_send_rounded), label: const Text('确认定时')))]),
-          ])));
-        });
-      },
-    );
+    final selected = await showModalBottomSheet<DateTime>(context: context, isScrollControlled: true, showDragHandle: true, builder: (sheetContext) {
+      var minutes = current.difference(now).inMinutes.clamp(5, 180).toDouble();
+      DateTime custom = current;
+      var customMode = false;
+      return StatefulBuilder(builder: (context, setSheetState) {
+        final scheme = Theme.of(context).colorScheme;
+        final preview = customMode ? custom : now.add(Duration(minutes: minutes.round()));
+        return SafeArea(child: Padding(padding: const EdgeInsets.fromLTRB(18, 4, 18, 18), child: Column(mainAxisSize: MainAxisSize.min, crossAxisAlignment: CrossAxisAlignment.start, children: [
+          const Text('定时发布', style: TextStyle(fontSize: 21, fontWeight: FontWeight.w900)),
+          const SizedBox(height: 4), Text('选择发布时间，设置后会自动保存到草稿。', style: TextStyle(fontSize: 12)), const SizedBox(height: 14),
+          Row(children: [Expanded(child: ChoiceChip(label: const Text('按时长定时'), selected: !customMode, onSelected: (_) => setSheetState(() => customMode = false))), const SizedBox(width: 8), Expanded(child: ChoiceChip(label: const Text('指定时间'), selected: customMode, onSelected: (_) => setSheetState(() => customMode = true)))]),
+          const SizedBox(height: 14),
+          if (!customMode) ...[Center(child: Text('${minutes.round()} 分钟', style: TextStyle(fontSize: 30, fontWeight: FontWeight.w900, color: scheme.primary))), Center(child: Text(_scheduleRelativeLabel(preview), style: TextStyle(fontSize: 12, color: scheme.onSurfaceVariant))), Slider(value: minutes, min: 5, max: 180, divisions: 35, label: '${minutes.round()} 分钟', onChanged: (value) => setSheetState(() => minutes = value)), Row(children: [for (final value in const [10, 30, 60, 120]) Expanded(child: Padding(padding: const EdgeInsets.symmetric(horizontal: 3), child: OutlinedButton(onPressed: () => setSheetState(() => minutes = value.toDouble()), child: Text(value >= 60 ? '${value ~/ 60} 小时' : '$value 分钟'))))])]
+          else ...[Container(width: double.infinity, padding: const EdgeInsets.all(14), decoration: BoxDecoration(color: scheme.primaryContainer.withOpacity(.55), borderRadius: BorderRadius.circular(17)), child: Row(children: [Icon(Icons.event_available_rounded, color: scheme.primary), const SizedBox(width: 10), Expanded(child: Text(_scheduleLabelFor(custom), style: const TextStyle(fontWeight: FontWeight.w800))), IconButton(onPressed: () async { final picked = await _pickCustomSchedule(custom); if (picked != null) setSheetState(() => custom = picked); }, icon: const Icon(Icons.edit_calendar_rounded))]))],
+          const SizedBox(height: 16), Row(children: [if (_scheduledAt != null) ...[Expanded(child: OutlinedButton(onPressed: () => Navigator.pop(sheetContext, DateTime.fromMillisecondsSinceEpoch(0)), child: const Text('取消定时'))), const SizedBox(width: 10)], Expanded(flex: 2, child: FilledButton.icon(onPressed: () => Navigator.pop(sheetContext, preview), icon: const Icon(Icons.schedule_send_rounded), label: const Text('确认定时')))])
+        ])));
+      });
+    });
     if (!mounted || selected == null) return;
     if (selected.millisecondsSinceEpoch == 0) { setState(() { _scheduledAt = null; _dirty = true; }); await _saveDraft(); return; }
     if (!selected.isAfter(DateTime.now())) { setState(() => _error = '定时发布时间必须晚于当前时间'); return; }
@@ -479,49 +408,34 @@ class _CreateThreadPageState extends State<CreateThreadPage> {
     await _saveDraft();
   }
 
-  String _scheduleLabelFor(DateTime value) {
-    final local = value.toLocal();
-    return '${local.year}-${local.month.toString().padLeft(2, '0')}-${local.day.toString().padLeft(2, '0')} ${local.hour.toString().padLeft(2, '0')}:${local.minute.toString().padLeft(2, '0')} · ${_scheduleRelativeLabel(value)}';
-  }
+  String _scheduleLabelFor(DateTime value) { final local = value.toLocal(); return '${local.year}-${local.month.toString().padLeft(2, '0')}-${local.day.toString().padLeft(2, '0')} ${local.hour.toString().padLeft(2, '0')}:${local.minute.toString().padLeft(2, '0')} · ${_scheduleRelativeLabel(value)}'; }
 
   Widget _scheduleCard(BuildContext context) {
     final scheme = Theme.of(context).colorScheme;
     final scheduled = _scheduledAt?.toLocal();
-    return Container(
-      decoration: BoxDecoration(color: scheduled == null ? scheme.surfaceContainerHighest.withOpacity(.35) : scheme.primaryContainer.withOpacity(.55), borderRadius: BorderRadius.circular(18), border: Border.all(color: scheme.outlineVariant.withOpacity(.55))),
-      child: InkWell(onTap: _submitting || _uploading ? null : _chooseSchedule, borderRadius: BorderRadius.circular(18), child: Padding(padding: const EdgeInsets.fromLTRB(14, 12, 8, 12), child: Row(children: [
-        Container(width: 42, height: 42, decoration: BoxDecoration(color: scheme.surface.withOpacity(.8), borderRadius: BorderRadius.circular(13)), child: Icon(scheduled == null ? Icons.schedule_rounded : Icons.event_available_rounded, color: scheduled == null ? scheme.onSurfaceVariant : scheme.primary)),
-        const SizedBox(width: 12),
-        Expanded(child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [Text(scheduled == null ? '定时发布' : '已设置定时', style: const TextStyle(fontSize: 14, fontWeight: FontWeight.w800)), const SizedBox(height: 3), Text(scheduled == null ? '按时长或指定时间发布' : _scheduleLabelFor(scheduled), maxLines: 2, overflow: TextOverflow.ellipsis, style: TextStyle(fontSize: 11.5, color: scheduled == null ? scheme.onSurfaceVariant : scheme.primary, fontWeight: scheduled == null ? FontWeight.normal : FontWeight.w700))])),
-        Icon(scheduled == null ? Icons.chevron_right_rounded : Icons.edit_rounded, color: scheme.onSurfaceVariant),
-      ]))),
-    );
+    return Container(decoration: BoxDecoration(color: scheduled == null ? scheme.surfaceContainerHighest.withOpacity(.35) : scheme.primaryContainer.withOpacity(.55), borderRadius: BorderRadius.circular(18), border: Border.all(color: scheme.outlineVariant.withOpacity(.55))), child: InkWell(onTap: _submitting || _uploading ? null : _chooseSchedule, borderRadius: BorderRadius.circular(18), child: Padding(padding: const EdgeInsets.fromLTRB(14, 12, 8, 12), child: Row(children: [Container(width: 42, height: 42, decoration: BoxDecoration(color: scheme.surface.withOpacity(.8), borderRadius: BorderRadius.circular(13)), child: Icon(scheduled == null ? Icons.schedule_rounded : Icons.event_available_rounded, color: scheduled == null ? scheme.onSurfaceVariant : scheme.primary)), const SizedBox(width: 12), Expanded(child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [Text(scheduled == null ? '定时发布' : '已设置定时', style: const TextStyle(fontSize: 14, fontWeight: FontWeight.w800)), const SizedBox(height: 3), Text(scheduled == null ? '按时长或指定时间发布' : _scheduleLabelFor(scheduled), maxLines: 2, overflow: TextOverflow.ellipsis, style: TextStyle(fontSize: 11.5, color: scheduled == null ? scheme.onSurfaceVariant : scheme.primary, fontWeight: scheduled == null ? FontWeight.normal : FontWeight.w700))])), Icon(scheduled == null ? Icons.chevron_right_rounded : Icons.edit_rounded, color: scheme.onSurfaceVariant)]))));
   }
 
   Widget _advancedCard(BuildContext context) {
     final scheme = Theme.of(context).colorScheme;
     Widget option(String title, String subtitle, bool value, ValueChanged<bool> onChanged, IconData icon) => SwitchListTile.adaptive(contentPadding: const EdgeInsets.symmetric(horizontal: 2), secondary: Icon(icon), title: Text(title), subtitle: Text(subtitle, style: TextStyle(fontSize: 11.5, color: scheme.onSurfaceVariant)), value: value, onChanged: _submitting || _uploading ? null : (v) { onChanged(v); _markDirty(); });
-    return Container(
-      decoration: BoxDecoration(color: scheme.surface, borderRadius: BorderRadius.circular(22), border: Border.all(color: scheme.outlineVariant.withOpacity(.65))),
-      clipBehavior: Clip.antiAlias,
-      child: Column(children: [
-        ListTile(contentPadding: const EdgeInsets.fromLTRB(16, 4, 10, 4), leading: Container(width: 36, height: 36, decoration: BoxDecoration(color: scheme.tertiaryContainer, borderRadius: BorderRadius.circular(11)), child: Icon(Icons.tune_rounded, color: scheme.onTertiaryContainer)), title: const Text('高级设置', style: TextStyle(fontWeight: FontWeight.w800)), subtitle: const Text('售价、悬赏、权限、定时发布、动态与回复设置'), trailing: Switch(value: _advanced, onChanged: _submitting || _uploading ? null : (v) => setState(() { _advanced = v; _dirty = true; }))),
-        if (_advanced) Padding(padding: const EdgeInsets.fromLTRB(16, 0, 16, 16), child: Column(children: [
-          const Divider(height: 1), const SizedBox(height: 12),
-          DropdownButtonFormField<int>(value: _price, decoration: const InputDecoration(labelText: '主题售价', prefixIcon: Icon(Icons.monetization_on_outlined)), items: const [0, 1, 2, 3, 5, 10, 20].map((v) => DropdownMenuItem(value: v, child: Text(v == 0 ? '免费' : '$v 星币'))).toList(), onChanged: _reward > 0 ? null : (v) => setState(() { _price = v ?? 0; _dirty = true; })),
-          const SizedBox(height: 10),
-          DropdownButtonFormField<int>(value: _reward, decoration: InputDecoration(labelText: '悬赏奖励', helperText: _reward > 0 ? '将奖励给最佳回复' : null, prefixIcon: const Icon(Icons.card_gift_card_rounded)), items: const [0, 2, 3, 5, 8, 10, 20, 30, 50].map((v) => DropdownMenuItem(value: v, child: Text(v == 0 ? '不悬赏' : '悬赏 $v 星币'))).toList(), onChanged: _price > 0 ? null : (v) => setState(() { _reward = v ?? 0; _dirty = true; })),
-          const SizedBox(height: 10),
-          DropdownButtonFormField<int>(value: _readperm, decoration: const InputDecoration(labelText: '阅读权限', prefixIcon: Icon(Icons.lock_outline_rounded)), items: const [0, 10, 20, 30, 50, 80, 100, 255].map((v) => DropdownMenuItem(value: v, child: Text(v == 0 ? '不限' : '$v 级'))).toList(), onChanged: (v) => setState(() { _readperm = v ?? 0; _dirty = true; })),
-          const SizedBox(height: 10), _scheduleCard(context), const SizedBox(height: 8), const Divider(height: 1),
-          option('回帖仅作者可见', '其他用户的回复仅主题作者可见', _hiddenreplies, (v) => setState(() => _hiddenreplies = v), Icons.visibility_off_outlined),
-          option('回帖倒序排列', '帖子打开时优先显示最新回复', _descviewdefault, (v) => setState(() => _descviewdefault = v), Icons.swap_vert_rounded),
-          option('接收回复通知', '有人回复主题时通知我', _allownoticeauthor, (v) => setState(() => _allownoticeauthor = v), Icons.notifications_none_rounded),
-          option('发送动态', '发布后同步到个人动态/广播', _addfeed, (v) => setState(() => _addfeed = v), Icons.campaign_outlined),
-          option('使用个人签名', '在帖子正文末尾显示论坛签名', _usesig, (v) => setState(() => _usesig = v), Icons.draw_outlined),
-        ])),
-      ]),
-    );
+    return Container(decoration: BoxDecoration(color: scheme.surface, borderRadius: BorderRadius.circular(22), border: Border.all(color: scheme.outlineVariant.withOpacity(.65))), clipBehavior: Clip.antiAlias, child: Column(children: [
+      ListTile(contentPadding: const EdgeInsets.fromLTRB(16, 4, 10, 4), leading: Container(width: 36, height: 36, decoration: BoxDecoration(color: scheme.tertiaryContainer, borderRadius: BorderRadius.circular(11)), child: Icon(Icons.tune_rounded, color: scheme.onTertiaryContainer)), title: const Text('高级设置', style: TextStyle(fontWeight: FontWeight.w800)), subtitle: const Text('售价、悬赏、权限、定时发布、动态与回复设置'), trailing: Switch(value: _advanced, onChanged: _submitting || _uploading ? null : (v) => setState(() { _advanced = v; _dirty = true; }))),
+      if (_advanced) Padding(padding: const EdgeInsets.fromLTRB(16, 0, 16, 16), child: Column(children: [
+        const Divider(height: 1), const SizedBox(height: 12),
+        DropdownButtonFormField<int>(value: _price, decoration: const InputDecoration(labelText: '主题售价', prefixIcon: Icon(Icons.monetization_on_outlined)), items: const [0, 1, 2, 3, 5, 10, 20].map((v) => DropdownMenuItem(value: v, child: Text(v == 0 ? '免费' : '$v 星币'))).toList(), onChanged: _reward > 0 ? null : (v) => setState(() { _price = v ?? 0; _dirty = true; })),
+        const SizedBox(height: 10),
+        DropdownButtonFormField<int>(value: _reward, decoration: InputDecoration(labelText: '悬赏奖励', helperText: _reward > 0 ? '将奖励给最佳回复' : null, prefixIcon: const Icon(Icons.card_giftcard)), items: const [0, 2, 3, 5, 8, 10, 20, 30, 50].map((v) => DropdownMenuItem(value: v, child: Text(v == 0 ? '不悬赏' : '悬赏 $v 星币'))).toList(), onChanged: _price > 0 ? null : (v) => setState(() { _reward = v ?? 0; _dirty = true; })),
+        const SizedBox(height: 10),
+        DropdownButtonFormField<int>(value: _readperm, decoration: const InputDecoration(labelText: '阅读权限', prefixIcon: Icon(Icons.lock_outline_rounded)), items: const [0, 10, 20, 30, 50, 80, 100, 255].map((v) => DropdownMenuItem(value: v, child: Text(v == 0 ? '不限' : '$v 级'))).toList(), onChanged: (v) => setState(() { _readperm = v ?? 0; _dirty = true; })),
+        const SizedBox(height: 10), _scheduleCard(context), const SizedBox(height: 8), const Divider(height: 1),
+        option('回帖仅作者可见', '其他用户的回复仅主题作者可见', _hiddenreplies, (v) => setState(() => _hiddenreplies = v), Icons.visibility_off_outlined),
+        option('回帖倒序排列', '帖子打开时优先显示最新回复', _descviewdefault, (v) => setState(() => _descviewdefault = v), Icons.swap_vert_rounded),
+        option('接收回复通知', '有人回复主题时通知我', _allownoticeauthor, (v) => setState(() => _allownoticeauthor = v), Icons.notifications_none_rounded),
+        option('发送动态', '发布后同步到个人动态/广播', _addfeed, (v) => setState(() => _addfeed = v), Icons.campaign_outlined),
+        option('使用个人签名', '在帖子正文末尾显示论坛签名', _usesig, (v) => setState(() => _usesig = v), Icons.draw_outlined),
+      ])),
+    ]));
   }
 
   InputDecoration _field(String label, String hint, IconData icon, ColorScheme scheme) => InputDecoration(labelText: label, hintText: hint, prefixIcon: Icon(icon), filled: true, fillColor: scheme.surfaceContainerHighest.withOpacity(.48), border: OutlineInputBorder(borderRadius: BorderRadius.circular(17), borderSide: BorderSide.none), enabledBorder: OutlineInputBorder(borderRadius: BorderRadius.circular(17), borderSide: BorderSide.none), focusedBorder: OutlineInputBorder(borderRadius: BorderRadius.circular(17), borderSide: BorderSide(color: scheme.primary, width: 1.4)));
@@ -534,7 +448,7 @@ class _CreateThreadPageState extends State<CreateThreadPage> {
       child: Scaffold(
         backgroundColor: scheme.surfaceContainerLowest,
         appBar: AppBar(titleSpacing: 4, title: const Text('发布帖子', style: TextStyle(fontWeight: FontWeight.w800)), actions: [if (_dirty) const Center(child: Padding(padding: EdgeInsets.only(right: 2), child: Icon(Icons.cloud_done_outlined, size: 18))), IconButton(tooltip: _advanced ? '快速模式' : '高级模式', onPressed: _submitting || _uploading ? null : () => setState(() { _advanced = !_advanced; _dirty = true; }), icon: Icon(_advanced ? Icons.edit_note_rounded : Icons.tune_rounded)), const SizedBox(width: 4)]),
-        bottomNavigationBar: SafeArea(child: Container(padding: const EdgeInsets.fromLTRB(16, 10, 16, 10), decoration: BoxDecoration(color: scheme.surface.withOpacity(.96), boxShadow: [BoxShadow(blurRadius: 18, color: Colors.black.withOpacity(.06))]), child: Row(children: [Expanded(child: Text(_submitting ? '正在发布…' : (_scheduledAt != null ? _scheduleLabel() : (_dirty ? '草稿已自动保存' : '准备好后就可以发布了')), style: TextStyle(fontSize: 12, color: scheme.onSurfaceVariant), maxLines: 1, overflow: TextOverflow.ellipsis)), FilledButton.icon(onPressed: _submitting || _uploading || _loadingBoards ? null : _submit, icon: _submitting ? const SizedBox(width: 18, height: 18, child: CircularProgressIndicator(strokeWidth: 2)) : const Icon(Icons.send_rounded, size: 19), label: Text(_submitting ? '发布中' : (_scheduledAt == null ? '发布帖子' : '定时发布')), style: FilledButton.styleFrom(minimumSize: const Size(0, 48), padding: const EdgeInsets.symmetric(horizontal: 20)))])),
+        bottomNavigationBar: SafeArea(child: Container(padding: const EdgeInsets.fromLTRB(16, 10, 16, 10), decoration: BoxDecoration(color: scheme.surface.withOpacity(.96), boxShadow: [BoxShadow(blurRadius: 18, color: Colors.black.withOpacity(.06))]), child: Row(children: [Expanded(child: Text(_submitting ? '正在发布…' : (_scheduledAt != null ? _scheduleLabel() : (_dirty ? '草稿已自动保存' : '准备好后就可以发布了')), style: TextStyle(fontSize: 12, color: scheme.onSurfaceVariant), maxLines: 1, overflow: TextOverflow.ellipsis)), FilledButton.icon(onPressed: _submitting || _uploading || _loadingBoards ? null : _submit, icon: _submitting ? const SizedBox(width: 18, height: 18, child: CircularProgressIndicator(strokeWidth: 2)) : const Icon(Icons.send_rounded, size: 19), label: Text(_submitting ? '发布中' : (_scheduledAt == null ? '发布帖子' : '定时发布')), style: FilledButton.styleFrom(minimumSize: const Size(0, 48), padding: const EdgeInsets.symmetric(horizontal: 20)))]))),
         body: SafeArea(child: Form(key: _formKey, child: ListView(padding: const EdgeInsets.fromLTRB(16, 10, 16, 24), keyboardDismissBehavior: ScrollViewKeyboardDismissBehavior.onDrag, children: [
           Container(padding: const EdgeInsets.fromLTRB(18, 16, 18, 14), decoration: BoxDecoration(gradient: LinearGradient(colors: [scheme.primaryContainer, scheme.secondaryContainer]), borderRadius: BorderRadius.circular(24)), child: Row(children: [Container(width: 46, height: 46, decoration: BoxDecoration(color: scheme.surface.withOpacity(.72), borderRadius: BorderRadius.circular(15)), child: Icon(Icons.forum_rounded, color: scheme.primary)), const SizedBox(width: 13), const Expanded(child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [Text('分享点什么吧', style: TextStyle(fontSize: 18, fontWeight: FontWeight.w900)), SizedBox(height: 3), Text('原生编辑 · 网页端 BBCode · 图片与附件', style: TextStyle(fontSize: 12))]))])),
           const SizedBox(height: 14),
