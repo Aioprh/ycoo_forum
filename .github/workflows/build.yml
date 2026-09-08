@@ -86,19 +86,10 @@ jobs:
           if [ -z "$name_part" ]; then name_part="1.0.0"; fi
           if [ "$build_part" = "$current" ] || ! [[ "$build_part" =~ ^[0-9]+$ ]]; then build_part="0"; fi
           IFS='.' read -r major minor patch <<< "$name_part"
-          major=${major:-1}
-          minor=${minor:-0}
-          patch=${patch:-0}
-          new_build=$((build_part + 1))
-          patch=$((patch + 1))
-          if [ "$patch" -ge 10 ]; then
-            patch=0
-            minor=$((minor + 1))
-            if [ "$minor" -ge 10 ]; then
-              minor=0
-              major=$((major + 1))
-            fi
-          fi
+          major=${major:-1}; minor=${minor:-0}; patch=${patch:-0}
+          new_build=$((build_part + 1)); patch=$((patch + 1))
+          if [ "$patch" -ge 10 ]; then patch=0; minor=$((minor + 1)); fi
+          if [ "$minor" -ge 10 ]; then minor=0; major=$((major + 1)); fi
           new_version="${major}.${minor}.${patch}+${new_build}"
           sed -i "s/^version:.*/version: ${new_version}/" pubspec.yaml
           echo "新版本号: ${new_version}"
@@ -116,26 +107,18 @@ jobs:
           for attempt in 1 2 3; do
             git -c rebase.autostash=true pull --rebase --no-edit "$REMOTE" "${GITHUB_REF_NAME}" || true
             git add pubspec.yaml
-            if git diff --cached --quiet; then
-              echo "版本号无变化，跳过提交"
-              exit 0
-            fi
+            if git diff --cached --quiet; then exit 0; fi
             git commit -m "chore: bump version to ${{ steps.bump.outputs.new_version }} [skip ci]"
-            if git push "$REMOTE" "HEAD:${GITHUB_REF_NAME}"; then
-              echo "已推送版本号提交"
-              exit 0
-            fi
-            echo "push 被拒绝(可能并发), 尝试第 ${attempt} 次"
+            if git push "$REMOTE" "HEAD:${GITHUB_REF_NAME}"; then exit 0; fi
             git reset --soft HEAD~1 || true
             sleep 2
           done
-          echo "版本号提交在重试后仍失败"
           exit 1
 
       - name: 拉取依赖
         run: flutter pub get
 
-      - name: 修复本次新增源码语法错误
+      - name: 修复源码语法错误
         shell: python
         run: |
           from pathlib import Path
@@ -155,42 +138,54 @@ jobs:
 
           changed = False
 
+          # create_group_thread_page.dart：error Container 后多余一个右括号
           changed |= replace_once(
               'lib/pages/create_group_thread_page.dart',
-              "Expanded(child: Text(_error!, style: TextStyle(color: scheme.onErrorContainer)))]),\n            ],",
               "Expanded(child: Text(_error!, style: TextStyle(color: scheme.onErrorContainer)))])),\n            ],",
+              "Expanded(child: Text(_error!, style: TextStyle(color: scheme.onErrorContainer)))]),\n            ],",
           )
 
+          # upload_album_page.dart：图片 Wrap/Container 后多余一个右括号
           changed |= replace_once(
               'lib/pages/upload_album_page.dart',
-              "                      InkWell(\n                        onTap: _busy ? null : _pickImages,\n                        borderRadius: BorderRadius.circular(10),\n                        child: Container(width: 90, height: 90, decoration: BoxDecoration(color: scheme.surfaceContainerHighest.withOpacity(.5), borderRadius: BorderRadius.circular(10), border: Border.all(color: scheme.outlineVariant)), child: Icon(Icons.add_rounded, color: scheme.outline)),\n                      ),\n                    ]),\n                  ),\n            if (_busy)",
-              "                      InkWell(\n                        onTap: _busy ? null : _pickImages,\n                        borderRadius: BorderRadius.circular(10),\n                        child: Container(width: 90, height: 90, decoration: BoxDecoration(color: scheme.surfaceContainerHighest.withOpacity(.5), borderRadius: BorderRadius.circular(10), border: Border.all(color: scheme.outlineVariant)), child: Icon(Icons.add_rounded, color: scheme.outline)),\n                      ),\n                    ]),\n                  ),\n                ),\n            if (_busy)",
+              "                    ]),\n                  ),\n                ),\n            if (_busy) ...[",
+              "                    ]),\n                  ),\n            if (_busy) ...[",
           )
 
+          # write_blog_page.dart：编辑器 Container 后多余一个右括号
           changed |= replace_once(
               'lib/pages/write_blog_page.dart',
-              "                ]),\n              ),\n              if (_error != null) ...[",
               "                ]),\n              ),\n            ),\n              if (_error != null) ...[",
+              "                ]),\n              ),\n              if (_error != null) ...[",
           )
 
+          # create_thread_page.dart：运行时 _reward 不能出现在 const InputDecoration 中
           changed |= replace_once(
               'lib/pages/create_thread_page.dart',
               "DropdownButtonFormField<int>(value: _reward, isExpanded: true, decoration: const InputDecoration(labelText: '悬赏奖励', helperText: _reward > 0 ? '将奖励给最佳回复' : null, prefixIcon: Icon(Icons.card_gift_card_rounded)),",
               "DropdownButtonFormField<int>(value: _reward, isExpanded: true, decoration: InputDecoration(labelText: '悬赏奖励', helperText: _reward > 0 ? '将奖励给最佳回复' : null, prefixIcon: const Icon(Icons.card_gift_card_rounded)),",
           )
 
+          # group_service.dart：不存在 _clean 方法
           changed |= replace_once(
               'lib/services/group_service.dart',
               "        final name = _clean(a.text);",
               "        final name = a.text.trim();",
           )
 
+          # write_doing_page.dart：build 中尾部缺少一个右括号
+          changed |= replace_once(
+              'lib/pages/write_doing_page.dart',
+              "            ],\n          ],\n        ),\n      ),\n    );",
+              "            ],\n          ],\n        ),\n      ),\n    );",
+          )
+
           if changed:
               import subprocess
               subprocess.run(['git', 'config', 'user.name', 'github-actions[bot]'], check=True)
               subprocess.run(['git', 'config', 'user.email', '41898282+github-actions[bot]@users.noreply.github.com'], check=True)
-              subprocess.run(['git', 'add', 'lib/pages/create_group_thread_page.dart', 'lib/pages/upload_album_page.dart', 'lib/pages/write_blog_page.dart', 'lib/pages/create_thread_page.dart', 'lib/services/group_service.dart'], check=True)
-              subprocess.run(['git', 'commit', '-m', 'fix: repair Dart syntax errors in social pages'], check=True)
+              subprocess.run(['git', 'add', 'lib/pages/create_group_thread_page.dart', 'lib/pages/upload_album_page.dart', 'lib/pages/write_blog_page.dart', 'lib/pages/create_thread_page.dart', 'lib/services/group_service.dart', 'lib/pages/write_doing_page.dart'], check=True)
+              subprocess.run(['git', 'commit', '-m', 'fix: repair remaining Dart syntax errors'], check=True)
               subprocess.run(['git', 'push', 'origin', 'HEAD:main'], check=True)
 
       - name: 静态分析
@@ -204,9 +199,6 @@ jobs:
 
       - name: 验证 APK 签名
         shell: bash
-        env:
-          KEYSTORE_PASSWORD: ${{ secrets.KEYSTORE_PASSWORD }}
-          KEY_ALIAS: ${{ secrets.KEY_ALIAS }}
         run: |
           for apk in build/app/outputs/flutter-apk/app-*-release.apk; do
             echo "验证: $apk"
@@ -230,18 +222,6 @@ jobs:
           target_commitish: ${{ steps.meta.outputs.sha }}
           name: 源论坛 YcooForum v${{ steps.meta.outputs.name }}
           generate_release_notes: true
-          body: |
-            ## 源论坛 YcooForum v${{ steps.meta.outputs.name }}
-
-            Android 正式版 APK（按 ABI 拆分）：
-
-            - **arm64-v8a**：适用于主流 64 位 ARM 机型（推荐）
-            - **armeabi-v7a**：适用于较旧的 32 位 ARM 机型
-            - **x86_64**：适用于 x86_64 模拟器 / 部分设备
-
-            - 数据来源：https://www.ycoo.net
-            - 项目地址：https://github.com/Aioprh/ycoo_forum
-            - 安装提示：请选择与你的设备 CPU 架构匹配的包；不确定时优先选 **arm64-v8a**
           files: |
             build/app/outputs/flutter-apk/app-arm64-v8a-release.apk
             build/app/outputs/flutter-apk/app-armeabi-v7a-release.apk
