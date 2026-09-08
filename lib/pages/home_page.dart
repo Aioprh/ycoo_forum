@@ -5,9 +5,13 @@ import '../services/api_service.dart';
 import '../services/auth_service.dart';
 import '../services/site_fallback_service.dart';
 import '../widgets/thread_list_view.dart';
+import 'create_group_thread_page.dart';
 import 'create_thread_page.dart';
 import 'login_page.dart';
 import 'search_page.dart';
+import 'upload_album_page.dart';
+import 'write_blog_page.dart';
+import 'write_doing_page.dart';
 
 /// 首页：更偏社区阅读体验的原生首页。
 class HomePage extends StatefulWidget {
@@ -35,15 +39,48 @@ class _HomePageState extends State<HomePage> {
     return SiteFallbackService.instance.fetchThreads(url);
   }
 
-  Future<void> _createThread() async {
+  Future<void> _ensureLoggedIn() async {
     await AuthService.instance.init();
-    if (!AuthService.instance.isLoggedIn) {
-      if (!mounted) return;
+    if (!AuthService.instance.isLoggedIn && mounted) {
       final login = await Navigator.of(context).push<bool>(MaterialPageRoute(builder: (_) => const LoginPage()));
       if (login != true || !mounted) return;
     }
-    final created = await Navigator.of(context).push<bool>(MaterialPageRoute(builder: (_) => const CreateThreadPage()));
-    if (created == true && mounted) setState(() {});
+  }
+
+  Future<void> _openCompose() async {
+    final route = await showModalBottomSheet<String>(
+      context: context,
+      showDragHandle: true,
+      builder: (context) => SafeArea(
+        child: Column(mainAxisSize: MainAxisSize.min, children: [
+          const ListTile(
+            leading: Icon(Icons.edit_note_rounded),
+            title: Text('发布内容', style: TextStyle(fontWeight: FontWeight.w800)),
+            subtitle: Text('选择要发布的内容类型'),
+          ),
+          ListTile(leading: const Icon(Icons.forum_outlined), title: const Text('发帖', style: TextStyle(fontWeight: FontWeight.w600)), subtitle: const Text('在论坛版块发布新主题'), onTap: () => Navigator.pop(context, 'thread')),
+          ListTile(leading: const Icon(Icons.groups_rounded), title: const Text('发圈子', style: TextStyle(fontWeight: FontWeight.w600)), subtitle: const Text('在圈子/群组发布主题'), onTap: () => Navigator.pop(context, 'group')),
+          ListTile(leading: const Icon(Icons.self_improvement_rounded), title: const Text('记心情', style: TextStyle(fontWeight: FontWeight.w600)), subtitle: const Text('一句话记录当前状态'), onTap: () => Navigator.pop(context, 'doing')),
+          ListTile(leading: const Icon(Icons.article_outlined), title: const Text('写日志', style: TextStyle(fontWeight: FontWeight.w600)), subtitle: const Text('在空间发布一篇日志'), onTap: () => Navigator.pop(context, 'blog')),
+          ListTile(leading: const Icon(Icons.photo_library_outlined), title: const Text('发相册', style: TextStyle(fontWeight: FontWeight.w600)), subtitle: const Text('上传图片到个人相册'), onTap: () => Navigator.pop(context, 'album')),
+          const SizedBox(height: 8),
+        ]),
+      ),
+    );
+    if (!mounted || route == null) return;
+    await _ensureLoggedIn();
+    if (!mounted) return;
+    Widget page;
+    switch (route) {
+      case 'thread': page = const CreateThreadPage(); break;
+      case 'group': page = const CreateGroupThreadPage(); break;
+      case 'doing': page = const WriteDoingPage(); break;
+      case 'blog': page = const WriteBlogPage(); break;
+      case 'album': page = const UploadAlbumPage(); break;
+      default: return;
+    }
+    final done = await Navigator.of(context).push<bool>(MaterialPageRoute(builder: (_) => page));
+    if (done == true && mounted) setState(() {});
   }
 
   @override
@@ -70,10 +107,10 @@ class _HomePageState extends State<HomePage> {
         ),
       ),
       floatingActionButton: FloatingActionButton.extended(
-        onPressed: _createThread,
+        onPressed: _openCompose,
         icon: const Icon(Icons.add_rounded),
-        label: const Text('发帖'),
-        tooltip: '发布帖子',
+        label: const Text('发布'),
+        tooltip: '发布内容',
       ),
       floatingActionButtonLocation: FloatingActionButtonLocation.endFloat,
     );

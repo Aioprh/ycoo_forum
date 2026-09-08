@@ -50,6 +50,7 @@ class ThreadPublishService {
     bool descviewdefault = false,
     bool addfeed = true,
     DateTime? scheduledAt,
+    int reward = 0,
     List<UploadedAttachment> attachments = const [],
   }) async {
     if (!AuthService.instance.isLoggedIn || (AuthService.instance.authCookie ?? '').isEmpty) return '请先登录论坛';
@@ -58,6 +59,8 @@ class ThreadPublishService {
     if (title.isEmpty) return '请输入标题';
     if (title.length > 100) return '标题不能超过 100 个字符';
     if (body.isEmpty && attachments.isEmpty) return '请输入正文或添加附件';
+    if (reward < 0) return '悬赏金额不能为负数';
+    if (reward > 100000) return '悬赏金额超过最大限制，请重新填写';
     if (scheduledAt != null && !scheduledAt.isAfter(DateTime.now())) return '定时发布时间必须晚于当前时间';
 
     try {
@@ -92,7 +95,13 @@ class ThreadPublishService {
       _setIfPresent(doc, form, 'addfeed', addfeed ? '1' : '0');
 
       if (typeid != null && typeid > 0 && _hasField(doc, 'typeid')) form['typeid'] = '$typeid';
-      if (price > 0 && _hasField(doc, 'price')) form['price'] = '$price';
+      // 悬赏主题: 设置 special=reward 并把 price 作为奖励金额(发放给最佳回复)。
+      if (reward > 0) {
+        if (_hasField(doc, 'special')) form['special'] = 'reward';
+        if (_hasField(doc, 'price')) form['price'] = '$reward';
+      } else if (price > 0 && _hasField(doc, 'price')) {
+        form['price'] = '$price';
+      }
       if (readperm > 0 && _hasField(doc, 'readperm')) form['readperm'] = '$readperm';
 
       if (scheduledAt != null) {

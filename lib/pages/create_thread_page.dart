@@ -10,6 +10,7 @@ import '../services/attachment_upload_service.dart';
 import '../services/auth_service.dart';
 import '../services/post_draft_service.dart';
 import '../services/site_fallback_service.dart';
+import '../services/smiley_service.dart';
 import '../services/thread_publish_service.dart';
 
 /// Modern Material 3 native post composer.
@@ -34,6 +35,7 @@ class _CreateThreadPageState extends State<CreateThreadPage> {
   int? _typeid;
   int _price = 0;
   int _readperm = 0;
+  int _reward = 0;
   bool _usesig = true;
   bool _allownoticeauthor = true;
   bool _hiddenreplies = false;
@@ -94,6 +96,7 @@ class _CreateThreadPageState extends State<CreateThreadPage> {
       typeid: _typeid,
       price: _price,
       readperm: _readperm,
+      reward: _reward,
       usesig: _usesig,
       allownoticeauthor: _allownoticeauthor,
       hiddenreplies: _hiddenreplies,
@@ -128,6 +131,7 @@ class _CreateThreadPageState extends State<CreateThreadPage> {
       _body.text = draft.body;
       _price = draft.price;
       _readperm = draft.readperm;
+      _reward = draft.reward;
       _usesig = draft.usesig;
       _allownoticeauthor = draft.allownoticeauthor;
       _hiddenreplies = draft.hiddenreplies;
@@ -286,6 +290,7 @@ class _CreateThreadPageState extends State<CreateThreadPage> {
       descviewdefault: _descviewdefault,
       addfeed: _addfeed,
       scheduledAt: _scheduledAt,
+      reward: _reward,
       attachments: List.unmodifiable(_attachments),
     );
     if (!mounted) return;
@@ -378,18 +383,17 @@ class _CreateThreadPageState extends State<CreateThreadPage> {
   }
 
   Future<void> _chooseEmoji() async {
-    const emojis = ['😀','😂','😎','👍','❤️','🎉','😅','🤔','🔥','👏','🥳','🙏','✨','💡','🌟','🤣','😭','😇'];
-    final emoji = await showModalBottomSheet<String>(
+    // 表情选择器: 加载论坛真实表情(Discuz 表情面板), 同时保留常用 Emoji 页签。
+    final smileys = await SmileyService.instance.fetchSmileys(_fid ?? 0);
+    if (!mounted) return;
+    const emojis = ['😀','😂','😎','👍','❤️','🎉','😅','🤔','🔥','👏','🥳','🙏','✨','💡','🌟','🤣','😭','😇','😘','🤝','🥹','😤','🫡','💪','👀','🐂','🚀','☕','🍉','🀄','💰'];
+    final value = await showModalBottomSheet<String>(
       context: context,
+      isScrollControlled: true,
       showDragHandle: true,
-      builder: (context) => SafeArea(
-        child: Padding(
-          padding: const EdgeInsets.all(16),
-          child: Wrap(alignment: WrapAlignment.center, spacing: 4, runSpacing: 4, children: emojis.map((e) => IconButton(iconSize: 30, onPressed: () => Navigator.pop(context, e), icon: Text(e))).toList()),
-        ),
-      ),
+      builder: (sheetContext) => _SmileySheet(smileys: smileys, emojis: emojis),
     );
-    if (emoji != null) _insert(emoji);
+    if (value != null && value.isNotEmpty) _insert(value);
   }
 
   Widget _tool(IconData icon, String label, VoidCallback action) => IconButton(
@@ -754,7 +758,7 @@ class _CreateThreadPageState extends State<CreateThreadPage> {
           contentPadding: const EdgeInsets.fromLTRB(16, 4, 10, 4),
           leading: Container(width: 36, height: 36, decoration: BoxDecoration(color: scheme.tertiaryContainer, borderRadius: BorderRadius.circular(11)), child: Icon(Icons.tune_rounded, color: scheme.onTertiaryContainer)),
           title: const Text('高级设置', style: TextStyle(fontWeight: FontWeight.w800)),
-          subtitle: const Text('售价、权限、定时发布、动态与回复设置'),
+          subtitle: const Text('售价、悬赏、权限、定时发布、动态与回复设置'),
           trailing: Switch(value: _advanced, onChanged: _submitting || _uploading ? null : (v) => setState(() { _advanced = v; _dirty = true; })),
         ),
         if (_advanced) Padding(
@@ -762,7 +766,9 @@ class _CreateThreadPageState extends State<CreateThreadPage> {
           child: Column(children: [
             const Divider(height: 1),
             const SizedBox(height: 12),
-            DropdownButtonFormField<int>(value: _price, decoration: const InputDecoration(labelText: '主题售价', prefixIcon: Icon(Icons.monetization_on_outlined)), items: [0,1,2,3,5,10,20].map((v) => DropdownMenuItem(value: v, child: Text(v == 0 ? '免费' : '$v 星币'))).toList(), onChanged: (v) { setState(() => _price = v ?? 0); _markDirty(); }),
+            DropdownButtonFormField<int>(value: _price, isExpanded: true, decoration: const InputDecoration(labelText: '主题售价', prefixIcon: Icon(Icons.monetization_on_outlined)), items: [0,1,2,3,5,10,20].map((v) => DropdownMenuItem(value: v, child: Text(v == 0 ? '免费' : '$v 星币'))).toList(), onChanged: _reward > 0 ? null : (v) { setState(() { _price = v ?? 0; _reward = 0; }); _markDirty(); }),
+            const SizedBox(height: 10),
+            DropdownButtonFormField<int>(value: _reward, isExpanded: true, decoration: const InputDecoration(labelText: '悬赏奖励', helperText: _reward > 0 ? '将奖励给最佳回复' : null, prefixIcon: Icon(Icons.card_giftcard_rounded)), items: [0,2,3,5,8,10,15,20,30,50].map((v) => DropdownMenuItem(value: v, child: Text(v == 0 ? '不悬赏' : '悬赏 $v 星币'))).toList(), onChanged: _price > 0 ? null : (v) { setState(() { _reward = v ?? 0; if (_reward > 0) _price = 0; }); _markDirty(); }),
             const SizedBox(height: 10),
             DropdownButtonFormField<int>(value: _readperm, decoration: const InputDecoration(labelText: '阅读权限', prefixIcon: Icon(Icons.lock_outline_rounded)), items: [0,10,20,30,50,80,100,255].map((v) => DropdownMenuItem(value: v, child: Text(v == 0 ? '不限' : '$v 级'))).toList(), onChanged: (v) { setState(() => _readperm = v ?? 0); _markDirty(); }),
             const SizedBox(height: 10),
@@ -863,5 +869,120 @@ class _CreateThreadPageState extends State<CreateThreadPage> {
         ),
       ),
     );
+  }
+}
+
+/// 表情选择器底部面板: 分为「论坛表情」与「Emoji」两个页签。
+/// 点按任一表情, 以 `Navigator.pop(context, 值)` 返回可插入正文的文本
+/// (Discuz 表情为 `:code:` BBCode, Emoji 为 Unicode 字符)。
+class _SmileySheet extends StatefulWidget {
+  final List<ForumSmiley> smileys;
+  final List<String> emojis;
+  const _SmileySheet({required this.smileys, required this.emojis});
+
+  @override
+  State<_SmileySheet> createState() => _SmileySheetState();
+}
+
+class _SmileySheetState extends State<_SmileySheet> {
+  int _tab = 0;
+
+  @override
+  Widget build(BuildContext context) {
+    final scheme = Theme.of(context).colorScheme;
+    final height = (MediaQuery.viewInsetsOf(context).bottom > 0)
+        ? (MediaQuery.sizeOf(context).height * 0.6)
+        : 420.0;
+    return SafeArea(
+      child: SizedBox(
+        height: height,
+        child: Column(
+          children: [
+            Padding(
+              padding: const EdgeInsets.fromLTRB(18, 2, 18, 10),
+              child: Container(
+                padding: const EdgeInsets.all(4),
+                decoration: BoxDecoration(color: scheme.surfaceContainerHighest.withOpacity(.6), borderRadius: BorderRadius.circular(14)),
+                child: Row(children: [
+                  _tabButton(0, '论坛表情', Icons.emoji_emotions_outlined),
+                  _tabButton(1, 'Emoji', Icons.sentiment_satisfied_alt_outlined),
+                ]),
+              ),
+            ),
+            Expanded(
+              child: SingleChildScrollView(
+                padding: const EdgeInsets.fromLTRB(14, 6, 14, 20),
+                child: _tab == 0 ? _smileyGrid(context, scheme) : _emojiGrid(context, scheme),
+              ),
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+
+  Widget _tabButton(int index, String label, IconData icon) {
+    final selected = _tab == index;
+    final scheme = Theme.of(context).colorScheme;
+    return Expanded(
+      child: InkWell(
+        borderRadius: BorderRadius.circular(11),
+        onTap: () => setState(() => _tab = index),
+        child: Container(
+          padding: const EdgeInsets.symmetric(vertical: 9),
+          decoration: BoxDecoration(color: selected ? scheme.surface : Colors.transparent, borderRadius: BorderRadius.circular(11)),
+          child: Row(mainAxisAlignment: MainAxisAlignment.center, children: [
+            Icon(icon, size: 16, color: selected ? scheme.primary : scheme.onSurfaceVariant),
+            const SizedBox(width: 5),
+            Text(label, style: TextStyle(fontSize: 13, fontWeight: FontWeight.w800, color: selected ? scheme.primary : scheme.onSurfaceVariant)),
+          ]),
+        ),
+      ),
+    );
+  }
+
+  Widget _smileyGrid(BuildContext context, ColorScheme scheme) {
+    final smileys = widget.smileys;
+    if (smileys.isEmpty) {
+      return Padding(
+        padding: const EdgeInsets.all(24),
+        child: Column(mainAxisSize: MainAxisSize.min, children: [
+          Icon(Icons.emoji_emotions_outlined, size: 40, color: scheme.outline),
+          const SizedBox(height: 10),
+          Text('暂时无法加载论坛表情', style: TextStyle(color: scheme.onSurfaceVariant)),
+        ]),
+      );
+    }
+    return Wrap(spacing: 8, runSpacing: 8, children: [
+      for (final s in smileys)
+        Tooltip(
+          message: '${s.label} ${s.code}',
+          child: InkWell(
+            borderRadius: BorderRadius.circular(12),
+            onTap: () => Navigator.of(context).pop(s.code),
+            child: Container(
+              width: 56, height: 56,
+              decoration: BoxDecoration(color: scheme.surfaceContainerHighest.withOpacity(.5), borderRadius: BorderRadius.circular(12), border: Border.all(color: scheme.outlineVariant.withOpacity(.6))),
+              clipBehavior: Clip.antiAlias,
+              child: Image.network(
+                s.imageUrl,
+                fit: BoxFit.contain,
+                errorBuilder: (_, __, ___) => Center(child: Text(s.label.isEmpty ? ':)': s.label, style: TextStyle(color: scheme.onSurfaceVariant, fontSize: 12))),
+              ),
+            ),
+          ),
+        ),
+    ]);
+  }
+
+  Widget _emojiGrid(BuildContext context, ColorScheme scheme) {
+    return Wrap(spacing: 4, runSpacing: 4, children: [
+      for (final e in widget.emojis)
+        InkWell(
+          borderRadius: BorderRadius.circular(12),
+          onTap: () => Navigator.of(context).pop(e),
+          child: Container(width: 48, height: 48, alignment: Alignment.center, child: Text(e, style: const TextStyle(fontSize: 26))),
+        ),
+    ]);
   }
 }

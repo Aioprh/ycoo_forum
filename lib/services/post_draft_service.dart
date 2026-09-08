@@ -16,6 +16,7 @@ class PostDraft {
   final bool descviewdefault;
   final bool addfeed;
   final DateTime? scheduledAt;
+  final int reward;
 
   const PostDraft({
     required this.title,
@@ -30,6 +31,7 @@ class PostDraft {
     this.descviewdefault = false,
     this.addfeed = true,
     this.scheduledAt,
+    this.reward = 0,
   });
 
   Map<String, dynamic> toJson() => {
@@ -45,6 +47,7 @@ class PostDraft {
         'descviewdefault': descviewdefault,
         'addfeed': addfeed,
         'scheduledAt': scheduledAt?.toIso8601String(),
+        'reward': reward,
       };
 
   factory PostDraft.fromJson(Map<String, dynamic> json) => PostDraft(
@@ -60,6 +63,7 @@ class PostDraft {
         descviewdefault: json['descviewdefault'] == true,
         addfeed: json['addfeed'] != false,
         scheduledAt: DateTime.tryParse('${json['scheduledAt'] ?? ''}'),
+        reward: int.tryParse('${json['reward'] ?? 0}') ?? 0,
       );
 }
 
