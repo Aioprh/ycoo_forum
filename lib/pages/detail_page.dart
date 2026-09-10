@@ -1080,18 +1080,26 @@ class _DetailPageState extends State<DetailPage> {
     final selected = await showDialog<int>(
       context: context,
       builder: (ctx) => AlertDialog(
-        title: const Text('选择页码'),
+        title: const Center(child: Text('选择页码')),
+        titleTextStyle: TextStyle(
+          color: c.onSurface,
+          fontSize: 20,
+          fontWeight: FontWeight.w600,
+        ),
         content: Column(
           mainAxisSize: MainAxisSize.min,
-          crossAxisAlignment: CrossAxisAlignment.start,
+          crossAxisAlignment: CrossAxisAlignment.center,
           children: [
             Text('当前第 $cur 页 / 共 $total 页',
+                textAlign: TextAlign.center,
                 style: TextStyle(color: c.onSurfaceVariant, fontSize: 14)),
             const SizedBox(height: 16),
             SizedBox(
               width: double.maxFinite,
               child: SingleChildScrollView(
                 child: Wrap(
+                  alignment: WrapAlignment.center,
+                  runAlignment: WrapAlignment.center,
                   spacing: 10,
                   runSpacing: 10,
                   children: List.generate(total, (i) {
@@ -1125,6 +1133,7 @@ class _DetailPageState extends State<DetailPage> {
             ),
           ],
         ),
+        actionsAlignment: MainAxisAlignment.center,
         actions: [
           TextButton(
             onPressed: () => Navigator.of(ctx).pop(),
