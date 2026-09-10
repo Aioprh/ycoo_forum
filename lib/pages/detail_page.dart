@@ -1133,7 +1133,6 @@ class _DetailPageState extends State<DetailPage> {
             ),
           ],
         ),
-        actionsAlignment: MainAxisAlignment.center,
         actions: [
           TextButton(
             onPressed: () => Navigator.of(ctx).pop(),
