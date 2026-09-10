@@ -1042,11 +1042,6 @@ class _DetailPageState extends State<DetailPage> {
     final total = d.commentTotalPages > 0 ? d.commentTotalPages : 1;
     if (total <= 1) return const SizedBox.shrink();
     final cur = (_commentPage < 1 || _commentPage > total) ? 1 : _commentPage;
-    final pages = <int>[];
-    // 简单页码集: 始终包含 1..total (评论页通常不多)
-    for (var p = 1; p <= total; p++) {
-      pages.add(p);
-    }
     return Padding(
       padding: const EdgeInsets.fromLTRB(12, 4, 12, 12),
       child: Row(
@@ -1058,12 +1053,15 @@ class _DetailPageState extends State<DetailPage> {
             tooltip: '上一页',
           ),
           Flexible(
-            child: DropdownButton<int>(
-              value: cur,
-              isDense: true,
-              underline: const SizedBox.shrink(),
-              items: pages.map((p) => DropdownMenuItem<int>(value: p, child: Text('第 $p 页'))).toList(),
-              onChanged: _commentChanging ? null : (v) { if (v != null) _changeCommentPage(v); },
+            child: TextButton(
+              onPressed: _commentChanging ? null : () => _showPagePicker(context, d, cur, total),
+              child: Row(
+                mainAxisSize: MainAxisSize.min,
+                children: [
+                  Text('$cur / $total 页', style: const TextStyle(fontSize: 15)),
+                  const Icon(Icons.arrow_drop_down_rounded),
+                ],
+              ),
             ),
           ),
           IconButton(
@@ -1075,6 +1073,69 @@ class _DetailPageState extends State<DetailPage> {
         ],
       ),
     );
+  }
+
+  Future<void> _showPagePicker(BuildContext context, ThreadDetail d, int cur, int total) async {
+    final c = Theme.of(context).colorScheme;
+    final selected = await showDialog<int>(
+      context: context,
+      builder: (ctx) => AlertDialog(
+        title: const Text('选择页码'),
+        content: Column(
+          mainAxisSize: MainAxisSize.min,
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            Text('当前第 $cur 页 / 共 $total 页',
+                style: TextStyle(color: c.onSurfaceVariant, fontSize: 14)),
+            const SizedBox(height: 16),
+            SizedBox(
+              width: double.maxFinite,
+              child: SingleChildScrollView(
+                child: Wrap(
+                  spacing: 10,
+                  runSpacing: 10,
+                  children: List.generate(total, (i) {
+                    final p = i + 1;
+                    final isCur = p == cur;
+                    return SizedBox(
+                      width: 56,
+                      height: 48,
+                      child: Material(
+                        color: isCur ? c.primary : c.surfaceContainerHighest,
+                        borderRadius: BorderRadius.circular(12),
+                        child: InkWell(
+                          borderRadius: BorderRadius.circular(12),
+                          onTap: () => Navigator.of(ctx).pop(p),
+                          child: Center(
+                            child: Text(
+                              '$p',
+                              style: TextStyle(
+                                color: isCur ? c.onPrimary : c.onSurface,
+                                fontSize: 16,
+                                fontWeight: isCur ? FontWeight.w600 : FontWeight.normal,
+                              ),
+                            ),
+                          ),
+                        ),
+                      ),
+                    );
+                  }),
+                ),
+              ),
+            ),
+          ],
+        ),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.of(ctx).pop(),
+            child: const Text('关闭'),
+          ),
+        ],
+      ),
+    );
+    if (selected != null && selected != cur && mounted) {
+      _changeCommentPage(selected);
+    }
   }
 
   Widget _empty(BuildContext context, String text) {
