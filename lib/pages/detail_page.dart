@@ -11,6 +11,7 @@ import '../services/attachment_download_service.dart';
 import '../services/thread_interaction_service.dart';
 import '../widgets/native_comment_list.dart';
 import '../widgets/native_image_viewer.dart';
+import '../widgets/forum_reply_tools.dart';
 import '../widgets/resolved_user_avatar.dart';
 import '../services/comment_profile_resolver.dart';
 import 'native_profile_page.dart';
@@ -33,6 +34,7 @@ class _DetailPageState extends State<DetailPage> {
   final _replyCtrl = TextEditingController();
   final _replyFocus = FocusNode();
   bool _loading = true, _sending = false, _buying = false, _rewarding = false;
+  bool _uploadingReply = false;
   bool _fetching = false;
   bool _loggedIn = false,
       _favorited = false,
@@ -205,6 +207,27 @@ class _DetailPageState extends State<DetailPage> {
       await _fetch();
     } else
       _snack(error);
+  }
+
+  Future<void> _insertReplySmiley() async {
+    final d = _detail;
+    if (d == null) return;
+    final code = await ForumReplyTools.pickSmiley(context, d.fid);
+    if (code != null && code.isNotEmpty) ForumReplyTools.insertAtCursor(_replyCtrl, code);
+  }
+
+  Future<void> _insertReplyImage() async {
+    final d = _detail;
+    if (d == null || _uploadingReply || _sending) return;
+    setState(() => _uploadingReply = true);
+    try {
+      final bbcode = await ForumReplyTools.uploadImage(context, d.fid);
+      if (bbcode.isNotEmpty) ForumReplyTools.insertAtCursor(_replyCtrl, bbcode);
+    } catch (e) {
+      _snack('图片上传失败：${e.toString().replaceFirst('Exception: ', '')}');
+    } finally {
+      if (mounted) setState(() => _uploadingReply = false);
+    }
   }
 
   Future<void> _like(ThreadDetail d) async {
@@ -1030,7 +1053,7 @@ class _DetailPageState extends State<DetailPage> {
           ),
           if (_commentsExpanded) ...[
             Divider(height: 1, color: c.outlineVariant.withValues(alpha: .35)),
-            NativeCommentList(html: d.commentsHtml),
+            NativeCommentList(html: d.commentsHtml, fid: d.fid),
             _commentPager(context, d),
           ],
         ],
@@ -1203,6 +1226,18 @@ class _DetailPageState extends State<DetailPage> {
             : Row(
                 crossAxisAlignment: CrossAxisAlignment.end,
                 children: [
+                  IconButton(
+                    tooltip: '表情',
+                    visualDensity: VisualDensity.compact,
+                    onPressed: _sending || _uploadingReply ? null : _insertReplySmiley,
+                    icon: const Icon(Icons.emoji_emotions_outlined, size: 22),
+                  ),
+                  IconButton(
+                    tooltip: '图片',
+                    visualDensity: VisualDensity.compact,
+                    onPressed: _sending || _uploadingReply ? null : _insertReplyImage,
+                    icon: const Icon(Icons.image_outlined, size: 22),
+                  ),
                   Expanded(
                     child: TextField(
                       controller: _replyCtrl,
@@ -1250,6 +1285,11 @@ class _DetailPageState extends State<DetailPage> {
                           : const Icon(Icons.arrow_upward_rounded),
                     ),
                   ),
+                  if (_uploadingReply)
+                    const Padding(
+                      padding: EdgeInsets.only(left: 8),
+                      child: SizedBox(width: 16, height: 16, child: CircularProgressIndicator(strokeWidth: 2)),
+                    ),
                 ],
               ),
       ),

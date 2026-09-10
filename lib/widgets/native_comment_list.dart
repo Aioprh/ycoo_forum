@@ -6,6 +6,7 @@ import '../pages/native_profile_page.dart';
 import '../services/auth_service.dart';
 import '../services/comment_profile_resolver.dart';
 import '../services/comment_reply_resolver.dart';
+import 'forum_reply_tools.dart';
 import 'native_post_content.dart';
 import 'resolved_user_avatar.dart';
 
@@ -15,12 +16,14 @@ import 'resolved_user_avatar.dart';
 /// 使用自己的 PID，因此可以直接回复任意一条回复。
 class NativeCommentList extends StatelessWidget {
   final String html;
+  final int fid;
   final void Function(int pid, String author)? onReply;
   final Future<void> Function(int pid, String author)? onReplySent;
 
   const NativeCommentList({
     super.key,
     required this.html,
+    this.fid = 0,
     this.onReply,
     this.onReplySent,
   });
@@ -556,22 +559,75 @@ class _CommentCardState extends State<_CommentCard> {
       return;
     }
     final controller = TextEditingController();
+    var uploading = false;
     final message = await showDialog<String>(
       context: context,
-      builder: (dialogContext) => AlertDialog(
-        title: Text(author.isEmpty ? '回复楼中楼' : '回复 $author'),
-        content: TextField(
-          controller: controller, autofocus: true, minLines: 2, maxLines: 6,
-          textInputAction: TextInputAction.newline,
-          decoration: const InputDecoration(hintText: '输入回复内容…', border: OutlineInputBorder()),
+      builder: (dialogContext) => StatefulBuilder(
+        builder: (dialogContext, setDialogState) => AlertDialog(
+          title: Text(author.isEmpty ? '回复楼中楼' : '回复 $author'),
+          content: Column(
+            mainAxisSize: MainAxisSize.min,
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              TextField(
+                controller: controller,
+                autofocus: true,
+                minLines: 2,
+                maxLines: 6,
+                textInputAction: TextInputAction.newline,
+                decoration: const InputDecoration(hintText: '输入回复内容…', border: OutlineInputBorder()),
+              ),
+              const SizedBox(height: 8),
+              Row(
+                children: [
+                  IconButton(
+                    tooltip: '表情',
+                    visualDensity: VisualDensity.compact,
+                    onPressed: () async {
+                      final code = await ForumReplyTools.pickSmiley(dialogContext, widget.fid);
+                      if (code != null && code.isNotEmpty) ForumReplyTools.insertAtCursor(controller, code);
+                    },
+                    icon: const Icon(Icons.emoji_emotions_outlined),
+                  ),
+                  IconButton(
+                    tooltip: '图片',
+                    visualDensity: VisualDensity.compact,
+                    onPressed: uploading
+                        ? null
+                        : () async {
+                            setDialogState(() => uploading = true);
+                            try {
+                              final bbcode = await ForumReplyTools.uploadImage(dialogContext, widget.fid);
+                              if (bbcode.isNotEmpty) ForumReplyTools.insertAtCursor(controller, bbcode);
+                            } catch (e) {
+                              if (dialogContext.mounted) {
+                                ScaffoldMessenger.of(dialogContext).showSnackBar(
+                                  SnackBar(content: Text('图片上传失败：${e.toString().replaceFirst('Exception: ', '')}')),
+                                );
+                              }
+                            } finally {
+                              if (dialogContext.mounted) setDialogState(() => uploading = false);
+                            }
+                          },
+                    icon: const Icon(Icons.image_outlined),
+                  ),
+                  if (uploading)
+                    const Padding(
+                      padding: EdgeInsets.only(left: 8),
+                      child: SizedBox(width: 16, height: 16, child: CircularProgressIndicator(strokeWidth: 2)),
+                    ),
+                ],
+              ),
+            ],
+          ),
+          actions: [
+            TextButton(onPressed: () => Navigator.pop(dialogContext), child: const Text('取消')),
+            FilledButton(onPressed: () {
+              final value = controller.text.trim();
+              if (value.isNotEmpty) Navigator.pop(dialogContext, value);
+            }, child: const Text('发送')),
+          ],
         ),
-        actions: [
-          TextButton(onPressed: () => Navigator.pop(dialogContext), child: const Text('取消')),
-          FilledButton(onPressed: () {
-            final value = controller.text.trim();
-            if (value.isNotEmpty) Navigator.pop(dialogContext, value);
-          }, child: const Text('发送')),
-        ],
       ),
     );
     controller.dispose();
