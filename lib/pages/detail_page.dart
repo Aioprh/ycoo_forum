@@ -962,6 +962,27 @@ class _DetailPageState extends State<DetailPage> {
     );
   }
 
+  Future<void> _reloadCommentsPage() async {
+    final d = _detail;
+    if (d == null || _commentChanging) return;
+    final page = _commentPage < 1 ? 1 : _commentPage;
+    try {
+      final nd = await ApiService.instance.fetchThreadDetail(
+        widget.tid,
+        page: page,
+        authorId: _authorOnly ? _detail?.authorUid : null,
+      );
+      if (mounted) {
+        setState(() {
+          _detail = nd;
+          _commentPage = page;
+          _likeCount = nd.likeCount;
+          _liked = nd.likedByMe;
+        });
+      }
+    } catch (_) {}
+  }
+
   Future<void> _changeCommentPage(int page) async {
     final d = _detail;
     if (d == null || _commentChanging) return;
@@ -1053,7 +1074,11 @@ class _DetailPageState extends State<DetailPage> {
           ),
           if (_commentsExpanded) ...[
             Divider(height: 1, color: c.outlineVariant.withValues(alpha: .35)),
-            NativeCommentList(html: d.commentsHtml, fid: d.fid),
+            NativeCommentList(
+              html: d.commentsHtml,
+              fid: d.fid,
+              onFloorEdited: (_) => _reloadCommentsPage(),
+            ),
             _commentPager(context, d),
           ],
         ],

@@ -19,6 +19,8 @@ class NativeCommentList extends StatelessWidget {
   final int fid;
   final void Function(int pid, String author)? onReply;
   final Future<void> Function(int pid, String author)? onReplySent;
+  /// 编辑某条普通楼层回帖成功后的回调，用于让外层刷新该楼层正文。
+  final Future<void> Function(int pid)? onFloorEdited;
 
   const NativeCommentList({
     super.key,
@@ -26,6 +28,7 @@ class NativeCommentList extends StatelessWidget {
     this.fid = 0,
     this.onReply,
     this.onReplySent,
+    this.onFloorEdited,
   });
 
   List<_CommentFloor> _parse() {
@@ -122,6 +125,7 @@ class NativeCommentList extends StatelessWidget {
           index: index,
           tid: tid,
           fid: fid,
+          onFloorEdited: onFloorEdited,
           onReply: () => _handleReply(context, tid, fid, index, comment),
           onProfile: () => _openProfile(context, comment),
         );
@@ -236,12 +240,13 @@ class _CommentFloor {
 class _CommentCard extends StatefulWidget {
   final _CommentFloor comment;
   final int index, tid, fid;
+  final Future<void> Function(int pid)? onFloorEdited;
   final Future<void> Function() onReply;
   final VoidCallback onProfile;
   const _CommentCard({
     super.key,
     required this.comment, required this.index, required this.tid, required this.fid,
-    required this.onReply, required this.onProfile,
+    required this.onReply, required this.onProfile, this.onFloorEdited,
   });
   @override
   State<_CommentCard> createState() => _CommentCardState();
@@ -643,6 +648,151 @@ class _CommentCardState extends State<_CommentCard> {
     if (error == null) await _loadReplies(force: true);
   }
 
+  /// 编辑一条楼中楼回复：先取当前正文预填，保存后重拉楼中楼。
+  Future<void> _editNested(_FloorReply reply) async {
+    if (!mounted) return;
+    if (reply.parentPid <= 0) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(content: Text('未取得所属楼层的编号，请刷新后重试')),
+      );
+      return;
+    }
+    final initial = await AuthService.instance.fetchFloorEditText(
+      widget.tid, reply.parentPid, reply.pid,
+    );
+    if (!mounted) return;
+    final newText = await _showEditDialog('编辑回复', initial ?? '');
+    if (newText == null || !mounted) return;
+    final error = await AuthService.instance.editFloorReply(
+      widget.tid, reply.parentPid, reply.pid, newText,
+    );
+    if (!mounted) return;
+    ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text(error ?? '已修改')));
+    if (error == null) await _loadReplies(force: true);
+  }
+
+  Future<void> _deleteNested(_FloorReply reply) async {
+    if (!mounted) return;
+    final confirmed = await showDialog<bool>(
+      context: context,
+      builder: (dialogContext) => AlertDialog(
+        title: const Text('删除这条回复？'),
+        content: const Text('删除后不可恢复。'),
+        actions: [
+          TextButton(onPressed: () => Navigator.pop(dialogContext, false), child: const Text('取消')),
+          FilledButton(
+            style: FilledButton.styleFrom(backgroundColor: Theme.of(dialogContext).colorScheme.error),
+            onPressed: () => Navigator.pop(dialogContext, true),
+            child: const Text('删除'),
+          ),
+        ],
+      ),
+    );
+    if (confirmed != true || !mounted) return;
+    final error = await AuthService.instance.deleteFloorReply(
+      widget.tid, reply.parentPid, reply.pid,
+    );
+    if (!mounted) return;
+    ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text(error ?? '已删除')));
+    if (error == null) await _loadReplies(force: true);
+  }
+
+  /// 编辑自己这条普通楼层回帖正文。
+  Future<void> _editOwnFloor() async {
+    if (_pid <= 0) _pid = widget.comment.pid;
+    if (_pid <= 0) return;
+    final initial = await AuthService.instance.fetchPostEditText(
+      widget.tid, widget.fid, _pid,
+    );
+    if (!mounted) return;
+    final newText = await _showEditDialog('编辑回帖', initial ?? '');
+    if (newText == null || !mounted) return;
+    final error = await AuthService.instance.editPostReply(
+      widget.tid, widget.fid, _pid, newText,
+    );
+    if (!mounted) return;
+    ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text(error ?? '已修改')));
+    if (error == null && widget.onFloorEdited != null) await widget.onFloorEdited!(_pid);
+  }
+
+  /// 带表情/图片按钮的编辑弹窗，返回新正文；取消返回 null。
+  Future<String?> _showEditDialog(String title, String initial) async {
+    final controller = TextEditingController(text: initial);
+    var uploading = false;
+    final result = await showDialog<String>(
+      context: context,
+      builder: (dialogContext) => StatefulBuilder(
+        builder: (dialogContext, setDialogState) => AlertDialog(
+          title: Text(title),
+          content: Column(
+            mainAxisSize: MainAxisSize.min,
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              TextField(
+                controller: controller,
+                autofocus: true,
+                minLines: 2,
+                maxLines: 8,
+                textInputAction: TextInputAction.newline,
+                decoration: const InputDecoration(hintText: '输入内容…', border: OutlineInputBorder()),
+              ),
+              const SizedBox(height: 8),
+              Row(
+                children: [
+                  IconButton(
+                    tooltip: '表情',
+                    visualDensity: VisualDensity.compact,
+                    onPressed: () async {
+                      final code = await ForumReplyTools.pickSmiley(dialogContext, widget.fid);
+                      if (code != null && code.isNotEmpty) ForumReplyTools.insertAtCursor(controller, code);
+                    },
+                    icon: const Icon(Icons.emoji_emotions_outlined),
+                  ),
+                  IconButton(
+                    tooltip: '图片',
+                    visualDensity: VisualDensity.compact,
+                    onPressed: uploading
+                        ? null
+                        : () async {
+                            setDialogState(() => uploading = true);
+                            try {
+                              final bbcode = await ForumReplyTools.uploadImage(dialogContext, widget.fid);
+                              if (bbcode.isNotEmpty) ForumReplyTools.insertAtCursor(controller, bbcode);
+                            } catch (e) {
+                              if (dialogContext.mounted) {
+                                ScaffoldMessenger.of(dialogContext).showSnackBar(
+                                  SnackBar(content: Text('图片上传失败：${e.toString().replaceFirst('Exception: ', '')}')),
+                                );
+                              }
+                            } finally {
+                              if (dialogContext.mounted) setDialogState(() => uploading = false);
+                            }
+                          },
+                    icon: const Icon(Icons.image_outlined),
+                  ),
+                  if (uploading)
+                    const Padding(
+                      padding: EdgeInsets.only(left: 8),
+                      child: SizedBox(width: 16, height: 16, child: CircularProgressIndicator(strokeWidth: 2)),
+                    ),
+                ],
+              ),
+            ],
+          ),
+          actions: [
+            TextButton(onPressed: () => Navigator.pop(dialogContext), child: const Text('取消')),
+            FilledButton(onPressed: () {
+              final value = controller.text.trim();
+              if (value.isNotEmpty) Navigator.pop(dialogContext, value);
+            }, child: const Text('保存')),
+          ],
+        ),
+      ),
+    );
+    controller.dispose();
+    return result;
+  }
+
   @override
   Widget build(BuildContext context) {
     final comment = widget.comment;
@@ -705,16 +855,36 @@ class _CommentCardState extends State<_CommentCard> {
             Container(width: double.infinity, margin: const EdgeInsets.only(bottom: 4),
               padding: const EdgeInsets.fromLTRB(10, 8, 10, 4),
               decoration: BoxDecoration(color: colors.primaryContainer.withValues(alpha: .22), borderRadius: BorderRadius.circular(14)),
-              child: Column(children: [for (final reply in replies) _FloorReplyTile(reply: reply, onReply: () => _replyNested(reply))])),
+              child: Column(children: [
+                for (final reply in replies)
+                  _FloorReplyTile(
+                    reply: reply,
+                    onReply: () => _replyNested(reply),
+                    onEdit: () => _editNested(reply),
+                    onDelete: () => _deleteNested(reply),
+                  ),
+              ])),
         ],
-        Align(alignment: Alignment.centerRight, child: TextButton.icon(
-          onPressed: () async {
-            await widget.onReply();
-            // 回复本楼成功也会产生新的楼中楼，重拉一次确保即时可见。
-            if (mounted) await _loadReplies(force: true);
-          },
-          icon: const Icon(Icons.reply_rounded, size: 17),
-          label: const Text('回复本楼'),
+        Align(alignment: Alignment.centerRight, child: Row(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            if (widget.comment.uid > 0 && widget.comment.uid == AuthService.instance.uid)
+              TextButton.icon(
+                onPressed: _editOwnFloor,
+                style: TextButton.styleFrom(visualDensity: VisualDensity.compact, tapTargetSize: MaterialTapTargetSize.shrinkWrap),
+                icon: const Icon(Icons.edit_outlined, size: 17),
+                label: const Text('编辑'),
+              ),
+            TextButton.icon(
+              onPressed: () async {
+                await widget.onReply();
+                // 回复本楼成功也会产生新的楼中楼，重拉一次确保即时可见。
+                if (mounted) await _loadReplies(force: true);
+              },
+              icon: const Icon(Icons.reply_rounded, size: 17),
+              label: const Text('回复本楼'),
+            ),
+          ],
         )),
       ]),
     );
@@ -739,7 +909,13 @@ class _FloorReply {
 class _FloorReplyTile extends StatelessWidget {
   final _FloorReply reply;
   final VoidCallback onReply;
-  const _FloorReplyTile({required this.reply, required this.onReply});
+  final VoidCallback onEdit;
+  final VoidCallback onDelete;
+  const _FloorReplyTile({
+    required this.reply, required this.onReply, required this.onEdit, required this.onDelete,
+  });
+
+  bool get _isMine => reply.uid > 0 && reply.uid == AuthService.instance.uid;
 
   @override
   Widget build(BuildContext context) {
@@ -762,11 +938,30 @@ class _FloorReplyTile extends StatelessWidget {
           NativePostContent(html: textHtml),
         ],
         for (final image in images) NativePostContent(html: image),
-        Align(alignment: Alignment.centerRight, child: TextButton.icon(
-          onPressed: onReply,
-          style: TextButton.styleFrom(visualDensity: VisualDensity.compact, tapTargetSize: MaterialTapTargetSize.shrinkWrap),
-          icon: const Icon(Icons.reply_rounded, size: 15),
-          label: const Text('回复'),
+        Align(alignment: Alignment.centerRight, child: Row(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            if (_isMine)
+              TextButton.icon(
+                onPressed: onEdit,
+                style: TextButton.styleFrom(visualDensity: VisualDensity.compact, tapTargetSize: MaterialTapTargetSize.shrinkWrap),
+                icon: const Icon(Icons.edit_outlined, size: 15),
+                label: const Text('编辑'),
+              ),
+            if (_isMine)
+              TextButton.icon(
+                onPressed: onDelete,
+                style: TextButton.styleFrom(visualDensity: VisualDensity.compact, tapTargetSize: MaterialTapTargetSize.shrinkWrap),
+                icon: const Icon(Icons.delete_outline, size: 15,),
+                label: const Text('删除'),
+              ),
+            TextButton.icon(
+              onPressed: onReply,
+              style: TextButton.styleFrom(visualDensity: VisualDensity.compact, tapTargetSize: MaterialTapTargetSize.shrinkWrap),
+              icon: const Icon(Icons.reply_rounded, size: 15),
+              label: const Text('回复'),
+            ),
+          ],
         )),
       ]),
     );

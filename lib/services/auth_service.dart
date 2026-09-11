@@ -1,5 +1,7 @@
 import 'dart:async';
 import 'package:http/http.dart' as http;
+import 'package:html/dom.dart' as dom;
+import 'package:html/parser.dart' as html_parser;
 import 'package:shared_preferences/shared_preferences.dart';
 import 'site_config.dart';
 import 'login_log.dart';
@@ -412,6 +414,162 @@ class AuthService {
     } catch (_) {
       return '回帖请求失败,请稍后重试';
     }
+  }
+
+  /// 解析 replyfloor 返回的表单，返回 action 的绝对地址 + 输入字段 + 提交按钮名。
+  /// 用动态解析而非硬编码字段，是因为编辑/删除表单的字段由服务端决定。
+  ({String? action, Map<String, String> fields, String? submitName, String? textareaName, String? initial}) _parseReplyfloorForm(String html) {
+    final fields = <String, String>{};
+    String? submitName;
+    String? textareaName;
+    String? initial;
+    dom.Element? form;
+    try {
+      form = html_parser.parse(html).querySelector('form');
+    } catch (_) {}
+    if (form == null) return (action: null, fields: fields, submitName: null, textareaName: null, initial: null);
+    for (final input in form.querySelectorAll('input')) {
+      final name = input.attributes['name'];
+      final value = input.attributes['value'] ?? '';
+      if (name == null || name.isEmpty) continue;
+      final type = (input.attributes['type'] ?? 'text').toLowerCase();
+      if (type == 'submit' || type == 'button') { submitName = name; continue; }
+      fields[name] = value;
+      if (name == 'message' && value.trim().isNotEmpty && initial == null) initial = value.trim();
+    }
+    for (final b in form.querySelectorAll('button')) {
+      final name = b.attributes['name'];
+      if (name != null && name.isNotEmpty && submitName == null) {
+        submitName = name;
+        fields[name] = b.attributes['value'] ?? 'yes';
+      }
+    }
+    final ta = form.querySelector('textarea');
+    if (ta != null && ta.attributes['name'] != null) {
+      textareaName = ta.attributes['name'];
+      final t = ta.text ?? '';
+      if (t.trim().isNotEmpty && initial == null) initial = t.trim();
+    }
+    return (action: form.attributes['action'], fields: fields, submitName: submitName, textareaName: textareaName, initial: initial);
+  }
+
+  /// 读取一条楼中楼回复的当前正文，供编辑弹窗预填。返回 null 表示取不到(不存在/未登录)。
+  Future<String?> fetchFloorEditText(int tid, int postpid, int msgid) async {
+    final client = await _http();
+    try {
+      final formUrl = Uri.parse('${base}plugin.php?id=replyfloor:index&ac=edit&tid=$tid&pid=$postpid&msgid=$msgid&handlekey=editmod&loc=1&inajax=1');
+      final resp = await client.get(formUrl, headers: _headers()).timeout(NetClient.timeout);
+      final form = _parseReplyfloorForm(NetClient.decode(resp.bodyBytes));
+      return form.initial;
+    } catch (_) {
+      return null;
+    }
+  }
+
+  /// 读取一条普通楼层回帖的当前正文，供编辑弹窗预填。返回 null 表示取不到。
+  Future<String?> fetchPostEditText(int tid, int fid, int pid) async {
+    final client = await _http();
+    try {
+      final formUrl = Uri.parse('${base}forum.php?mod=post&action=edit&fid=$fid&tid=$tid&pid=$pid&page=1&mobile=2');
+      final resp = await client.get(formUrl, headers: _headers()).timeout(NetClient.timeout);
+      final form = _parseReplyfloorForm(NetClient.decode(resp.bodyBytes));
+      return form.initial;
+    } catch (_) {
+      return null;
+    }
+  }
+
+  /// 编辑一条楼中楼回复（Comiis replyfloor `ac=edit`）。
+  /// [postpid] 父楼 Discuz postpid，[msgid] replyfloor 内部回复 id。
+  /// 成功返回 null，失败返回可读错误。新原文为 [message]。
+  Future<String?> editFloorReply(int tid, int postpid, int msgid, String message) async {
+    final text = message.trim();
+    if (text.isEmpty) return '编辑内容不能为空';
+    final client = await _http();
+    final referer = '${base}thread-$tid-1-1.html';
+    try {
+      final formUrl = Uri.parse('${base}plugin.php?id=replyfloor:index&ac=edit&tid=$tid&pid=$postpid&msgid=$msgid&handlekey=editmod&loc=1&inajax=1');
+      final formResp = await client.get(formUrl, headers: _headers(referer: referer)).timeout(NetClient.timeout);
+      final form = _parseReplyfloorForm(NetClient.decode(formResp.bodyBytes));
+      if (form.action == null) return '编辑内容不存在或已删除';
+      final payload = <String, String>{...form.fields};
+      // textarea(message) 以新文本覆盖；若无 textarea 则回退到 message 字段。
+      final msgKey = form.textareaName ?? 'message';
+      payload[msgKey] = text;
+      if (form.submitName != null && !payload.containsKey(form.submitName!)) payload[form.submitName!] = 'yes';
+      payload['handlekey'] = 'editmod';
+      final abs = Uri.parse(base).resolve(form.action!);
+      final submitUrl = abs.replace(queryParameters: {...abs.queryParameters, 'loc': '1', 'inajax': '1'});
+      final resp = await client.post(submitUrl, headers: {..._headers(referer: formUrl.toString()), 'Content-Type': 'application/x-www-form-urlencoded; charset=UTF-8', 'Origin': base, 'X-Requested-With': 'XMLHttpRequest'}, body: payload).timeout(NetClient.timeout);
+      final body = NetClient.decode(resp.bodyBytes);
+      if (body.contains('succeedhandle_editmod')) return null;
+      return _floorError(body, '编辑失败,请重试');
+    } catch (_) {
+      return '编辑请求失败,请稍后重试';
+    }
+  }
+
+  /// 删除一条楼中楼回复（Comiis replyfloor `ac=delete`）。
+  Future<String?> deleteFloorReply(int tid, int postpid, int msgid) async {
+    final client = await _http();
+    final referer = '${base}thread-$tid-1-1.html';
+    try {
+      final formUrl = Uri.parse('${base}plugin.php?id=replyfloor:index&ac=delete&tid=$tid&pid=$postpid&msgid=$msgid&handlekey=deletemod&loc=1&inajax=1');
+      final formResp = await client.get(formUrl, headers: _headers(referer: referer)).timeout(NetClient.timeout);
+      final form = _parseReplyfloorForm(NetClient.decode(formResp.bodyBytes));
+      if (form.action == null) return '该回复不存在或已删除';
+      final payload = <String, String>{...form.fields};
+      payload['handlekey'] = 'deletemod';
+      if (form.submitName != null && !payload.containsKey(form.submitName!)) payload[form.submitName!] = 'yes';
+      final abs = Uri.parse(base).resolve(form.action!);
+      final submitUrl = abs.replace(queryParameters: {...abs.queryParameters, 'loc': '1', 'inajax': '1'});
+      final resp = await client.post(submitUrl, headers: {..._headers(referer: formUrl.toString()), 'Content-Type': 'application/x-www-form-urlencoded; charset=UTF-8', 'Origin': base, 'X-Requested-With': 'XMLHttpRequest'}, body: payload).timeout(NetClient.timeout);
+      final body = NetClient.decode(resp.bodyBytes);
+      if (body.contains('succeedhandle_deletemod')) return null;
+      return _floorError(body, '删除失败,请重试');
+    } catch (_) {
+      return '删除请求失败,请稍后重试';
+    }
+  }
+
+  /// 编辑一条普通楼层回帖（Discuz 原生 `forum.php?mod=post&action=edit`）。
+  /// [pid] 为楼层 Discuz postpid。成功返回 null，失败返回可读错误。
+  Future<String?> editPostReply(int tid, int fid, int pid, String message) async {
+    final text = message.trim();
+    if (text.isEmpty) return '编辑内容不能为空';
+    final client = await _http();
+    try {
+      final formUrl = Uri.parse('${base}forum.php?mod=post&action=edit&fid=$fid&tid=$tid&pid=$pid&page=1&mobile=2');
+      final formResp = await client.get(formUrl, headers: _headers()).timeout(NetClient.timeout);
+      // 编辑表单可能是输入框(<input name="message">)或富文本(<textarea name="message">)，都能被解析。
+      final form = _parseReplyfloorForm(NetClient.decode(formResp.bodyBytes));
+      if (form.action == null) return '该回帖不存在或已删除';
+      final payload = <String, String>{...form.fields};
+      final msgKey = form.textareaName ?? 'message';
+      payload[msgKey] = text;
+      payload['fid'] = '$fid';
+      payload['tid'] = '$tid';
+      payload['pid'] = '$pid';
+      payload['editsubmit'] = 'yes';
+      final abs = Uri.parse(base).resolve(form.action!);
+      final submitUrl = abs.replace(queryParameters: {...abs.queryParameters, 'mobile': '2'});
+      final resp = await client.post(submitUrl, headers: {..._headers(referer: formUrl.toString()), 'Content-Type': 'application/x-www-form-urlencoded; charset=UTF-8', 'Origin': base, 'X-Requested-With': 'XMLHttpRequest'}, body: payload).timeout(NetClient.timeout);
+      final body = NetClient.decode(resp.bodyBytes);
+      if (body.contains('succeedhandle_') || (body.contains('location.href') && (body.contains('#pid_') || body.contains('thread-$tid')))) return null;
+      return _floorError(body, '编辑失败,请重试');
+    } catch (_) {
+      return '编辑请求失败,请稍后重试';
+    }
+  }
+
+  /// 楼中楼编辑/删除操作失败时的可读错误提取。
+  String _floorError(String body, String fallback) {
+    final needLogin = RegExp(r'''loginform|您需要(?:先)?登录才能|未登录|登录后才能''').hasMatch(body);
+    if (needLogin) return '请先登录后操作';
+    final showErr = RegExp(r'''showError\(\s*['"]([^'"]+)['"]''').firstMatch(body)?.group(1) ??
+        RegExp(r'''errorhandle_(?:edit|delete)mod\(\s*['"]([^'"]+)['"]''').firstMatch(body)?.group(1);
+    if (showErr != null && showErr.trim().isNotEmpty) return showErr.trim();
+    return fallback;
   }
 
   /// 统一判定回复是否成功：覆盖 Discuz 原生 reply(含 fastpost) 与 Comiis replyfloor。
