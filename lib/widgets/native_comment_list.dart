@@ -852,7 +852,7 @@ class _CommentCardState extends State<_CommentCard> {
           _menuTile(sheetContext, icon: Icons.paid_outlined, label: '打赏',
               onTap: () => _openWebOp('forum.php?mod=misc&action=rate&tid=${widget.tid}&pid=$pid&mobile=2', '打赏')),
           _menuTile(sheetContext, icon: Icons.push_pin_outlined, label: '置顶',
-              onTap: () => _openWebOp('forum.php?mod=topicadmin&action=moderate&fid=${widget.fid}&mobile=2', '版主管理')),
+              onTap: () => _openWebOp('home.php?mod=magic&mid=stick&idtype=pid&id=$pid:${widget.fid}&mobile=2', '置顶评论')),
           _menuTile(sheetContext, icon: Icons.reply_rounded, label: comment.floor.isEmpty ? '回复本楼$pid' : '回复 ${comment.floor}',
               onTap: () async { await widget.onReply(); if (mounted) await _loadReplies(force: true); }),
         ]),
