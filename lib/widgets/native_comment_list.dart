@@ -3,6 +3,7 @@ import 'package:html/dom.dart' as dom;
 import 'package:html/parser.dart' as parser;
 
 import '../pages/native_profile_page.dart';
+import '../pages/webview_page.dart';
 import '../services/auth_service.dart';
 import '../services/comment_profile_resolver.dart';
 import '../services/comment_reply_resolver.dart';
@@ -793,6 +794,82 @@ class _CommentCardState extends State<_CommentCard> {
     return result;
   }
 
+  /// 用内置 WebView 打开一个需要登录态的论坛操作页（原站里完成提交/校验）。
+  void _openWebOp(String path, String title) {
+    final url = AuthService.base + path;
+    Navigator.of(context).push(MaterialPageRoute(
+      builder: (_) => WebViewPage(url: url, title: title),
+    ));
+  }
+
+  ListTile _menuTile(BuildContext sheetContext, {
+    required IconData icon, required String label, required VoidCallback onTap, Color? color,
+  }) {
+    return ListTile(
+      leading: Icon(icon, color: color, size: 21),
+      title: Text(label, style: const TextStyle(fontSize: 14)),
+      dense: true,
+      onTap: () { Navigator.pop(sheetContext); onTap(); },
+    );
+  }
+
+  /// 普通评论的「更多」操作菜单。
+  Future<void> _showCommentMenu() async {
+    final comment = widget.comment;
+    var pid = _pid;
+    if (pid <= 0) pid = comment.pid;
+    if (pid <= 0 && widget.tid > 0) {
+      pid = await CommentReplyResolver.instance.resolvePid(
+        tid: widget.tid, commentIndex: widget.index,
+        author: comment.author, floor: comment.floor,
+      );
+    }
+    if (pid <= 0 && mounted) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(content: Text('未取得该楼层的编号，请刷新帖子后重试')),
+      );
+      return;
+    }
+    if (!mounted) return;
+    _pid = pid;
+    final mine = comment.uid > 0 && comment.uid == AuthService.instance.uid;
+    await showModalBottomSheet(
+      context: context,
+      builder: (sheetContext) => SafeArea(
+        child: Column(mainAxisSize: MainAxisSize.min, children: [
+          ListTile(
+            dense: true,
+            leading: const Icon(Icons.subject, size: 21),
+            title: Text('${widget.index + 1}楼 · ${comment.author.isEmpty ? '匿名用户' : comment.author}',
+                maxLines: 1, overflow: TextOverflow.ellipsis, style: const TextStyle(fontSize: 12, color: Colors.grey)),
+          ),
+          const Divider(height: 1),
+          if (mine) _menuTile(sheetContext, icon: Icons.edit_outlined, label: '编辑', onTap: _editOwnFloor),
+          _menuTile(sheetContext, icon: Icons.outlined_flag, label: '举报',
+              onTap: () => _openWebOp('misc.php?mod=report&rtype=post&rid=$pid&tid=${widget.tid}&fid=${widget.fid}&mobile=2', '举报')),
+          _menuTile(sheetContext, icon: Icons.card_giftcard_outlined, label: '道具',
+              onTap: () => _openWebOp('home.php?mod=magic&idtype=pid&id=$pid:${widget.tid}&mobile=2', '道具')),
+          _menuTile(sheetContext, icon: Icons.paid_outlined, label: '打赏',
+              onTap: () => _openWebOp('forum.php?mod=misc&action=rate&tid=${widget.tid}&pid=$pid&mobile=2', '打赏')),
+          _menuTile(sheetContext, icon: Icons.push_pin_outlined, label: '置顶',
+              onTap: () => _openWebOp('forum.php?mod=topicadmin&action=moderate&fid=${widget.fid}&mobile=2', '版主管理')),
+          _menuTile(sheetContext, icon: Icons.reply_rounded, label: comment.floor.isEmpty ? '回复本楼$pid' : '回复 ${comment.floor}',
+              onTap: () async { await widget.onReply(); if (mounted) await _loadReplies(force: true); }),
+        ]),
+      ),
+    );
+  }
+
+  /// 楼中楼回复的举报（Comiis replyfloor `ac=report`）。
+  Future<void> _reportFloorReply(_FloorReply reply) async {
+    if (!mounted) return;
+    if (reply.parentPid <= 0) return;
+    _openWebOp(
+      'plugin.php?id=replyfloor:index&ac=report&tid=${widget.tid}&pid=${reply.parentPid}&msgid=${reply.pid}&mobile=2',
+      '举报',
+    );
+  }
+
   @override
   Widget build(BuildContext context) {
     final comment = widget.comment;
@@ -837,6 +914,13 @@ class _CommentCardState extends State<_CommentCard> {
             decoration: BoxDecoration(color: colors.surfaceContainerHighest, borderRadius: BorderRadius.circular(9)),
             child: Text(comment.floor.isEmpty ? '${widget.index + 1}楼' : comment.floor,
                 style: TextStyle(fontSize: 10, fontWeight: FontWeight.w700, color: colors.onSurfaceVariant))),
+          IconButton(
+            tooltip: '更多',
+            visualDensity: VisualDensity.compact,
+            style: IconButton.styleFrom(visualDensity: VisualDensity.compact),
+            onPressed: _showCommentMenu,
+            icon: const Icon(Icons.more_horiz, size: 20),
+          ),
         ]),
         const SizedBox(height: 11),
         Container(height: 1, color: colors.outlineVariant.withValues(alpha: .35)),
@@ -862,6 +946,7 @@ class _CommentCardState extends State<_CommentCard> {
                     onReply: () => _replyNested(reply),
                     onEdit: () => _editNested(reply),
                     onDelete: () => _deleteNested(reply),
+                    onReport: () => _reportFloorReply(reply),
                   ),
               ])),
         ],
@@ -911,8 +996,9 @@ class _FloorReplyTile extends StatelessWidget {
   final VoidCallback onReply;
   final VoidCallback onEdit;
   final VoidCallback onDelete;
+  final VoidCallback onReport;
   const _FloorReplyTile({
-    required this.reply, required this.onReply, required this.onEdit, required this.onDelete,
+    required this.reply, required this.onReply, required this.onEdit, required this.onDelete, required this.onReport,
   });
 
   bool get _isMine => reply.uid > 0 && reply.uid == AuthService.instance.uid;
@@ -955,6 +1041,12 @@ class _FloorReplyTile extends StatelessWidget {
                 icon: const Icon(Icons.delete_outline, size: 15,),
                 label: const Text('删除'),
               ),
+            TextButton.icon(
+              onPressed: onReport,
+              style: TextButton.styleFrom(visualDensity: VisualDensity.compact, tapTargetSize: MaterialTapTargetSize.shrinkWrap),
+              icon: const Icon(Icons.outlined_flag, size: 15),
+              label: const Text('举报'),
+            ),
             TextButton.icon(
               onPressed: onReply,
               style: TextButton.styleFrom(visualDensity: VisualDensity.compact, tapTargetSize: MaterialTapTargetSize.shrinkWrap),
