@@ -1,4 +1,3 @@
-import 'package:html/dom.dart' as dom;
 import 'package:html/parser.dart' as parser;
 
 import 'auth_service.dart';
@@ -12,10 +11,11 @@ class FavoriteBoardInfo {
   final String icon;
   final String today;
   final String threads;
-  final String followers; // "2919人关注" 里的数字
-  final bool followed; // 是否已关注
-  final String favid; // 关注记录 ID, 取消关注时需要
-  final String followAction; // 关注/取消关注的完整 URL
+  final String followers;
+  final bool followed;
+  final String favid;
+  final String formhash;
+  final String rawHtml; // 原始 HTML, 供 toggle 复用, 避免重复请求
 
   const FavoriteBoardInfo({
     required this.fid,
@@ -26,7 +26,8 @@ class FavoriteBoardInfo {
     this.followers = '',
     this.followed = false,
     this.favid = '',
-    this.followAction = '',
+    this.formhash = '',
+    this.rawHtml = '',
   });
 
   FavoriteBoardInfo copyWith({
@@ -38,7 +39,8 @@ class FavoriteBoardInfo {
     String? followers,
     bool? followed,
     String? favid,
-    String? followAction,
+    String? formhash,
+    String? rawHtml,
   }) =>
       FavoriteBoardInfo(
         fid: fid ?? this.fid,
@@ -49,18 +51,17 @@ class FavoriteBoardInfo {
         followers: followers ?? this.followers,
         followed: followed ?? this.followed,
         favid: favid ?? this.favid,
-        followAction: followAction ?? this.followAction,
+        formhash: formhash ?? this.formhash,
+        rawHtml: rawHtml ?? this.rawHtml,
       );
 }
 
-/// 版块关注（Discuz mobile 模板 forum_fav）。
 class FavoriteBoardService {
   FavoriteBoardService._();
   static final instance = FavoriteBoardService._();
 
   static String get _base => SiteConfig.base;
 
-  /// 跟 ApiService.forumUrl 用同一个 URL, 保证模板一致。
   static String boardUrl(int fid, {int page = 1}) =>
       '${_base}forum.php?mod=forumdisplay&fid=$fid&mobile=2&page=$page';
 
@@ -83,13 +84,24 @@ class FavoriteBoardService {
       }).timeout(const Duration(seconds: 20));
       if (resp.statusCode != 200) return null;
       final html = NetClient.decode(resp.bodyBytes);
+      // 如果返回的是登录页或错误页, 放弃
+      if (_looksLikeLoginPage(html)) return null;
       return parseBoardInfo(html, fid);
     } catch (_) {
       return null;
     }
   }
 
-  /// 从移动版 forumdisplay 页面解析版块头。
+  static bool _looksLikeLoginPage(String html) {
+    if (html.isEmpty) return true;
+    // <title>登录 - 源论坛</title>
+    final lower = html.toLowerCase();
+    if (RegExp(r'<title>[^<]*登录[^<]*</title>', caseSensitive: false).hasMatch(html)) return true;
+    if (RegExp(r'<title>[^<]*需要积分[^<]*</title>').hasMatch(html)) return true;
+    if (lower.contains('name="loginfield"') && lower.contains('id="ls_password"')) return true;
+    return false;
+  }
+
   static FavoriteBoardInfo parseBoardInfo(String html, int fid) {
     final doc = parser.parse(html);
 
@@ -100,24 +112,25 @@ class FavoriteBoardService {
     String followers = '';
     bool followed = false;
     String favid = '';
-    String followAction = '';
 
-    // Comiis mobile: .comiis_forumlist_head
+    // ========== 主选择器: Comiis 移动版 .comiis_forumlist_head ==========
     final head = doc.querySelector('.comiis_forumlist_head');
     if (head != null) {
-      // 版块名 .top_left h2
+      // 版块名
       name = head.querySelector('.top_left h2')?.text.trim() ?? '';
-      // 图标 .top_ico img
+      if (name.isEmpty) name = head.querySelector('.top_left em, .top_left a')?.text.trim() ?? '';
+
+      // 图标
       icon = head.querySelector('.top_ico img')?.attributes['src']?.trim() ?? '';
 
-      // 统计: "主题: 3711 | 今日: 459"
-      final stats = head.querySelectorAll('.comiis_tm7').map((e) => e.text).join(' ');
+      // 统计行: "主题: 3711 | 今日: 459" 或多段 comiis_tm7
+      final allText = head.text;
       final tRe = RegExp(r'今日\s*[:：]\s*(\d+)');
-      final thRe = RegExp(r'(?:主题|帖数)\s*[:：]\s*(\d+)');
-      final fRe = RegExp(r'(\d+)\s*人关注');
-      final tMatch = tRe.firstMatch(stats);
-      final thMatch = thRe.firstMatch(stats);
-      final fMatch = fRe.firstMatch(stats);
+      final thRe = RegExp(r'(?:主题|帖数|帖子)\s*[:：]\s*(\d+)');
+      final fRe = RegExp(r'(\d+)\s*人(?:已)?关注');
+      final tMatch = tRe.firstMatch(allText);
+      final thMatch = thRe.firstMatch(allText);
+      final fMatch = fRe.firstMatch(allText);
       if (tMatch != null) today = tMatch.group(1)!;
       if (thMatch != null) threads = thMatch.group(1)!;
       if (fMatch != null) followers = fMatch.group(1)!;
@@ -127,49 +140,67 @@ class FavoriteBoardService {
       if (favBtn != null) {
         final btnText = favBtn.text.trim();
         final href = (favBtn.attributes['href'] ?? '').replaceAll('&amp;', '&');
-        // 登录时 href 应该是 home.php?mod=spacecp&ac=favorite&op=delete... (取消关注)
-        // 未登录时 href 是 javascript:popup.open(...)
         if (href.startsWith('home.php')) {
-          followAction = _absolute(href);
-          // 提取 favid
+          // 登录态下: 这里是取消关注链接
           final favidMatch = RegExp(r'favid=(\d+)').firstMatch(href);
           if (favidMatch != null) favid = favidMatch.group(1)!;
-          // 按钮上有"已关注"文字 → 当前已关注
-          followed = RegExp(r'已关注|取消关注', caseSensitive: true).hasMatch(btnText) ||
-              href.contains('op=delete');
-        } else if (href.startsWith('javascript:')) {
-          // 未登录, 构造关注 URL
-          followed = false;
+          followed = href.contains('op=delete') || RegExp(r'已关注|取消关注').hasMatch(btnText);
         }
       }
     }
 
-    // 兜底选择器: PC 版 comiis_lhd_tinfo
+    // ========== 兜底 1: PC 版 Comiis N7 .comiis_lhd_tinfo ==========
     if (name.isEmpty) {
       final tinfo = doc.querySelector('.comiis_lhd_tinfo');
       if (tinfo != null) {
         name = tinfo.querySelector('.km_name')?.text.trim() ?? '';
-        icon = tinfo.querySelector('.km_img img')?.attributes['src']?.trim() ?? '';
-        final txts = tinfo.querySelectorAll('.km_txt');
-        if (txts.length > 1) {
-          final stats = txts.last.text.trim();
-          final t = RegExp(r'今日\s*[:：]\s*(\d+)').firstMatch(stats);
-          final th = RegExp(r'(?:主题|帖数)\s*[:：]\s*(\d+)').firstMatch(stats);
-          if (t != null) today = t.group(1)!;
-          if (th != null) threads = th.group(1)!;
-        }
-        followers = tinfo.querySelector('#number_favorite_num')?.text.trim() ?? '';
+        icon = tinfo.querySelector('.km_img img')?.attributes['src']?.trim() ?? icon;
+        final statsAll = tinfo.text;
+        final t = RegExp(r'今日\s*[:：]\s*(\d+)').firstMatch(statsAll);
+        final th = RegExp(r'(?:主题|帖数)\s*[:：]\s*(\d+)').firstMatch(statsAll);
+        final f = RegExp(r'(\d+)\s*人(?:已)?收藏').firstMatch(statsAll);
+        if (t != null) today = t.group(1)!;
+        if (th != null) threads = th.group(1)!;
+        if (f != null) followers = f.group(1)!;
       }
     }
 
-    // 最终兜底: 面包屑里的版块名
+    // ========== 兜底 2: <title> 标签 ==========
     if (name.isEmpty) {
-      // forumdisplay 面包屑里第一个 forum-$fid-N.html 的链接
+      final titleMatch = RegExp(r'<title>\s*([^<\s\-|]+)').firstMatch(html);
+      if (titleMatch != null) {
+        final t = titleMatch.group(1)!.trim();
+        // 过滤掉通用标题
+        if (!RegExp(r'^(登录|注册|源论坛|首页|需要积分)', caseSensitive: false).hasMatch(t)) {
+          name = t;
+        }
+      }
+    }
+
+    // ========== 兜底 3: 面包屑 forum-$fid-N.html ==========
+    if (name.isEmpty) {
       for (final a in doc.querySelectorAll('a[href]')) {
         final href = a.attributes['href'] ?? '';
-        if (href.contains('forum-$fid-') || href.contains('fid=$fid')) {
-          name = a.text.trim();
-          if (name.isNotEmpty && name.length < 30) break;
+        if (href.contains('forum-$fid-') || (href.contains('fid=$fid') && href.contains('forumdisplay'))) {
+          final t = a.text.trim();
+          if (t.isNotEmpty && t.length < 30 && !RegExp(r'(首页|论坛)').hasMatch(t)) {
+            name = t;
+            break;
+          }
+        }
+      }
+    }
+
+    // formhash
+    String formhash = '';
+    final fhM = RegExp("var\\s+formhash\\s*=\\s*['\"]([a-zA-Z0-9]{6,})['\"]", caseSensitive: false).firstMatch(html);
+    if (fhM != null) formhash = fhM.group(1)!;
+    if (formhash.isEmpty) {
+      for (final input in doc.querySelectorAll('input[name="formhash"]')) {
+        final v = input.attributes['value']?.trim() ?? '';
+        if (v.isNotEmpty) {
+          formhash = v;
+          break;
         }
       }
     }
@@ -183,36 +214,23 @@ class FavoriteBoardService {
       followers: followers,
       followed: followed,
       favid: favid,
-      followAction: followAction,
+      formhash: formhash,
+      rawHtml: html,
     );
   }
 
-  /// 关注 / 取消关注。先抓一次版块页拿到 formhash + 当前状态 + favid。
   Future<String?> toggle({required int fid, required bool follow}) async {
     if (fid <= 0) return '版块无效';
     final cookie = AuthService.instance.authCookie ?? '';
     if (cookie.isEmpty) return '请先登录论坛';
 
-    // 1) 先抓一次版块页拿到 formhash / 当前状态 / favid
+    // 1) 用同一请求同时拿到 boardInfo + formhash + 当前关注状态
     final info = await fetchBoardInfo(fid);
     if (info == null) return '无法获取版块信息, 请稍后重试';
 
-    // 如果当前状态已经是目标状态, 直接返回成功(或 null 表示无操作)
-    if (info.followed == follow) return null;
+    if (info.followed == follow) return null; // 已是目标状态, 无操作
 
-    final html = await NetClient.retry(() async {
-      final client = await NetClient.instance.client;
-      final resp = await client.get(Uri.parse(boardUrl(fid)), headers: {
-        'User-Agent': NetClient.ua,
-        'Accept': 'text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8',
-        'Referer': _base,
-        'Cookie': cookie,
-      });
-      return NetClient.decode(resp.bodyBytes);
-    }).timeout(const Duration(seconds: 20));
-
-    final formhash = _extractFormhash(html);
-    if (formhash.isEmpty) return '操作令牌获取失败, 请刷新后重试';
+    if (info.formhash.isEmpty) return '操作令牌获取失败, 请刷新后重试';
 
     final client = await NetClient.instance.client;
     final headers = <String, String>{
@@ -225,54 +243,39 @@ class FavoriteBoardService {
 
     String actionUrl;
     if (follow) {
-      // 关注: ac=favorite&type=forum&id=fid (handlekey=forum_fav)
+      // 关注
       actionUrl =
-          '${_base}home.php?mod=spacecp&ac=favorite&type=forum&id=$fid&formhash=$formhash&handlekey=forum_fav&mobile=2';
+          '${_base}home.php?mod=spacecp&ac=favorite&type=forum&id=$fid&formhash=${info.formhash}&handlekey=forum_fav&mobile=2';
     } else {
-      // 取消关注: 需要 favid (收藏记录 ID)
-      // 优先用 info.favid, 否则从已解析的 followAction 里取, 否则从页面里解析
+      // 取消关注: 需要 favid
       String realFavid = info.favid;
       if (realFavid.isEmpty) {
-        realFavid = RegExp(r'favid=(\d+)').firstMatch(info.followAction)?.group(1) ?? '';
-      }
-      if (realFavid.isEmpty) {
-        final btn = parser.parse(html).querySelector('.comiis_forum_fav');
+        // 从 rawHtml 里重新扫一次 favid
+        final btn = parser.parse(info.rawHtml).querySelector('.comiis_forum_fav');
         if (btn != null) {
           final h = (btn.attributes['href'] ?? '').replaceAll('&amp;', '&');
-          realFavid = RegExp(r'favid=(\d+)').firstMatch(h)?.group(1) ?? '';
+          final m = RegExp(r'favid=(\d+)').firstMatch(h);
+          if (m != null) realFavid = m.group(1)!;
         }
       }
-      if (realFavid.isEmpty) {
-        return '无法识别关注记录 ID, 请进入版块取消关注';
-      }
+      if (realFavid.isEmpty) return '无法识别关注记录, 请进入版块取消关注';
       actionUrl =
-          '${_base}home.php?mod=spacecp&ac=favorite&op=delete&type=forum&favid=$realFavid&formhash=$formhash&handlekey=forum_fav&mobile=2';
+          '${_base}home.php?mod=spacecp&ac=favorite&op=delete&type=forum&favid=$realFavid&formhash=${info.formhash}&handlekey=forum_fav&mobile=2';
     }
 
     try {
       final resp = await client.get(Uri.parse(actionUrl), headers: headers).timeout(const Duration(seconds: 20));
       if (resp.statusCode != 200) return '操作失败 HTTP ${resp.statusCode}';
       final body = NetClient.decode(resp.bodyBytes);
-      if (_looksLikeLogin(body)) return '登录态已失效, 请重新登录论坛';
+      if (_looksLikeLoginPage(body) || _looksLikeLogin(body)) return '登录态已失效, 请重新登录论坛';
       if (_tokenError(body)) return '操作令牌已失效, 请刷新后重试';
-      if (body.contains('succeed') || body.contains('成功') || body.contains('forum_fav')) return null;
+      if (body.contains('succeed') || body.contains('成功')) return null;
+      // 某些 Discuz 版本返回 <script>history.back();</script> 也算成功
+      if (body.contains('history.back') || body.contains('forum_fav')) return null;
       return follow ? '关注失败, 请稍后重试' : '取消关注失败, 请稍后重试';
     } catch (_) {
       return '操作失败, 请检查网络后重试';
     }
-  }
-
-  static String _extractFormhash(String html) {
-    // Comiis: <script>var formhash = 'xxx'</script>
-    final m = RegExp("var\\s+formhash\\s*=\\s*['\"]([a-zA-Z0-9]{6,})['\"]", caseSensitive: false).firstMatch(html);
-    if (m != null) return m.group(1)!;
-    // Discuz standard
-    for (final input in parser.parse(html).querySelectorAll('input[name="formhash"]')) {
-      final v = input.attributes['value']?.trim() ?? '';
-      if (v.isNotEmpty) return v;
-    }
-    final m2 = RegExp("(?:formhash|hash)\\s*[=:]\\s*['\"]([a-zA-Z0-9]{6,})['\"]", caseSensitive: false).firstMatch(html);
-    return m2?.group(1) ?? '';
   }
 
   static bool _looksLikeLogin(String html) {
@@ -284,15 +287,7 @@ class FavoriteBoardService {
 
   static bool _tokenError(String body) {
     final lower = body.toLowerCase();
-    return lower.contains('formhash') ||
-        (lower.contains('hash') && (lower.contains('错误') || lower.contains('invalid') || lower.contains('失效')));
-  }
-
-  static String _absolute(String value) {
-    if (value.isEmpty) return '';
-    if (value.startsWith('http://') || value.startsWith('https://')) return value;
-    if (value.startsWith('//')) return 'https:$value';
-    if (value.startsWith('/')) return _base + value.substring(1);
-    return _base + value;
+    return (lower.contains('formhash') || lower.contains('hash')) &&
+        (lower.contains('错误') || lower.contains('invalid') || lower.contains('失效') || lower.contains('wrong'));
   }
 }
