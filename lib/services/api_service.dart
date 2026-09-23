@@ -529,7 +529,7 @@ class ApiService {
       final floor = _normSpace(post.querySelector('.f_d.y, .pi .authi em, .pls .authi em')?.text ?? '').replaceAll(RegExp(r'[^0-9A-Za-z一二三四五六七八九十楼主]'), '');
       final time = _normSpace(post.querySelector('.kmtime, .comiis_tm, .authi em')?.text ?? '');
       final displayFloor = floor.isEmpty ? (out.isEmpty ? '楼主' : '${out.length + 1}楼') : floor;
-      out.add('<div class="post-card"$pidAttr$repliesAttr><div class="post-hd"><span class="p-floor">$displayFloor</span>${author.isEmpty ? '' : '<b class="p-author">$author</b>'}${level.isEmpty ? '' : '<span class="p-level">$level</span>'}</div>${time.isEmpty ? '' : '<div class="p-time">$time</div>'}<div class="p-body">${_cleanPostHtml(html)}</div></div>');
+      out.add('<div class="post-card"$pidAttr$repliesAttr><div class="post-hd"><span class="p-floor">$displayFloor</span>${author.isEmpty ? '' : '<b class="p-author">$author</b>'}${level.isEmpty ? '' : '<span class="p-level">$level</span>'}</div>${time.isEmpty ? '' : '<div class="p-time">$time</div>'}<div class="p-body">${_cleanPostHtml(html, author: author, level: level, floor: displayFloor, time: time)}</div></div>');
     }
     if (out.isNotEmpty) return out;
     for (final selector in ['.comiis_aimg_show', '.comiis_message_table', '.t_f', '.pcb', '.postmessage', '[id^="postmessage_"]']) {
@@ -590,6 +590,15 @@ class ApiService {
       '淘帖 (0)',
       '淘帖(0)',
     }..removeWhere((e) => e.isEmpty);
+
+    // 只删除“自身文本就是元数据”的节点，不删除包含正文/图片的父容器。
+    // 这样即使正文和楼层头部共用一个外层容器，也不会把真正正文一起删掉。
+    for (final node in fragment.querySelectorAll('*').toList().reversed) {
+      final text = _normSpace(node.text);
+      if (!metadata.contains(text)) continue;
+      final hasMedia = node.querySelector('img,video,iframe,audio,table,pre') != null;
+      if (!hasMedia) node.remove();
+    }
 
     for (final node in fragment.nodes.toList()) {
       if (node is! dom.Text) continue;
