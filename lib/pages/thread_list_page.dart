@@ -10,7 +10,7 @@ import '../services/site_fallback_service.dart';
 import '../widgets/thread_list_view.dart';
 
 /// 版块帖子列表页：带分页, 并展示网页端的「主题分类」筛选标签。
-/// 顶部额外展示从网页版头解析来的版块卡片(头像/名称/统计/收藏按钮)。
+/// 顶部额外展示从移动版头解析来的版块卡片(头像/名称/统计/关注按钮)。
 class BoardThreadListPage extends StatefulWidget {
   final int fid;
   final String filter;
@@ -70,30 +70,30 @@ class _BoardThreadListPageState extends State<BoardThreadListPage> {
     return SiteFallbackService.instance.fetchThreads(url);
   }
 
-  Future<void> _toggleFavorite() async {
+  Future<void> _toggleFollow() async {
     final board = _boardInfo;
     if (board == null) return;
     final ok = await AuthService.instance.checkLoggedIn();
     if (!ok || !AuthService.instance.isLoggedIn) {
       if (!mounted) return;
       ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(content: Text('请先登录论坛再收藏版块')),
+        const SnackBar(content: Text('请先登录论坛再关注版块')),
       );
       return;
     }
-    final prev = board.favorited;
-    setState(() => _boardInfo = _boardInfo?.copyWith(favorited: !prev));
+    final prev = board.followed;
+    setState(() => _boardInfo = _boardInfo?.copyWith(followed: !prev));
     final err = await FavoriteBoardService.instance.toggle(
       fid: widget.fid,
-      favorite: !prev,
+      follow: !prev,
     );
     if (!mounted) return;
     if (err != null) {
       // 失败回滚
-      setState(() => _boardInfo = _boardInfo?.copyWith(favorited: prev));
+      setState(() => _boardInfo = _boardInfo?.copyWith(followed: prev));
       ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text(err)));
     } else {
-      // 成功后重新抓一下最新状态(收藏数会+1/-1)
+      // 成功后重新抓一下最新状态(关注数会+1/-1)
       await _refreshBoardInfo();
     }
   }
@@ -108,12 +108,12 @@ class _BoardThreadListPageState extends State<BoardThreadListPage> {
         actions: [
           if (board != null && loggedIn)
             IconButton(
-              tooltip: board.favorited ? '取消收藏' : '收藏版块',
-              onPressed: _toggleFavorite,
+              tooltip: board.followed ? '取消关注' : '关注版块',
+              onPressed: _toggleFollow,
               icon: Icon(
-                board.favorited
-                    ? Icons.star_rounded
-                    : Icons.star_border_rounded,
+                board.followed
+                    ? Icons.group_add_rounded
+                    : Icons.person_add_alt_1_outlined,
               ),
             ),
         ],
@@ -197,7 +197,7 @@ class _BoardThreadListPageState extends State<BoardThreadListPage> {
             ),
           ),
           const SizedBox(width: 8),
-          _favoriteButton(context, board),
+          _followButton(context, board),
         ],
       ),
     );
@@ -207,22 +207,22 @@ class _BoardThreadListPageState extends State<BoardThreadListPage> {
     final parts = <String>[];
     if (b.today.isNotEmpty) parts.add('今日 $b.today');
     if (b.threads.isNotEmpty) parts.add('主题 $b.threads');
-    if (b.favorites.isNotEmpty) parts.add('${b.favorites}人已收藏');
+    if (b.followers.isNotEmpty) parts.add('${b.followers}人已关注');
     return parts.isEmpty ? '版块 ${b.fid}' : parts.join(' · ');
   }
 
-  Widget _favoriteButton(BuildContext context, FavoriteBoardInfo board) {
+  Widget _followButton(BuildContext context, FavoriteBoardInfo board) {
     final c = Theme.of(context).colorScheme;
     final loggedIn = AuthService.instance.isLoggedIn;
     return Material(
-      color: board.favorited ? c.primaryContainer : c.primary,
+      color: board.followed ? c.primaryContainer : c.primary,
       borderRadius: BorderRadius.circular(22),
       child: InkWell(
         borderRadius: BorderRadius.circular(22),
-        onTap: loggedIn ? _toggleFavorite : () async {
+        onTap: loggedIn ? _toggleFollow : () async {
           final ok = await AuthService.instance.checkLoggedIn();
           if (!ok || !AuthService.instance.isLoggedIn || !context.mounted) return;
-          await _toggleFavorite();
+          await _toggleFollow();
         },
         child: Padding(
           padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 8),
@@ -230,17 +230,17 @@ class _BoardThreadListPageState extends State<BoardThreadListPage> {
             mainAxisSize: MainAxisSize.min,
             children: [
               Icon(
-                board.favorited ? Icons.star_rounded : Icons.star_outline_rounded,
+                board.followed ? Icons.check_rounded : Icons.add_rounded,
                 size: 17,
-                color: board.favorited ? c.onPrimaryContainer : c.onPrimary,
+                color: board.followed ? c.onPrimaryContainer : c.onPrimary,
               ),
               const SizedBox(width: 4),
               Text(
-                board.favorited ? '已收藏' : '收藏',
+                board.followed ? '已关注' : '关注',
                 style: TextStyle(
                   fontSize: 13,
                   fontWeight: FontWeight.w600,
-                  color: board.favorited ? c.onPrimaryContainer : c.onPrimary,
+                  color: board.followed ? c.onPrimaryContainer : c.onPrimary,
                 ),
               ),
             ],
