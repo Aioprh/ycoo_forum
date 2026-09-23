@@ -39,9 +39,6 @@ class _ResolvedUserAvatarState extends State<ResolvedUserAvatar> {
   }
 
   Future<void> _load() async {
-    // 没有 UID 且没有用户名就是论坛匿名用户，不要尝试解析用户资料，
-    // 也不要显示“?”，统一使用匿名用户头像。
-    if (widget.uid <= 0 && widget.username.trim().isEmpty) return;
     final suppliedUid = widget.uid;
     try {
       var uid = suppliedUid;
@@ -64,16 +61,18 @@ class _ResolvedUserAvatarState extends State<ResolvedUserAvatar> {
         ? _profile!.username
         : widget.username.trim();
     final avatar = _profile?.avatar ?? '';
-    final anonymous = widget.uid <= 0 && widget.username.trim().isEmpty && avatar.isEmpty;
     final child = CircleAvatar(
       radius: widget.radius,
       backgroundColor: s.secondaryContainer,
       backgroundImage: avatar.isNotEmpty ? NetworkImage(avatar) : null,
       child: avatar.isEmpty
-          ? Icon(
-              anonymous ? Icons.person_outline_rounded : Icons.person_rounded,
-              size: widget.radius * 1.05,
-              color: s.onSecondaryContainer,
+          ? Text(
+              name.isEmpty ? '?' : name.characters.first,
+              style: TextStyle(
+                fontWeight: FontWeight.w800,
+                color: s.onSecondaryContainer,
+                fontSize: widget.radius * .85,
+              ),
             )
           : null,
     );
