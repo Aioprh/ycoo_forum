@@ -77,9 +77,10 @@ class FavoriteBoardService {
       if (cookie.isNotEmpty) 'Cookie': cookie,
     };
     try {
+      final freshUrl = '${boardUrl(fid)}&_ycoo_fav_ts=${DateTime.now().millisecondsSinceEpoch}';
       final resp = await NetClient.retry(() async {
         final client = await NetClient.instance.client;
-        return client.get(Uri.parse(boardUrl(fid)), headers: headers);
+        return client.get(Uri.parse(freshUrl), headers: headers);
       }).timeout(const Duration(seconds: 20));
       if (resp.statusCode != 200) return null;
       final html = NetClient.decode(resp.bodyBytes);
@@ -209,7 +210,7 @@ class FavoriteBoardService {
 
   static String _buildAddUrl(int fid, String hash) {
     if (hash.isEmpty) return '';
-    return 'home.php?mod=spacecp&ac=favorite&type=forum&id=$fid&formhash=$hash&handlekey=forum_fav';
+    return 'home.php?mod=spacecp&ac=favorite&type=forum&id=$fid&formhash=$hash&handlekey=favoriteforum';
   }
 
   static String _globalHash(dom.Document doc, String html) {
@@ -249,9 +250,30 @@ class FavoriteBoardService {
       if (action.isEmpty) return '未找到取消关注入口, 请先关注后在版块内取消';
     }
 
-    // action URL 可能带相对路径, 转绝对
-    final uri = Uri.tryParse(_absolute(action));
-    if (uri == null) return '操作链接无效';
+    // Discuz 原生版块收藏入口使用 handlekey=favoriteforum。
+    // 不要把移动模板自己的 forum_fav 当成服务端动作名；该参数必须与网页端一致。
+    final actionUri = Uri.tryParse(_absolute(action));
+    if (actionUri == null) return '操作链接无效';
+    final normalized = <String, String>{...actionUri.queryParameters};
+    if ((normalized['formhash'] ?? '').trim().isEmpty && info.globalHash.isNotEmpty) {
+      normalized['formhash'] = info.globalHash;
+    }
+    normalized['handlekey'] = 'favoriteforum';
+    if (follow) {
+      normalized['mod'] = 'spacecp';
+      normalized['ac'] = 'favorite';
+      normalized['type'] = 'forum';
+      normalized['id'] = '$fid';
+      normalized.remove('op');
+      normalized.remove('favid');
+    } else {
+      normalized['mod'] = 'spacecp';
+      normalized['ac'] = 'favorite';
+      normalized['op'] = 'delete';
+      normalized['type'] = 'forum';
+      if ((normalized['favid'] ?? '').isEmpty) return '未找到取消关注记录, 请刷新后重试';
+    }
+    final uri = actionUri.replace(queryParameters: normalized);
 
     // 3) 发请求 —— 跟 follow_service 一样, 去掉 X-Requested-With 避免 Discuz 返回异常格式
     final client = await NetClient.instance.client;
@@ -297,12 +319,21 @@ class FavoriteBoardService {
 
   static bool _tokenError(String body) {
     final lower = body.toLowerCase();
-    return lower.contains('formhash') ||
-        (lower.contains('hash') &&
+    // 不能只要响应里出现 formhash 就判定令牌失效：
+    // 正常的 Discuz 页面本身就会包含 formhash hidden input。
+    return lower.contains('操作令牌') ||
+        lower.contains('令牌已失效') ||
+        lower.contains('token expired') ||
+        lower.contains('invalid token') ||
+        lower.contains('非法操作') ||
+        lower.contains('来路不正确') ||
+        (lower.contains('formhash') &&
             (lower.contains('错误') ||
-                lower.contains('invalid') ||
+                lower.contains('非法') ||
                 lower.contains('失效') ||
-                lower.contains('wrong')));
+                lower.contains('无效') ||
+                lower.contains('invalid') ||
+                lower.contains('expired')));
   }
 
   static bool _looksLikeLogin(String html) {
