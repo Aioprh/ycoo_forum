@@ -20,6 +20,7 @@ import '../widgets/forum_attachment_section.dart';
 import 'login_page.dart';
 import 'thread_list_page.dart';
 import 'edit_thread_page.dart';
+import 'webview_page.dart';
 
 class DetailPage extends StatefulWidget {
   final int tid;
@@ -528,18 +529,25 @@ class _DetailPageState extends State<DetailPage> {
   }
 
   Future<void> _handlePostLink(String url) async {
-    if (url.trim().isEmpty) return;
-    final uri = Uri.tryParse(url.trim());
-    if (uri == null) {
+    final raw = url.trim();
+    if (raw.isEmpty) return;
+
+    Uri? uri = Uri.tryParse(raw);
+    if (uri == null || !uri.hasScheme) {
+      uri = Uri.tryParse(SiteConfig.resolve(raw));
+    }
+    if (uri == null || (uri.scheme != 'http' && uri.scheme != 'https')) {
       _snack('链接格式无效');
       return;
     }
-    // 正文图片: 打开大图预览页, 支持双指缩放与保存下载。
+
+    // 正文图片：打开原生大图预览，不进入 WebView。
     if (_isImageFileUrl(uri)) {
       if (mounted) await openImageViewer(context, url: uri.toString());
       return;
     }
-    // 文件附件(attachment.php、/attachment/ 等): 直接原生下载。
+
+    // 文件附件：保持原生下载流程，避免把下载接口误当网页打开。
     if (AttachmentDownloadService.instance.isAttachmentUrl(uri.toString())) {
       if (!_loggedIn) {
         if (mounted) await _login();
@@ -557,7 +565,33 @@ class _DetailPageState extends State<DetailPage> {
       }
       return;
     }
-    _snack('链接：${uri.toString()}');
+
+    final host = uri.host.toLowerCase();
+    final baseHost = Uri.parse(SiteConfig.base).host.toLowerCase();
+    final sameForum = host == baseHost || host.endsWith('.$baseHost');
+
+    // 帖子正文里的论坛主题链接：直接进入原生帖子详情，而不是再套一层网页。
+    final threadMatch = RegExp(r'(?:^|/)thread-(\\d+)(?:[-_]|\\.|/|$)', caseSensitive: false)
+        .firstMatch(uri.path);
+    final tid = threadMatch == null ? null : int.tryParse(threadMatch.group(1)!);
+    if (sameForum && tid != null && tid > 0) {
+      if (tid == _detail?.tid) return;
+      if (!mounted) return;
+      Navigator.of(context).push(
+        MaterialPageRoute(
+          builder: (_) => DetailPage(tid: tid, title: '帖子详情'),
+        ),
+      );
+      return;
+    }
+
+    // 其它 http/https 链接统一进入应用内浏览器，保留登录 Cookie 和站内导航。
+    if (!mounted) return;
+    Navigator.of(context).push(
+      MaterialPageRoute(
+        builder: (_) => WebViewPage(url: uri.toString(), title: '网页'),
+      ),
+    );
   }
 
   /// 判断 URL 是否为可预览的正文图片。
@@ -670,49 +704,34 @@ class _DetailPageState extends State<DetailPage> {
                 radius: 22,
                 onTap: () => _openAuthorProfile(context, d.author),
               ),
-              const SizedBox(width: 11),
+              const SizedBox(width: 10),
               Expanded(
-                child: Column(
-                  crossAxisAlignment: CrossAxisAlignment.start,
+                child: Wrap(
+                  spacing: 7,
+                  runSpacing: 4,
+                  crossAxisAlignment: WrapCrossAlignment.center,
                   children: [
-                    Row(
-                      children: [
-                        Flexible(
-                          child: Text(
-                            d.author,
-                            maxLines: 1,
-                            overflow: TextOverflow.ellipsis,
-                            style: const TextStyle(fontWeight: FontWeight.w800),
-                          ),
-                        ),
-                        if (d.level.isNotEmpty) ...[
-                          const SizedBox(width: 7),
-                          _chip(
-                            d.level,
-                            c.secondaryContainer,
-                            c.onSecondaryContainer,
-                          ),
-                        ],
-                      ],
+                    Text(
+                      d.author,
+                      maxLines: 1,
+                      overflow: TextOverflow.ellipsis,
+                      style: const TextStyle(fontWeight: FontWeight.w800),
                     ),
-                    if (d.time.isNotEmpty) ...[
-                      const SizedBox(height: 3),
+                    if (d.level.isNotEmpty)
+                      _chip(d.level, c.secondaryContainer, c.onSecondaryContainer),
+                    if (d.time.isNotEmpty)
                       Text(
                         d.time,
-                        style: TextStyle(
-                          fontSize: 11.5,
-                          color: c.onSurfaceVariant,
-                        ),
+                        style: TextStyle(fontSize: 11.5, color: c.onSurfaceVariant),
                       ),
-                    ],
                   ],
                 ),
               ),
             ],
           ),
-          const SizedBox(height: 14),
+          const SizedBox(height: 10),
           Wrap(
-            spacing: 7,
+            spacing: 6,
             runSpacing: 7,
             children: [
               _metaChip(context, Icons.tag_rounded, '主题 ${d.tid}'),
