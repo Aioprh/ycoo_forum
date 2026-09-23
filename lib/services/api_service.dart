@@ -452,11 +452,51 @@ class ApiService {
     final out = <String>[];
     final postNodes = doc.querySelectorAll('.comiis_postli, #postlist .plhin, #postlist .plc, #postlist > div[id^="post_"], div[id^="postmessage_"]');
     for (final post in postNodes) {
-      dom.Element? content = post.querySelector('.comiis_aimg_show, .comiis_messages, .comiis_message_table');
-      content ??= post.querySelector('.t_f, .pcb, .comiis_postcontent, .comiis_message, .message, .postmessage, [id^="postmessage_"]');
-      if (content == null && post.localName == 'div' && (post.id.startsWith('postmessage_') || post.id.startsWith('post_'))) content = post;
-      if (content == null) continue;
-      final html = content.innerHtml.trim();
+      // Comiis 手机模板里 .comiis_aimg_show/.comiis_messages 是“整块帖子容器”，
+      // 其中同时放着 +淘帖、脚本、正文表格和图片画廊。
+      // 不能直接取整个容器 innerHtml，否则模板元数据会再次进入正文。
+      // 正文文字通常在 .comiis_message_table，图片通常在同级 .comiis_img_list；
+      // 将这两个真实内容节点按原页面顺序组合，既不带出帖子头部，也不丢图片。
+      dom.Element? content;
+      String html = '';
+      final container = post.querySelector('.comiis_aimg_show, .comiis_messages');
+      if (container != null) {
+        final parts = <String>[];
+        final messageTables = container.querySelectorAll('.comiis_message_table');
+        final imageLists = container.querySelectorAll('.comiis_img_list');
+        final contentNodes = <dom.Element>[
+          ...messageTables,
+          ...imageLists,
+        ];
+        // 按 DOM 顺序重排，避免“正文→图片”被固定成单一顺序。
+        contentNodes.sort((a, b) => _domOrder(container, a, b));
+        for (final node in contentNodes) {
+          final part = node.outerHtml.trim();
+          if (part.isNotEmpty) parts.add(part);
+        }
+        html = parts.join();
+        // 某些帖子模板没有 message_table，但有独立正文节点，继续走兼容选择器。
+        if (html.isEmpty) {
+          final fallback = container.querySelector(
+            '.t_f, .pcb, .comiis_postcontent, .comiis_message, '
+            '.message, .postmessage, [id^="postmessage_"]',
+          );
+          html = fallback?.innerHtml.trim() ?? '';
+        }
+      }
+      if (html.isEmpty) {
+        final fallback = post.querySelector(
+          '.t_f, .pcb, .comiis_postcontent, .comiis_message, '
+          '.message, .postmessage, [id^="postmessage_"]',
+        );
+        html = fallback?.innerHtml.trim() ?? '';
+      }
+      if (html.isEmpty &&
+          post.localName == 'div' &&
+          (post.id.startsWith('postmessage_') || post.id.startsWith('post_'))) {
+        html = post.innerHtml.trim();
+      }
+      if (html.isEmpty) continue;
       if (html.isEmpty) continue;
       // 提取真实楼层 pid(取自容器 id="post_<pid>"/"postmessage_<pid>"),写入卡片供楼中楼回复使用。
       final pid = _postPid(post);
@@ -478,7 +518,7 @@ class ApiService {
       final floor = _normSpace(post.querySelector('.f_d.y, .pi .authi em, .pls .authi em')?.text ?? '').replaceAll(RegExp(r'[^0-9A-Za-z一二三四五六七八九十楼主]'), '');
       final time = _normSpace(post.querySelector('.kmtime, .comiis_tm, .authi em')?.text ?? '');
       final displayFloor = floor.isEmpty ? (out.isEmpty ? '楼主' : '${out.length + 1}楼') : floor;
-      out.add('<div class="post-card"$pidAttr$repliesAttr><div class="post-hd"><span class="p-floor">$displayFloor</span>${author.isEmpty ? '' : '<b class="p-author">$author</b>'}${level.isEmpty ? '' : '<span class="p-level">$level</span>'}</div>${time.isEmpty ? '' : '<div class="p-time">$time</div>'}<div class="p-body">${_cleanPostHtml(html, author: author, level: level, floor: displayFloor, time: time)}</div></div>');
+      out.add('<div class="post-card"$pidAttr$repliesAttr><div class="post-hd"><span class="p-floor">$displayFloor</span>${author.isEmpty ? '' : '<b class="p-author">$author</b>'}${level.isEmpty ? '' : '<span class="p-level">$level</span>'}</div>${time.isEmpty ? '' : '<div class="p-time">$time</div>'}<div class="p-body">${_cleanPostHtml(html)}</div></div>');
     }
     if (out.isNotEmpty) return out;
     for (final selector in ['.comiis_aimg_show', '.comiis_message_table', '.t_f', '.pcb', '.postmessage', '[id^="postmessage_"]']) {
@@ -491,52 +531,23 @@ class ApiService {
     return out;
   }
 
-  static String _cleanPostHtml(
-    String html, {
-    String author = '',
-    String level = '',
-    String floor = '',
-    String time = '',
-  }) {
-    // 不再按 CSS 类名大范围删除节点。
-    // 原站不同帖子模板的正文容器结构并不一致，粗暴删除 .top_user/
-    // .kmtime 等节点可能把真实正文一起删掉，甚至留下孤立的引号。
-    // 这里仅删除“文本内容与当前楼层头部完全相同”的节点，并清掉明确的
-    // 收藏按钮/脚本节点，因此正文、图片和正常同名文字都不会被结构性破坏。
+  static String _cleanPostHtml(String html) {
+    // 这里只清理脚本节点。正文节点已经在 _collectPosts 中精确提取，
+    // 不再按作者/等级/时间文本做二次匹配，避免误删正文。
     final fragment = parser.parseFragment(html);
-    final metadata = <String>{
-      author.trim(),
-      level.trim(),
-      floor.trim(),
-      time.trim(),
-      '楼主',
-    }..removeWhere((e) => e.isEmpty);
-
-    for (final node in fragment.querySelectorAll('*').toList()) {
-      final id = node.id.trim();
-      final classes = node.classes;
-      final text = _normSpace(node.text);
-
-      if (id == 'k_collect' ||
-          classes.contains('k_collect') ||
-          node.localName == 'script' ||
-          node.localName == 'style' ||
-          node.localName == 'noscript') {
-        node.remove();
-        continue;
-      }
-
-      // 只匹配完整节点文本，绝不对包含正文的父容器做 contains 删除。
-      if (metadata.contains(text) ||
-          text == '+淘帖 (0)' ||
-          text == '+淘帖(0)' ||
-          text == '淘帖 (0)' ||
-          text == '淘帖(0)') {
-        node.remove();
-      }
+    for (final node in fragment.querySelectorAll('script, style, noscript').toList()) {
+      node.remove();
     }
-
     return fragment.nodes.map((node) => node.toString()).join().trim();
+  }
+
+  static int _domOrder(dom.Element root, dom.Element a, dom.Element b) {
+    if (a == b) return 0;
+    final nodes = root.querySelectorAll('*').toList();
+    final ai = nodes.indexOf(a);
+    final bi = nodes.indexOf(b);
+    if (ai < 0 || bi < 0) return 0;
+    return ai.compareTo(bi);
   }
 
   static String? _firstInputValue(dom.Document doc, String name) => doc.querySelector('input[name="$name"]')?.attributes['value']?.trim();
