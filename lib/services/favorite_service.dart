@@ -185,7 +185,7 @@ class FavoriteBoardService {
               'Referer': _base,
               'Cookie': cookie,
             },
-          ).timeout(const Duration(seconds: 20));
+          )).timeout(const Duration(seconds: 20));
 
       if (pageResp.statusCode != 200) return '读取版块信息失败 HTTP ${pageResp.statusCode}';
       final html = NetClient.decode(pageResp.bodyBytes);
@@ -209,7 +209,7 @@ class FavoriteBoardService {
               'Cookie': cookie,
               'X-Requested-With': 'XMLHttpRequest',
             },
-          ).timeout(const Duration(seconds: 20));
+          )).timeout(const Duration(seconds: 20));
 
       final body = NetClient.decode(response.bodyBytes);
       if (_success(body, follow)) return null;
