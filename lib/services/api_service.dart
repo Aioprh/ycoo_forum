@@ -474,7 +474,13 @@ class ApiService {
       final container = post.querySelector('.comiis_aimg_show, .comiis_messages');
       if (container != null) {
         final parts = <String>[];
-        final messageTables = container.querySelectorAll('.comiis_message_table');
+        // Comiis 的 .comiis_message_table 在不同页面版本里既可能是正文节点，
+        // 也可能只是正文外壳。真正的文字正文优先取其内部 .comiis_a；
+        // 这样不会把外层帖子头部/模板信息当成正文。
+        final bodyNodes = container.querySelectorAll('.comiis_message_table .comiis_a');
+        final messageTables = bodyNodes.isNotEmpty
+            ? bodyNodes
+            : container.querySelectorAll('.comiis_message_table');
         final imageLists = container.querySelectorAll('.comiis_img_list');
         final contentNodes = <dom.Element>[
           ...messageTables,
