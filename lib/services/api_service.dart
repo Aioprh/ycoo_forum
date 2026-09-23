@@ -492,10 +492,32 @@ class ApiService {
   }
 
   static String _cleanPostHtml(String html) {
-    var value = html;
-    value = value.replaceAll(RegExp(r'<script[\s\S]*?</script>', caseSensitive: false), '');
-    value = value.replaceAll(RegExp(r'<style[\s\S]*?</style>', caseSensitive: false), '');
-    return value.trim();
+    // 只清理帖子正文里被论坛模板重复嵌入的“楼主/作者/等级/时间/+淘帖”元数据。
+    // 先解析独立 fragment 再删除节点，绝不修改原始帖子 DOM，
+    // 后面仍可从原始 DOM 提取作者、等级和时间。
+    final fragment = parser.parseFragment(html);
+    for (final selector in [
+      '.post-hd',
+      '.p-floor',
+      '.p-author',
+      '.p-level',
+      '.p-time',
+      '.top_user',
+      '.top_lev',
+      '.kmtime',
+      '.comiis_tm',
+      '.f_d.y',
+      '#k_collect',
+      '[id="k_collect"]',
+    ]) {
+      for (final node in fragment.querySelectorAll(selector).toList()) {
+        node.remove();
+      }
+    }
+    for (final node in fragment.querySelectorAll('script, style').toList()) {
+      node.remove();
+    }
+    return fragment.nodes.map((node) => node.toString()).join().trim();
   }
 
   static String? _firstInputValue(dom.Document doc, String name) => doc.querySelector('input[name="$name"]')?.attributes['value']?.trim();
