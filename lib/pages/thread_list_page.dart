@@ -3,10 +3,14 @@ import 'package:flutter/material.dart';
 import '../models/board.dart';
 import '../models/thread_item.dart';
 import '../services/api_service.dart';
+import '../services/auth_service.dart';
+import '../services/favorite_service.dart';
+import '../services/site_config.dart';
 import '../services/site_fallback_service.dart';
 import '../widgets/thread_list_view.dart';
 
-/// 版块帖子列表页：带分页，并展示网页端的「主题分类」筛选标签。
+/// 版块帖子列表页：带分页, 并展示网页端的「主题分类」筛选标签。
+/// 顶部额外展示从网页版头解析来的版块卡片(头像/名称/统计/收藏按钮)。
 class BoardThreadListPage extends StatefulWidget {
   final int fid;
   final String filter;
@@ -20,11 +24,14 @@ class BoardThreadListPage extends StatefulWidget {
 class _BoardThreadListPageState extends State<BoardThreadListPage> {
   List<ForumTypeTag> _types = const [];
   int _typeid = 0; // 0 表示「全部」
+  FavoriteBoardInfo? _boardInfo;
+  bool _loadingBoard = true;
 
   @override
   void initState() {
     super.initState();
     _loadTypes();
+    _loadBoardInfo();
   }
 
   Future<void> _loadTypes() async {
@@ -33,8 +40,23 @@ class _BoardThreadListPageState extends State<BoardThreadListPage> {
       if (!mounted) return;
       setState(() => _types = tags);
     } catch (_) {
-      // 无法解析分类时保持为空，帖子流仍照常显示。
+      // 无法解析分类时保持为空, 帖子流仍照常显示。
     }
+  }
+
+  Future<void> _loadBoardInfo() async {
+    final info = await FavoriteBoardService.instance.fetchBoardInfo(widget.fid);
+    if (!mounted) return;
+    setState(() {
+      _boardInfo = info;
+      _loadingBoard = false;
+    });
+  }
+
+  Future<void> _refreshBoardInfo() async {
+    final info = await FavoriteBoardService.instance.fetchBoardInfo(widget.fid);
+    if (!mounted) return;
+    setState(() => _boardInfo = info);
   }
 
   Future<List<ThreadItem>> _load(int page) async {
@@ -48,18 +70,62 @@ class _BoardThreadListPageState extends State<BoardThreadListPage> {
     return SiteFallbackService.instance.fetchThreads(url);
   }
 
+  Future<void> _toggleFavorite() async {
+    final board = _boardInfo;
+    if (board == null) return;
+    final ok = await AuthService.instance.checkLoggedIn();
+    if (!ok || !AuthService.instance.isLoggedIn) {
+      if (!mounted) return;
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(content: Text('请先登录论坛再收藏版块')),
+      );
+      return;
+    }
+    final prev = board.favorited;
+    setState(() => _boardInfo = _boardInfo?.copyWith(favorited: !prev));
+    final err = await FavoriteBoardService.instance.toggle(
+      fid: widget.fid,
+      favorite: !prev,
+    );
+    if (!mounted) return;
+    if (err != null) {
+      // 失败回滚
+      setState(() => _boardInfo = _boardInfo?.copyWith(favorited: prev));
+      ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text(err)));
+    } else {
+      // 成功后重新抓一下最新状态(收藏数会+1/-1)
+      await _refreshBoardInfo();
+    }
+  }
+
   @override
   Widget build(BuildContext context) {
+    final board = _boardInfo;
+    final loggedIn = AuthService.instance.isLoggedIn;
     return Scaffold(
-      appBar: AppBar(title: Text(widget.filter)),
+      appBar: AppBar(
+        title: Text(board?.name.isNotEmpty == true ? board!.name : widget.filter),
+        actions: [
+          if (board != null && loggedIn)
+            IconButton(
+              tooltip: board.favorited ? '取消收藏' : '收藏版块',
+              onPressed: _toggleFavorite,
+              icon: Icon(
+                board.favorited
+                    ? Icons.star_rounded
+                    : Icons.star_border_rounded,
+              ),
+            ),
+        ],
+      ),
       body: SafeArea(
         top: false,
         child: Column(
           children: [
+            _boardCard(context),
             if (_types.isNotEmpty) _typeBar(context),
             Expanded(
               child: ThreadListView(
-                // typeid 变化时重建，让列表按新分类重新从第 1 页加载。
                 key: ValueKey<int>(_typeid),
                 paginate: true,
                 loader: _load,
@@ -71,10 +137,120 @@ class _BoardThreadListPageState extends State<BoardThreadListPage> {
     );
   }
 
-  /// 分类筛选栏：采用截图所示的横向胶囊标签布局。
-  ///
-  /// 不强行把所有分类压缩进屏幕，而是保留每个标签自己的可读宽度，
-  /// 分类较多时横向滑动，字体放大时也不会因为固定宽度而挤压换行。
+  Widget _boardCard(BuildContext context) {
+    if (_loadingBoard) {
+      return const SizedBox(
+        height: 140,
+        child: Center(child: SizedBox(width: 22, height: 22, child: CircularProgressIndicator(strokeWidth: 2))),
+      );
+    }
+    final board = _boardInfo;
+    if (board == null) return const SizedBox.shrink();
+
+    final c = Theme.of(context).colorScheme;
+    return Container(
+      margin: const EdgeInsets.fromLTRB(14, 10, 14, 6),
+      padding: const EdgeInsets.fromLTRB(14, 14, 12, 12),
+      decoration: BoxDecoration(
+        borderRadius: BorderRadius.circular(20),
+        gradient: LinearGradient(
+          begin: Alignment.topLeft,
+          end: Alignment.bottomRight,
+          colors: [c.primaryContainer.withValues(alpha: .55), c.surface],
+        ),
+        border: Border.all(color: c.outlineVariant.withValues(alpha: .4)),
+      ),
+      child: Row(
+        crossAxisAlignment: CrossAxisAlignment.center,
+        children: [
+          CircleAvatar(
+            radius: 26,
+            backgroundColor: c.primary.withValues(alpha: .12),
+            backgroundImage: board.icon.isNotEmpty
+                ? NetworkImage(board.icon.startsWith('http') ? board.icon : '${SiteConfig.base}${board.icon}')
+                : null,
+            onBackgroundImageError: (_, __) {},
+            child: board.icon.isEmpty
+                ? Icon(Icons.forum_rounded, color: c.primary, size: 26)
+                : null,
+          ),
+          const SizedBox(width: 12),
+          Expanded(
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              mainAxisSize: MainAxisSize.min,
+              children: [
+                Text(
+                  board.name,
+                  maxLines: 1,
+                  overflow: TextOverflow.ellipsis,
+                  style: const TextStyle(fontSize: 16, fontWeight: FontWeight.w800),
+                ),
+                const SizedBox(height: 4),
+                Text(
+                  _stats(board),
+                  maxLines: 1,
+                  overflow: TextOverflow.ellipsis,
+                  style: TextStyle(fontSize: 12, color: c.onSurfaceVariant),
+                ),
+              ],
+            ),
+          ),
+          const SizedBox(width: 8),
+          _favoriteButton(context, board),
+        ],
+      ),
+    );
+  }
+
+  String _stats(FavoriteBoardInfo b) {
+    final parts = <String>[];
+    if (b.today.isNotEmpty) parts.add('今日 $b.today');
+    if (b.threads.isNotEmpty) parts.add('主题 $b.threads');
+    if (b.favorites.isNotEmpty) parts.add('${b.favorites}人已收藏');
+    return parts.isEmpty ? '版块 ${b.fid}' : parts.join(' · ');
+  }
+
+  Widget _favoriteButton(BuildContext context, FavoriteBoardInfo board) {
+    final c = Theme.of(context).colorScheme;
+    final loggedIn = AuthService.instance.isLoggedIn;
+    return Material(
+      color: board.favorited ? c.primaryContainer : c.primary,
+      borderRadius: BorderRadius.circular(22),
+      child: InkWell(
+        borderRadius: BorderRadius.circular(22),
+        onTap: loggedIn ? _toggleFavorite : () async {
+          final ok = await AuthService.instance.checkLoggedIn();
+          if (!ok || !AuthService.instance.isLoggedIn || !context.mounted) return;
+          await _toggleFavorite();
+        },
+        child: Padding(
+          padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 8),
+          child: Row(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              Icon(
+                board.favorited ? Icons.star_rounded : Icons.star_outline_rounded,
+                size: 17,
+                color: board.favorited ? c.onPrimaryContainer : c.onPrimary,
+              ),
+              const SizedBox(width: 4),
+              Text(
+                board.favorited ? '已收藏' : '收藏',
+                style: TextStyle(
+                  fontSize: 13,
+                  fontWeight: FontWeight.w600,
+                  color: board.favorited ? c.onPrimaryContainer : c.onPrimary,
+                ),
+              ),
+            ],
+          ),
+        ),
+      ),
+    );
+  }
+
+  /// 分类筛选栏: 横向胶囊标签布局。
   Widget _typeBar(BuildContext context) {
     return SizedBox(
       height: 62,
