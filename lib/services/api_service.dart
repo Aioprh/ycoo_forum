@@ -246,23 +246,8 @@ class ApiService {
     if (likeCount <= 0) likeCount = doc.querySelectorAll('.comiis_recommend_list_a li').length;
     final likedByMe = myUid > 0 && doc.querySelectorAll('.comiis_recommend_list_a a[href*="uid=$myUid"]').isNotEmpty;
     // 顺便从帖子 HTML 里解析附件列表, 零额外网络请求。
-    var attachments = AttachmentDownloadService.parseAttachmentsFromHtml(html);
-    // 某些模板只给 aid, 真正文件名要从下载响应的 Content-Disposition 里拿。
-    // 如果解析出的附件名全是"论坛附件", 补一次轻量 Range 请求拿真实文件名。
-    final hasGeneric = attachments.any((e) {
-      final n = e.name.trim();
-      return n.isEmpty || n.startsWith('论坛附件');
-    });
-    if (hasGeneric && attachments.isNotEmpty) {
-      try {
-        final filled = await AttachmentDownloadService.instance.fetchAttachments(
-          tid: tid,
-          cookie: AuthService.instance.authCookie,
-          referer: _base,
-        );
-        if (filled.isNotEmpty) attachments = filled;
-      } catch (_) {}
-    }
+    final attachments = AttachmentDownloadService.parseAttachmentsFromHtml(html);
+    // 真正文件名从 Content-Disposition 拿, 后台异步补 (ForumAttachmentSection 懒加载)。
     return ThreadDetail(
       tid: tid,
       title: title.isEmpty ? '帖子详情' : title,

@@ -45,6 +45,16 @@ class AttachmentDownloadService {
     return svc._extractAttachmentInfos(html);
   }
 
+  /// 对已有的附件列表, 只对名字是通用名的那几个发 Range 请求补真实文件名。
+  /// 用于 UI 懒加载, 不阻塞主流程。
+  Future<List<ForumAttachmentInfo>> fillRealNames(
+    List<ForumAttachmentInfo> items, {
+    String? cookie,
+    String? referer,
+  }) async {
+    return _fillOriginalAttachmentNames(items, cookie: cookie, referer: referer);
+  }
+
   Future<bool> download({required String url, String? cookie, String? referer, String? filename}) async {
     if (!Platform.isAndroid) return false;
     final uri = Uri.tryParse(url.trim());

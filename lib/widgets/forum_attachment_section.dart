@@ -4,7 +4,7 @@ import 'package:flutter/services.dart';
 import '../services/attachment_download_service.dart';
 import '../services/site_config.dart';
 
-class ForumAttachmentSection extends StatelessWidget {
+class ForumAttachmentSection extends StatefulWidget {
   final List<ForumAttachmentInfo> attachments;
   final String? cookie;
   final String? referer;
@@ -17,20 +17,82 @@ class ForumAttachmentSection extends StatelessWidget {
   });
 
   @override
+  State<ForumAttachmentSection> createState() => _ForumAttachmentSectionState();
+}
+
+class _ForumAttachmentSectionState extends State<ForumAttachmentSection> {
+  late List<ForumAttachmentInfo> _items;
+
+  @override
+  void initState() {
+    super.initState();
+    _items = List.unmodifiable(widget.attachments);
+    _fillRealNames();
+  }
+
+  Future<void> _fillRealNames() async {
+    final targets = _items.where((e) {
+      final n = e.name.trim();
+      return n.isEmpty || n.startsWith('论坛附件');
+    }).toList();
+    if (targets.isEmpty) return;
+
+    const timeout = Duration(seconds: 4);
+    List<ForumAttachmentInfo>? filled;
+    try {
+      filled = await AttachmentDownloadService.instance
+          .fillRealNames(
+            _items,
+            cookie: widget.cookie,
+            referer: widget.referer,
+          )
+          .timeout(timeout, onTimeout: () => const []);
+    } catch (_) {
+      return;
+    }
+
+    if (!mounted || filled.isEmpty) return;
+
+    final realNames = <String, String>{};
+    for (final f in filled) {
+      if (!_isGenericName(f.name)) realNames[f.url] = f.name;
+    }
+    if (realNames.isEmpty) return;
+
+    setState(() {
+      _items = _items.map((e) {
+        final newName = realNames[e.url] ?? e.name;
+        return ForumAttachmentInfo(
+          url: e.url,
+          name: newName,
+          size: e.size,
+          downloads: e.downloads,
+        );
+      }).toList();
+    });
+  }
+
+  bool _isGenericName(String name) {
+    final n = name.trim();
+    if (n.isEmpty) return true;
+    return n == '论坛附件' || n.startsWith('论坛附件.');
+  }
+
+  @override
   Widget build(BuildContext context) {
-    if (attachments.isEmpty) return const SizedBox.shrink();
+    if (_items.isEmpty) return const SizedBox.shrink();
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
         Padding(
           padding: const EdgeInsets.only(left: 4, top: 8, bottom: 8),
           child: Text(
-            '本帖附件 · ${attachments.length}',
+            '本帖附件 · ${_items.length}',
             style: Theme.of(context).textTheme.titleSmall?.copyWith(fontWeight: FontWeight.w700),
           ),
         ),
-        for (final item in attachments)
-          _Tile(item: item, cookie: cookie, referer: referer),
+        for (final item in _items)
+          _Tile(item: item, cookie: widget.cookie, referer: widget.referer),
       ],
     );
   }
