@@ -478,7 +478,7 @@ class ApiService {
       final floor = _normSpace(post.querySelector('.f_d.y, .pi .authi em, .pls .authi em')?.text ?? '').replaceAll(RegExp(r'[^0-9A-Za-z一二三四五六七八九十楼主]'), '');
       final time = _normSpace(post.querySelector('.kmtime, .comiis_tm, .authi em')?.text ?? '');
       final displayFloor = floor.isEmpty ? (out.isEmpty ? '楼主' : '${out.length + 1}楼') : floor;
-      out.add('<div class="post-card"$pidAttr$repliesAttr><div class="post-hd"><span class="p-floor">$displayFloor</span>${author.isEmpty ? '' : '<b class="p-author">$author</b>'}${level.isEmpty ? '' : '<span class="p-level">$level</span>'}</div>${time.isEmpty ? '' : '<div class="p-time">$time</div>'}<div class="p-body">${_cleanPostHtml(html)}</div></div>');
+      out.add('<div class="post-card"$pidAttr$repliesAttr><div class="post-hd"><span class="p-floor">$displayFloor</span>${author.isEmpty ? '' : '<b class="p-author">$author</b>'}${level.isEmpty ? '' : '<span class="p-level">$level</span>'}</div>${time.isEmpty ? '' : '<div class="p-time">$time</div>'}<div class="p-body">${_cleanPostHtml(html, author: author, level: level, time: time)}</div></div>');
     }
     if (out.isNotEmpty) return out;
     for (final selector in ['.comiis_aimg_show', '.comiis_message_table', '.t_f', '.pcb', '.postmessage', '[id^="postmessage_"]']) {
@@ -491,7 +491,12 @@ class ApiService {
     return out;
   }
 
-  static String _cleanPostHtml(String html) {
+  static String _cleanPostHtml(
+    String html, {
+    String author = '',
+    String level = '',
+    String time = '',
+  }) {
     final fragment = parser.parseFragment(html);
 
     // 正文提取保持 7071667 的原始方式，只在这里做“精确节点”清理。
@@ -503,10 +508,13 @@ class ApiService {
       node.remove();
     }
 
-    const metadata = <String>{
+    final metadata = <String>{
       '楼主',
+      author.trim(),
+      level.trim(),
+      time.trim(),
       '楼主发布的主题内容',
-    };
+    }..removeWhere((e) => e.isEmpty);
 
     // 这里只处理叶子节点：节点没有元素子节点时，才可能是头部字段本身。
     // 不对有子节点的正文容器做 text contains/remove。
