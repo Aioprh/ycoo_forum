@@ -452,8 +452,25 @@ class ApiService {
     final out = <String>[];
     final postNodes = doc.querySelectorAll('.comiis_postli, #postlist .plhin, #postlist .plc, #postlist > div[id^="post_"], div[id^="postmessage_"]');
     for (final post in postNodes) {
-      dom.Element? content = post.querySelector('.comiis_aimg_show, .comiis_messages, .comiis_message_table');
-      content ??= post.querySelector('.t_f, .pcb, .comiis_postcontent, .comiis_message, .message, .postmessage, [id^="postmessage_"]');
+      // 优先进入论坛模板真正的正文节点。
+      // .comiis_messages / .comiis_message_table 有时是整块帖子容器，
+      // 里面同时包含“楼主、作者、等级、时间、+淘帖”等元数据。
+      // 如果直接取它的 innerHtml，这些元数据就会被再次当成正文渲染。
+      dom.Element? content;
+      final container = post.querySelector(
+        '.comiis_aimg_show, .comiis_messages, .comiis_message_table',
+      );
+      if (container != null) {
+        content = container.querySelector(
+          '.t_f, .pcb, .comiis_postcontent, .comiis_message, '
+          '.message, .postmessage, [id^="postmessage_"]',
+        );
+        content ??= container;
+      }
+      content ??= post.querySelector(
+        '.t_f, .pcb, .comiis_postcontent, .comiis_message, '
+        '.message, .postmessage, [id^="postmessage_"]',
+      );
       if (content == null && post.localName == 'div' && (post.id.startsWith('postmessage_') || post.id.startsWith('post_'))) content = post;
       if (content == null) continue;
       final html = content.innerHtml.trim();
