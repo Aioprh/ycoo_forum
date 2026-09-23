@@ -62,14 +62,11 @@ bool _isRealImage(dom.Element image) {
   final raw = _rawImageValue(image);
   if (raw.isEmpty || _isPlaceholderImage(raw)) return false;
 
-  final parent = image.parent;
-  if (parent is dom.Element && (parent.localName ?? '').toLowerCase() == 'a') {
-    final href = parent.attributes['href']?.trim() ?? '';
-    final uri = Uri.tryParse(_resolveUrl(href));
-    if (_isFileAttachment(uri) && !_isImageEndpoint(uri) && !_isImageFileName(uri)) {
-      return false;
-    }
-  }
+  // Discuz 经常把真正的图片也包在 attachment.php 链接里。
+  // 不能只看父级 href 就把图片过滤掉，否则“壁纸”等图片帖会只剩
+  // 图片 alt 文本（甚至出现单独的引号）。
+  // 非图片附件通常使用 filetype/icon 占位图，前面的
+  // _isPlaceholderImage 已经会将这类资源过滤掉。
   return true;
 }
 
@@ -697,12 +694,8 @@ class _ImageBlock extends StatelessWidget {
         fit: BoxFit.contain,
         headers: headers,
         errorBuilder: (context, error, stackTrace) {
-          if (alt != null && alt!.trim().isNotEmpty) {
-            return Padding(
-              padding: const EdgeInsets.only(bottom: 10),
-              child: Text(alt!),
-            );
-          }
+          // 图片加载失败时不要把论坛的 alt 占位文本当正文显示。
+          // 论坛模板中的 alt 经常是装饰字符，失败后会表现成孤立的“"”。
           return const SizedBox.shrink();
         },
         loadingBuilder: (context, child, progress) {
