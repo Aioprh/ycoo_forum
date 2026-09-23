@@ -1,4 +1,6 @@
 import 'package:flutter/material.dart';
+import 'package:share_plus/share_plus.dart';
+import 'package:url_launcher/url_launcher.dart';
 import 'package:webview_flutter/webview_flutter.dart';
 
 import '../services/site_config.dart';
@@ -20,6 +22,7 @@ class _WebViewPageState extends State<WebViewPage> {
   bool _loading = true;
   bool _error = false;
   String? _nativeMessage;
+  String? _currentUrl;
 
   bool get _nativePurchase =>
       widget.url.startsWith('ycoo-native-purchase://') ||
@@ -56,6 +59,7 @@ class _WebViewPageState extends State<WebViewPage> {
   @override
   void initState() {
     super.initState();
+    _currentUrl = widget.url;
     if (_nativePurchase) {
       _runNativePurchase();
     } else {
@@ -105,10 +109,23 @@ class _WebViewPageState extends State<WebViewPage> {
         )
         ..setNavigationDelegate(NavigationDelegate(
           onPageStarted: (url) {
-            if (mounted) setState(() { _loading = true; _error = false; });
+            if (mounted) {
+              setState(() {
+                _currentUrl = url;
+                _loading = true;
+                _error = false;
+              });
+            }
           },
           onProgress: (progress) { if (mounted) setState(() {}); },
-          onPageFinished: (url) { if (mounted) setState(() => _loading = false); },
+          onPageFinished: (url) {
+            if (mounted) {
+              setState(() {
+                _currentUrl = url;
+                _loading = false;
+              });
+            }
+          },
           onWebResourceError: (error) { if (mounted) setState(() => _error = true); },
         ));
       await controller.loadRequest(target);
@@ -139,6 +156,31 @@ class _WebViewPageState extends State<WebViewPage> {
       await Future<void>.delayed(const Duration(milliseconds: 500));
       if (mounted) Navigator.of(context).pop(true);
     }
+  }
+
+  String? get _shareableUrl {
+    final raw = (_currentUrl ?? widget.url).trim();
+    final uri = Uri.tryParse(raw);
+    if (uri == null || (uri.scheme != 'http' && uri.scheme != 'https')) return null;
+    return uri.toString();
+  }
+
+  Future<void> _openInExternalBrowser() async {
+    final raw = _shareableUrl;
+    if (raw == null) return;
+    final uri = Uri.parse(raw);
+    final ok = await launchUrl(uri, mode: LaunchMode.externalApplication);
+    if (!ok && mounted) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(content: Text('没有找到可用的浏览器')),
+      );
+    }
+  }
+
+  Future<void> _shareCurrentLink() async {
+    final raw = _shareableUrl;
+    if (raw == null) return;
+    await Share.share(raw, subject: widget.title);
   }
 
   Future<void> _reload() async {
@@ -179,8 +221,51 @@ class _WebViewPageState extends State<WebViewPage> {
       appBar: AppBar(
         title: Text(widget.title, maxLines: 1, overflow: TextOverflow.ellipsis),
         actions: [
-          IconButton(tooltip: '后退', onPressed: () async { if (await _controller?.canGoBack() == true) await _controller?.goBack(); }, icon: const Icon(Icons.arrow_back_outlined)),
-          IconButton(tooltip: '重新加载', onPressed: _reload, icon: const Icon(Icons.refresh)),
+          IconButton(
+            tooltip: '后退',
+            onPressed: () async {
+              if (await _controller?.canGoBack() == true) {
+                await _controller?.goBack();
+              }
+            },
+            icon: const Icon(Icons.arrow_back_outlined),
+          ),
+          IconButton(
+            tooltip: '重新加载',
+            onPressed: _reload,
+            icon: const Icon(Icons.refresh),
+          ),
+          PopupMenuButton<String>(
+            tooltip: '更多',
+            onSelected: (value) {
+              switch (value) {
+                case 'browser':
+                  _openInExternalBrowser();
+                  break;
+                case 'share':
+                  _shareCurrentLink();
+                  break;
+              }
+            },
+            itemBuilder: (context) => const [
+              PopupMenuItem<String>(
+                value: 'browser',
+                child: ListTile(
+                  contentPadding: EdgeInsets.zero,
+                  leading: Icon(Icons.open_in_browser_rounded),
+                  title: Text('用其他浏览器打开'),
+                ),
+              ),
+              PopupMenuItem<String>(
+                value: 'share',
+                child: ListTile(
+                  contentPadding: EdgeInsets.zero,
+                  leading: Icon(Icons.share_rounded),
+                  title: Text('分享链接'),
+                ),
+              ),
+            ],
+          ),
         ],
       ),
       body: Stack(children: [
