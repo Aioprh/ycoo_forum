@@ -172,6 +172,20 @@ class _NodeWidget extends StatelessWidget {
     final tag = (element.localName ?? '').toLowerCase();
 
     switch (tag) {
+      case 'post-card':
+        // 帖子卡片的作者、等级、时间、淘帖等元数据已经由详情页顶部展示。
+        // 正文渲染只取 p-body，避免这些元数据再次进入正文，同时保留 p-body 内的真实文字、链接和图片。
+        final body = element.querySelector(':scope > .p-body');
+        if (body == null) return const SizedBox.shrink();
+        return _NodeList(
+          nodes: body.nodes.where(_hasRenderableNode).toList(),
+          onLinkTap: onLinkTap,
+        );
+      case 'p-body':
+        return _NodeList(
+          nodes: element.nodes.where(_hasRenderableNode).toList(),
+          onLinkTap: onLinkTap,
+        );
       case 'br':
         return const SizedBox.shrink();
       case 'img':
