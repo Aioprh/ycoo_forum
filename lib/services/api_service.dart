@@ -509,10 +509,26 @@ class ApiService {
   }
 
   static String _cleanPostHtml(String html) {
-    var value = html;
-    value = value.replaceAll(RegExp(r'<script[\s\S]*?</script>', caseSensitive: false), '');
-    value = value.replaceAll(RegExp(r'<style[\s\S]*?</style>', caseSensitive: false), '');
-    return value.trim();
+    final fragment = parser.parseFragment(html);
+    for (final selector in [
+      // 只移除论坛帖子模板的元数据节点，不按文本内容过滤，
+      // 避免误伤正文中的普通文字、链接、图片以及引用内容。
+      '.post-hd',
+      '.p-time',
+      '.top_user',
+      '.top_lev',
+      '.kmtime',
+      '.comiis_tm',
+      '#k_collect',
+    ]) {
+      for (final node in fragment.querySelectorAll(selector).toList()) {
+        node.remove();
+      }
+    }
+    for (final node in fragment.querySelectorAll('script, style').toList()) {
+      node.remove();
+    }
+    return fragment.nodes.map((node) => node.toString()).join().trim();
   }
 
   static String? _firstInputValue(dom.Document doc, String name) => doc.querySelector('input[name="$name"]')?.attributes['value']?.trim();
