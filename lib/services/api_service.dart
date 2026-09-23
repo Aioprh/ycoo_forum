@@ -495,7 +495,15 @@ class ApiService {
     var value = html;
     value = value.replaceAll(RegExp(r'<script[\s\S]*?</script>', caseSensitive: false), '');
     value = value.replaceAll(RegExp(r'<style[\s\S]*?</style>', caseSensitive: false), '');
-    return value.trim();
+
+    // “淘帖”是帖子操作栏，不属于正文。站点当前模板会把 #k_collect
+    // 放进 .comiis_messages，而详情页顶部已经有帖子操作栏，
+    // 因此从正文 HTML 中移除，避免正文重复显示 +淘帖。
+    final fragment = parser.parseFragment(value);
+    for (final node in fragment.querySelectorAll('#k_collect').toList()) {
+      node.remove();
+    }
+    return fragment.nodes.map((node) => node.toString()).join().trim();
   }
 
   static String? _firstInputValue(dom.Document doc, String name) => doc.querySelector('input[name="$name"]')?.attributes['value']?.trim();
