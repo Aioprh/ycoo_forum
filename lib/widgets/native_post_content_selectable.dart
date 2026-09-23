@@ -171,10 +171,15 @@ class _NodeWidget extends StatelessWidget {
     final element = node as dom.Element;
     final tag = (element.localName ?? '').toLowerCase();
 
-    // 正文数据里会带一份由 ApiService 生成的 post-card 元信息。
-    // 楼主、用户名、等级、时间已经在详情页顶部展示，这里不再重复渲染。
-    final classes = element.classes;
-    if (classes.contains('post-hd') || classes.contains('p-time')) {
+    // 只隐藏 ApiService 自己生成的 post-card 元信息。
+    // 不要按 class 全局过滤：论坛正文内部也可能使用 post-hd / p-time，
+    // 全局过滤会把真实正文一起吞掉。
+    final parent = element.parent;
+    final isGeneratedPostCardMeta =
+        parent is dom.Element && parent.classes.contains('post-card');
+    if (isGeneratedPostCardMeta &&
+        (element.classes.contains('post-hd') ||
+            element.classes.contains('p-time'))) {
       return const SizedBox.shrink();
     }
 
