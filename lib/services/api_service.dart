@@ -448,6 +448,19 @@ class ApiService {
     return int.tryParse(m?.group(1) ?? '') ?? 0;
   }
 
+  static int _domOrder(
+    dom.Element root,
+    dom.Element a,
+    dom.Element b,
+  ) {
+    if (a == b) return 0;
+    final nodes = root.querySelectorAll('*').toList();
+    final ai = nodes.indexOf(a);
+    final bi = nodes.indexOf(b);
+    if (ai < 0 || bi < 0) return 0;
+    return ai.compareTo(bi);
+  }
+
   static List<String> _collectPosts(dom.Document doc) {
     final out = <String>[];
     final postNodes = doc.querySelectorAll('.comiis_postli, #postlist .plhin, #postlist .plc, #postlist > div[id^="post_"], div[id^="postmessage_"]');
@@ -457,7 +470,6 @@ class ApiService {
       // 不能直接取整个容器 innerHtml，否则模板元数据会再次进入正文。
       // 正文文字通常在 .comiis_message_table，图片通常在同级 .comiis_img_list；
       // 将这两个真实内容节点按原页面顺序组合，既不带出帖子头部，也不丢图片。
-      dom.Element? content;
       String html = '';
       final container = post.querySelector('.comiis_aimg_show, .comiis_messages');
       if (container != null) {
