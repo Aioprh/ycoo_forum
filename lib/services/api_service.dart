@@ -192,8 +192,24 @@ class ApiService {
   Future<ThreadDetail> fetchThreadDetail(int tid, {int page = 1, int? authorId}) async {
     final html = await _get(commentListUrl(tid, page, authorId: authorId), query: {'mobile': '2'});
     final doc = parser.parse(html);
-    final boardLink = doc.querySelector('.comiis_bankuai .bankuai_tit a, .comiis_bankuai a[href*="forum-"], a[href*="forum-"]');
-    final boardName = _normSpace(boardLink?.text ?? '');
+    final boardLink = doc.querySelector(
+      '.comiis_bankuai .bankuai_tit a, '
+      '.comiis_bankuai a[href*="forum-"], '
+      '.comiis_bkname a[href*="forum-"], '
+      '.comiis_forumname a[href*="forum-"], '
+      'a[href*="forum-"], '
+      'a[href*="fid="][class*="forum"]',
+    );
+    var boardName = _normSpace(boardLink?.text ?? '');
+    // 有些帖子（尤其只发布书源/订阅源链接的帖子）页面结构不带旧版
+    // .comiis_bankuai，继续从常见版块标题节点补齐分区名称。
+    if (boardName.isEmpty) {
+      boardName = _normSpace(doc.querySelector(
+        '.comiis_bkname, .comiis_forumname, .forumname, .bm_h .xs2, '
+        '.comiis_post_top .forumname, [class*="bankuai"] .tit',
+      )?.text ?? '');
+    }
+    boardName = boardName.replaceAll(RegExp(r'\\s+'), ' ').trim();
     var title = _firstMeta(doc, 'og:title') ?? _firstMeta(doc, 'title') ?? '';
     final titleMatch = RegExp(r'<title>(.*?)</title>', caseSensitive: false, dotAll: true).firstMatch(html);
     if (title.isEmpty && titleMatch != null) title = _stripTags(titleMatch.group(1)!);
