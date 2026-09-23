@@ -448,72 +448,15 @@ class ApiService {
     return int.tryParse(m?.group(1) ?? '') ?? 0;
   }
 
-  static int _domOrder(
-    dom.Element root,
-    dom.Element a,
-    dom.Element b,
-  ) {
-    if (a == b) return 0;
-    final nodes = root.querySelectorAll('*').toList();
-    final ai = nodes.indexOf(a);
-    final bi = nodes.indexOf(b);
-    if (ai < 0 || bi < 0) return 0;
-    return ai.compareTo(bi);
-  }
-
   static List<String> _collectPosts(dom.Document doc) {
     final out = <String>[];
     final postNodes = doc.querySelectorAll('.comiis_postli, #postlist .plhin, #postlist .plc, #postlist > div[id^="post_"], div[id^="postmessage_"]');
     for (final post in postNodes) {
-      // Comiis 手机模板里 .comiis_aimg_show/.comiis_messages 是“整块帖子容器”，
-      // 其中同时放着 +淘帖、脚本、正文表格和图片画廊。
-      // 不能直接取整个容器 innerHtml，否则模板元数据会再次进入正文。
-      // 正文文字通常在 .comiis_message_table，图片通常在同级 .comiis_img_list；
-      // 将这两个真实内容节点按原页面顺序组合，既不带出帖子头部，也不丢图片。
-      String html = '';
-      final container = post.querySelector('.comiis_aimg_show, .comiis_messages');
-      if (container != null) {
-        final parts = <String>[];
-        // Comiis 的 .comiis_message_table 在不同页面版本里既可能是正文节点，
-        // 也可能只是正文外壳。真正的文字正文优先取其内部 .comiis_a；
-        // 这样不会把外层帖子头部/模板信息当成正文。
-        final bodyNodes = container.querySelectorAll('.comiis_message_table .comiis_a');
-        final messageTables = bodyNodes.isNotEmpty
-            ? bodyNodes
-            : container.querySelectorAll('.comiis_message_table');
-        final imageLists = container.querySelectorAll('.comiis_img_list');
-        final contentNodes = <dom.Element>[
-          ...messageTables,
-          ...imageLists,
-        ];
-        // 按 DOM 顺序重排，避免“正文→图片”被固定成单一顺序。
-        contentNodes.sort((a, b) => _domOrder(container, a, b));
-        for (final node in contentNodes) {
-          final part = node.outerHtml.trim();
-          if (part.isNotEmpty) parts.add(part);
-        }
-        html = parts.join();
-        // 某些帖子模板没有 message_table，但有独立正文节点，继续走兼容选择器。
-        if (html.isEmpty) {
-          final fallback = container.querySelector(
-            '.t_f, .pcb, .comiis_postcontent, .comiis_message, '
-            '.message, .postmessage, [id^="postmessage_"]',
-          );
-          html = fallback?.innerHtml.trim() ?? '';
-        }
-      }
-      if (html.isEmpty) {
-        final fallback = post.querySelector(
-          '.t_f, .pcb, .comiis_postcontent, .comiis_message, '
-          '.message, .postmessage, [id^="postmessage_"]',
-        );
-        html = fallback?.innerHtml.trim() ?? '';
-      }
-      if (html.isEmpty &&
-          post.localName == 'div' &&
-          (post.id.startsWith('postmessage_') || post.id.startsWith('post_'))) {
-        html = post.innerHtml.trim();
-      }
+      dom.Element? content = post.querySelector('.comiis_aimg_show, .comiis_messages, .comiis_message_table');
+      content ??= post.querySelector('.t_f, .pcb, .comiis_postcontent, .comiis_message, .message, .postmessage, [id^="postmessage_"]');
+      if (content == null && post.localName == 'div' && (post.id.startsWith('postmessage_') || post.id.startsWith('post_'))) content = post;
+      if (content == null) continue;
+      final html = content.innerHtml.trim();
       if (html.isEmpty) continue;
       // 提取真实楼层 pid(取自容器 id="post_<pid>"/"postmessage_<pid>"),写入卡片供楼中楼回复使用。
       final pid = _postPid(post);
@@ -535,7 +478,7 @@ class ApiService {
       final floor = _normSpace(post.querySelector('.f_d.y, .pi .authi em, .pls .authi em')?.text ?? '').replaceAll(RegExp(r'[^0-9A-Za-z一二三四五六七八九十楼主]'), '');
       final time = _normSpace(post.querySelector('.kmtime, .comiis_tm, .authi em')?.text ?? '');
       final displayFloor = floor.isEmpty ? (out.isEmpty ? '楼主' : '${out.length + 1}楼') : floor;
-      out.add('<div class="post-card"$pidAttr$repliesAttr><div class="post-hd"><span class="p-floor">$displayFloor</span>${author.isEmpty ? '' : '<b class="p-author">$author</b>'}${level.isEmpty ? '' : '<span class="p-level">$level</span>'}</div>${time.isEmpty ? '' : '<div class="p-time">$time</div>'}<div class="p-body">${_cleanPostHtml(html, author: author, level: level, floor: displayFloor, time: time)}</div></div>');
+      out.add('<div class="post-card"$pidAttr$repliesAttr><div class="post-hd"><span class="p-floor">$displayFloor</span>${author.isEmpty ? '' : '<b class="p-author">$author</b>'}${level.isEmpty ? '' : '<span class="p-level">$level</span>'}</div>${time.isEmpty ? '' : '<div class="p-time">$time</div>'}<div class="p-body">${_cleanPostHtml(html)}</div></div>');
     }
     if (out.isNotEmpty) return out;
     for (final selector in ['.comiis_aimg_show', '.comiis_message_table', '.t_f', '.pcb', '.postmessage', '[id^="postmessage_"]']) {
@@ -548,68 +491,34 @@ class ApiService {
     return out;
   }
 
-  static String _cleanPostHtml(
-    String html, {
-    String author = '',
-    String level = '',
-    String floor = '',
-    String time = '',
-  }) {
-    // 绝不能按“节点最终文本”删除父节点。
-    // 正文图片常被包在同一个 div 里：该 div 的 text 可能刚好等于
-    // 作者/时间，但删除父节点会把图片和真正正文一起删掉。
-    // 只按论坛模板的明确元数据节点清理，正文节点本身保持原样。
+  static String _cleanPostHtml(String html) {
     final fragment = parser.parseFragment(html);
-    const selectors = <String>[
-      '.post-hd',
-      '.p-time',
-      '.top_user',
-      '.top_lev',
-      '.kmtime',
-      '.comiis_tm',
-      '.comiis_postli_top',
-      '.comiis_postli_time',
-      '#k_collect',
-      '.k_collect',
-    ];
 
-    for (final selector in selectors) {
-      for (final node in fragment.querySelectorAll(selector).toList()) {
-        node.remove();
-      }
-    }
-
-    for (final node in fragment.querySelectorAll('script, style, noscript').toList()) {
+    // 正文提取保持 7071667 的原始方式，只在这里做“精确节点”清理。
+    // 目标只有一个：去掉帖子头部已经展示过的「楼主/用户名/等级/时间」，
+    // 绝不删除正文所在的父容器，因此正文内容保持原样。
+    for (final node in fragment.querySelectorAll(
+      '#k_collect, .k_collect, script, style, noscript',
+    ).toList()) {
       node.remove();
     }
 
-    // 兼容极少数模板把“楼主/作者/时间”直接作为正文根节点文本输出的情况。
-    // 只处理 fragment 的直接文本节点，绝不删除带正文/图片的父容器。
-    final metadata = <String>{
-      author.trim(),
-      level.trim(),
-      floor.trim(),
-      time.trim(),
+    const metadata = <String>{
       '楼主',
-      '+淘帖 (0)',
-      '+淘帖(0)',
-      '淘帖 (0)',
-      '淘帖(0)',
-    }..removeWhere((e) => e.isEmpty);
+      '楼主发布的主题内容',
+    };
 
-    // 只删除“自身文本就是元数据”的节点，不删除包含正文/图片的父容器。
-    // 这样即使正文和楼层头部共用一个外层容器，也不会把真正正文一起删掉。
-    for (final node in fragment.querySelectorAll('*').toList().reversed) {
+    // 这里只处理叶子节点：节点没有元素子节点时，才可能是头部字段本身。
+    // 不对有子节点的正文容器做 text contains/remove。
+    for (final node in fragment.querySelectorAll('*').toList()) {
+      if (node.children.isNotEmpty) continue;
       final text = _normSpace(node.text);
-      if (!metadata.contains(text)) continue;
-      final hasMedia = node.querySelector('img,video,iframe,audio,table,pre') != null;
-      if (!hasMedia) node.remove();
-    }
+      if (text.isEmpty) continue;
 
-    for (final node in fragment.nodes.toList()) {
-      if (node is! dom.Text) continue;
-      final text = _normSpace(node.text ?? '');
-      if (metadata.contains(text)) node.remove();
+      // 只有明确的楼主标记直接删除。
+      if (metadata.contains(text)) {
+        node.remove();
+      }
     }
 
     return fragment.nodes.map((node) => node.toString()).join().trim();
