@@ -474,7 +474,9 @@ class ApiService {
       if (html.isEmpty) continue;
       // 提取真实楼层 pid(取自容器 id="post_<pid>"/"postmessage_<pid>"),写入卡片供楼中楼回复使用。
       final pid = _postPid(post);
+      final uid = _postUid(post);
       final pidAttr = pid > 0 ? ' data-pid="$pid"' : '';
+      final uidAttr = uid > 0 ? ' data-uid="$uid"' : '';
       // 检测该楼层行内是否真的有楼中楼回复条目。楼中楼回复的叶子节点是
       // .replyfloor_content_ul > .replyfloor_content_li 或 .replyfloor_content_li;
       // 而 .replyfloor_box / .replyfloor_bd / .replyfloor_content 只是模板为每个
@@ -487,12 +489,12 @@ class ApiService {
             'li[class*="replyfloor_content_li"], li[id*="replyfloor_content_li"]',
           ) != null;
       final repliesAttr = hasReplies ? ' data-replies="1"' : '';
-      final author = _normSpace(post.querySelector('.top_user, .authi .xw1, .authi a')?.text ?? '');
+      final author = _postAuthor(post);
       final level = _normSpace(post.querySelector('.top_lev, .p_pop')?.text ?? '');
       final floor = _normSpace(post.querySelector('.f_d.y, .pi .authi em, .pls .authi em')?.text ?? '').replaceAll(RegExp(r'[^0-9A-Za-z一二三四五六七八九十楼主]'), '');
       final time = _normSpace(post.querySelector('.kmtime, .comiis_tm, .authi em')?.text ?? '');
       final displayFloor = floor.isEmpty ? (out.isEmpty ? '楼主' : '${out.length + 1}楼') : floor;
-      out.add('<div class="post-card"$pidAttr$repliesAttr><div class="post-hd"><span class="p-floor">$displayFloor</span>${author.isEmpty ? '' : '<b class="p-author">$author</b>'}${level.isEmpty ? '' : '<span class="p-level">$level</span>'}</div>${time.isEmpty ? '' : '<div class="p-time">$time</div>'}<div class="p-body">${_cleanPostHtml(html)}</div></div>');
+      out.add('<div class="post-card"$pidAttr$uidAttr$repliesAttr><div class="post-hd"><span class="p-floor">$displayFloor</span>${author.isEmpty ? '' : '<b class="p-author">$author</b>'}${level.isEmpty ? '' : '<span class="p-level">$level</span>'}</div>${time.isEmpty ? '' : '<div class="p-time">$time</div>'}<div class="p-body">${_cleanPostHtml(html)}</div></div>');
     }
     if (out.isNotEmpty) return out;
     for (final selector in ['.comiis_aimg_show', '.comiis_message_table', '.t_f', '.pcb', '.postmessage', '[id^="postmessage_"]']) {
@@ -503,6 +505,52 @@ class ApiService {
       if (out.isNotEmpty) return out;
     }
     return out;
+  }
+
+  /// 从楼层原始 DOM 提取真实用户 UID。
+  /// Discuz 不同模板可能把 UID 放在 data-uid、用户中心链接或 query 参数中，
+  /// 所以不能只依赖某一个固定 class；提取成功后直接写入 post-card，
+  /// NativeCommentList 就不需要再根据用户名二次反查。
+  static int _postUid(dom.Element post) {
+    const attrKeys = [
+      'data-uid', 'data-user-id', 'data-author-id', 'uid', 'userid',
+      'user-id', 'author-id',
+    ];
+    for (final node in <dom.Element>[
+      post,
+      ...post.querySelectorAll('*'),
+    ]) {
+      for (final key in attrKeys) {
+        final uid = int.tryParse(node.attributes[key] ?? '');
+        if (uid != null && uid > 0) return uid;
+      }
+      final raw = [
+        node.attributes['href'] ?? '',
+        node.attributes['data-href'] ?? '',
+        node.attributes['src'] ?? '',
+      ].join(' ');
+      final match = RegExp(
+        r'(?:space-uid-|uid[=/:-]|uid%3D|uid%3A)(\d+)',
+        caseSensitive: false,
+      ).firstMatch(raw);
+      final uid = int.tryParse(match?.group(1) ?? '');
+      if (uid != null && uid > 0) return uid;
+    }
+    return 0;
+  }
+
+  /// 提取楼层作者名。优先使用 Discuz 常见的用户信息节点，
+  /// 找不到时再从带 UID 的用户链接取文本，避免正常用户被误判成匿名。
+  static String _postAuthor(dom.Element post) {
+    const selectors = [
+      '.top_user', '.authi .xw1', '.authi a',
+      '.p_author', '.p-author', 'a[href*="space-uid-"]',
+    ];
+    for (final selector in selectors) {
+      final value = _normSpace(post.querySelector(selector)?.text ?? '');
+      if (value.isNotEmpty) return value;
+    }
+    return '';
   }
 
   static String _cleanPostHtml(String html) {
