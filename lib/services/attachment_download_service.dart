@@ -76,7 +76,16 @@ class AttachmentDownloadService {
         final response = await NetClient.retry(() => client.get(pageUrl, headers: headers).timeout(NetClient.timeout));
         if (response.statusCode != 200) continue;
         final result = _extractAttachmentInfos(NetClient.decode(response.bodyBytes));
-        if (result.isNotEmpty) return result;
+        if (result.isNotEmpty) {
+          // 页面模板有时只给 aid 和扩展名，真正文件名只会出现在下载响应的
+          // Content-Disposition 中。仅对仍显示“论坛附件”的条目补一次轻量 Range
+          // 请求，避免下载完整附件，同时保留正常解析出的名称。
+          return await _fillOriginalAttachmentNames(
+            result,
+            cookie: cookie,
+            referer: referer ?? SiteConfig.base,
+          );
+        }
       } catch (_) {}
     }
     return const [];
@@ -155,6 +164,93 @@ class AttachmentDownloadService {
       result.add(ForumAttachmentInfo(url: url, name: name));
     }
     return result;
+  }
+
+  Future<List<ForumAttachmentInfo>> _fillOriginalAttachmentNames(
+    List<ForumAttachmentInfo> items, {
+    String? cookie,
+    String? referer,
+  }) async {
+    final targets = items.where((e) => _isGenericAttachmentName(e.name)).toList();
+    if (targets.isEmpty) return items;
+
+    final client = await NetClient.instance.client;
+    final headers = <String, String>{
+      'User-Agent': NetClient.ua,
+      'Accept': '*/*',
+      'Range': 'bytes=0-0',
+      'Referer': referer ?? SiteConfig.base,
+      if ((cookie ?? '').isNotEmpty) 'Cookie': cookie!,
+    };
+
+    final replacements = <String, String>{};
+    await Future.wait(
+      targets.take(8).map((item) async {
+        try {
+          final response = await client
+              .get(Uri.parse(item.url), headers: headers)
+              .timeout(NetClient.timeout);
+          final disposition = response.headers['content-disposition'] ?? '';
+          final name = _filenameFromContentDisposition(disposition);
+          if (_isUsableAttachmentTitle(name)) {
+            replacements[item.url] =
+                _ensureFilenameExtension(name, Uri.parse(item.url));
+          }
+        } catch (_) {}
+      }),
+    );
+
+    if (replacements.isEmpty) return items;
+    return [
+      for (final item in items)
+        replacements.containsKey(item.url)
+            ? ForumAttachmentInfo(
+                url: item.url,
+                name: replacements[item.url]!,
+                size: item.size,
+                downloads: item.downloads,
+              )
+            : item,
+    ];
+  }
+
+  String _filenameFromContentDisposition(String value) {
+    if (value.trim().isEmpty) return '';
+
+    final utf8Match = RegExp(
+      r"filename\*=UTF-8''([^;]+)",
+      caseSensitive: false,
+    ).firstMatch(value);
+    if (utf8Match != null) {
+      try {
+        return _cleanFileName(Uri.decodeFull(utf8Match.group(1)!));
+      } catch (_) {}
+    }
+
+    final quoted = RegExp(
+      r'filename\s*=\s*"([^"]+)"',
+      caseSensitive: false,
+    ).firstMatch(value);
+    if (quoted != null) return _cleanFileName(quoted.group(1)!);
+
+    final plain = RegExp(
+      r'filename\s*=\s*([^;]+)',
+      caseSensitive: false,
+    ).firstMatch(value);
+    return plain == null ? '' : _cleanFileName(plain.group(1)!);
+  }
+
+  bool _isGenericAttachmentName(String value) {
+    final normalized = value.trim();
+    return normalized.isEmpty ||
+        normalized == '论坛附件' ||
+        normalized == '论坛附件.txt' ||
+        normalized == '论坛附件.json' ||
+        normalized == '论坛附件.xml' ||
+        normalized == '论坛附件.zip' ||
+        normalized == '论坛附件.rar' ||
+        normalized == '论坛附件.7z' ||
+        normalized == '论坛附件.apk';
   }
 
   bool _isRealFileAttachment(Uri uri) {
