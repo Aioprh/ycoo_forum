@@ -336,10 +336,17 @@ class FavoriteBoardService {
     final lower = body.toLowerCase();
     if (lower.contains('succeed') || body.contains('成功')) return true;
     if (follow && body.contains('已关注')) return true;
-    if (!follow && (body.contains('关注') || body.contains('已关注'))) {
-      // 取消关注后按钮回到"关注"文字也算成功
-      return !lower.contains('失败') && !lower.contains('error');
+
+    // 取消关注不能仅凭页面里出现“关注”就判定成功。
+    // 版块页面在“已关注”状态下同样会包含“关注”文字，
+    // 之前这里会把“仍然已关注”的普通 HTML 误判成取消成功，
+    // 导致界面提示成功但重新进入版块后仍显示“已关注”。
+    // 取消关注统一交给下面的实际状态复查判断。
+    if (!follow && (body.contains('取消关注成功') ||
+        body.contains('取消收藏成功'))) {
+      return true;
     }
+
     // Discuz AJAX handlekey 响应格式: XML 包裹 JS call
     // <root><![CDATA[succeedhandle_forum_fav(...)]]></root>
     // <root><![CDATA[errorhandle_forum_fav(...)]]></root>
