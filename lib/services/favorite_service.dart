@@ -51,6 +51,7 @@ class FavoriteBoardService {
   Future<FavoriteBoardInfo?> fetchBoardInfo(int fid) async {
     if (fid <= 0) return null;
     final url = '${_base}forum-$fid-1.html';
+    final cookie = AuthService.instance.authCookie ?? '';
     final headers = <String, String>{
       'User-Agent': NetClient.ua,
       'Accept': 'text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8',
@@ -58,7 +59,7 @@ class FavoriteBoardService {
       'Cache-Control': 'no-cache, no-store',
       'Pragma': 'no-cache',
       'Referer': _base,
-      final cookie = AuthService.instance.authCookie: if (cookie.isNotEmpty) cookie,
+      if (cookie.isNotEmpty) 'Cookie': cookie,
     };
     try {
       final resp = await NetClient.retry(() async {
@@ -102,10 +103,8 @@ class FavoriteBoardService {
         desc = txts.first.text.trim();
         if (txts.length > 1) {
           final stats = txts.last.text.trim();
-          final tRe = RegExp(r'今日\s*[:：]\s*(\d+)');
-          final thRe = RegExp(r'(?:主题|帖数)\s*[:：]\s*(\d+)');
-          final tMatch = tRe.firstMatch(stats);
-          final thMatch = thRe.firstMatch(stats);
+          final tMatch = RegExp(r'今日\s*[:：]\s*(\d+)').firstMatch(stats);
+          final thMatch = RegExp(r'(?:主题|帖数)\s*[:：]\s*(\d+)').firstMatch(stats);
           if (tMatch != null) today = tMatch.group(1)!;
           if (thMatch != null) threads = thMatch.group(1)!;
         }
@@ -163,7 +162,7 @@ class FavoriteBoardService {
 
   Future<String?> toggle({required int fid, required bool favorite}) async {
     if (fid <= 0) return '版块无效';
-    final cookie = AuthService.instance.authCookie;
+    final cookie = AuthService.instance.authCookie ?? '';
     if (cookie.isEmpty) return '请先登录论坛';
 
     // 先抓一次版块页, 同时拿到 formhash / 当前状态 / 真实 toggle URL
@@ -210,7 +209,7 @@ class FavoriteBoardService {
       final v = input.attributes['value']?.trim() ?? '';
       if (v.isNotEmpty) return v;
     }
-    final m = RegExp(r'(?:formhash|hash)\s*[=:]\s*["\']([a-zA-Z0-9]{6,})["\']', caseSensitive: false).firstMatch(html);
+    final m = RegExp('(?:formhash|hash)\\s*[=:]\\s*["\']([a-zA-Z0-9]{6,})["\']', caseSensitive: false).firstMatch(html);
     return m?.group(1) ?? '';
   }
 

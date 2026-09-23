@@ -4,6 +4,7 @@ import 'package:html/parser.dart' as parser;
 import '../models/board.dart';
 import '../models/thread_detail.dart';
 import '../models/thread_item.dart';
+import 'attachment_download_service.dart';
 import 'site_config.dart';
 import 'auth_service.dart';
 import 'net_client.dart';
