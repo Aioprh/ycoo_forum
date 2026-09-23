@@ -22,6 +22,7 @@ dependencies:
   file_picker: ^10.3.2
   charset: ^2.0.1
   url_launcher: ^6.3.2
+  share_plus: ^10.1.4
   package_info_plus: ^8.3.0
   device_info_plus: ^10.1.2
   path_provider: ^2.1.4
