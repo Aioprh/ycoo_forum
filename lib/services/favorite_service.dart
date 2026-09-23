@@ -234,77 +234,108 @@ class FavoriteBoardService {
     final cookie = AuthService.instance.authCookie ?? '';
     if (cookie.isEmpty) return '请先登录论坛';
 
-    // 1) 用一次请求拿完整信息 (含 globalHash + addUrl/deleteUrl)
-    final info = await fetchBoardInfo(fid);
-    if (info == null) return '无法获取版块信息, 请稍后重试';
+    // Discuz 的关注状态会影响 action URL：
+    // 未关注 -> add URL；已关注 -> delete URL(favid)。
+    // 每次操作都从最新页面取得一次完整 action，避免“取消后再关注”继续使用旧状态。
+    for (var attempt = 0; attempt < 2; attempt++) {
+      final info = await fetchBoardInfo(fid);
+      if (info == null) {
+        if (attempt == 0) continue;
+        return '无法获取版块信息, 请稍后重试';
+      }
 
-    if (info.followed == follow) return null;
+      if (info.followed == follow) return null;
 
-    // 2) 选 action URL
-    String action;
-    if (follow) {
-      action = info.addUrl;
-      if (action.isEmpty) return '未找到关注操作入口, 请刷新后重试';
-    } else {
-      action = info.deleteUrl;
-      if (action.isEmpty) return '未找到取消关注入口, 请先关注后在版块内取消';
+      final action = follow ? info.addUrl : info.deleteUrl;
+      if (action.isEmpty) {
+        if (attempt == 0) continue;
+        return follow
+            ? '未找到关注操作入口, 请刷新后重试'
+            : '未找到取消关注入口, 请先关注后在版块内取消';
+      }
+
+      final actionUri = Uri.tryParse(_absolute(action));
+      if (actionUri == null) {
+        if (attempt == 0) continue;
+        return '操作链接无效';
+      }
+
+      final normalized = <String, String>{...actionUri.queryParameters};
+      if ((normalized['formhash'] ?? '').trim().isEmpty &&
+          info.globalHash.isNotEmpty) {
+        normalized['formhash'] = info.globalHash;
+      }
+
+      // 保留页面原始 handlekey；只有缺失时才补默认值。
+      // 不强制把移动模板的 forum_fav 改成 favoriteforum，避免改变服务端实际入口。
+      if ((normalized['handlekey'] ?? '').trim().isEmpty) {
+        normalized['handlekey'] = 'forum_fav';
+      }
+
+      if (follow) {
+        normalized['mod'] = 'spacecp';
+        normalized['ac'] = 'favorite';
+        normalized['type'] = 'forum';
+        normalized['id'] = '$fid';
+        normalized.remove('op');
+        normalized.remove('favid');
+      } else {
+        normalized['mod'] = 'spacecp';
+        normalized['ac'] = 'favorite';
+        normalized['op'] = 'delete';
+        normalized['type'] = 'forum';
+        if ((normalized['favid'] ?? '').isEmpty) {
+          if (attempt == 0) continue;
+          return '未找到取消关注记录, 请刷新后重试';
+        }
+      }
+
+      final uri = actionUri.replace(queryParameters: normalized);
+      final client = await NetClient.instance.client;
+      final headers = <String, String>{
+        'User-Agent': NetClient.ua,
+        'Accept':
+            'text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8',
+        'Accept-Language': 'zh-CN,zh;q=0.9',
+        'Referer': boardUrl(fid),
+        'Cookie': cookie,
+      };
+
+      try {
+        final resp = await NetClient.retry(() => client.get(uri, headers: headers))
+            .timeout(const Duration(seconds: 20));
+        if (resp.statusCode != 200) {
+          if (attempt == 0) continue;
+          return '操作失败 HTTP ${resp.statusCode}';
+        }
+
+        final body = NetClient.decode(resp.bodyBytes);
+        if (_success(body, follow)) return null;
+
+        // 不相信一次响应的文字判断：Discuz 有时返回重定向后的页面/普通 HTML。
+        // 立即重新读取版块状态；如果服务器已经完成操作，直接视为成功。
+        final verified = await fetchBoardInfo(fid);
+        if (verified != null && verified.followed == follow) return null;
+
+        // 第一次失败时，用刚获取的最新页面重新取 action 再试一次。
+        if (attempt == 0) continue;
+
+        if (_looksLikeLogin(body)) return '登录态已失效, 请重新登录论坛';
+        if (_tokenError(body)) return '操作令牌已失效, 请刷新后重试';
+        return follow ? '关注失败, 请稍后重试' : '取消关注失败, 请稍后重试';
+      } catch (_) {
+        if (attempt == 0) continue;
+        return '操作失败, 请检查网络后重试';
+      }
     }
 
-    // Discuz 原生版块收藏入口使用 handlekey=favoriteforum。
-    // 不要把移动模板自己的 forum_fav 当成服务端动作名；该参数必须与网页端一致。
-    final actionUri = Uri.tryParse(_absolute(action));
-    if (actionUri == null) return '操作链接无效';
-    final normalized = <String, String>{...actionUri.queryParameters};
-    if ((normalized['formhash'] ?? '').trim().isEmpty && info.globalHash.isNotEmpty) {
-      normalized['formhash'] = info.globalHash;
-    }
-    normalized['handlekey'] = 'favoriteforum';
-    if (follow) {
-      normalized['mod'] = 'spacecp';
-      normalized['ac'] = 'favorite';
-      normalized['type'] = 'forum';
-      normalized['id'] = '$fid';
-      normalized.remove('op');
-      normalized.remove('favid');
-    } else {
-      normalized['mod'] = 'spacecp';
-      normalized['ac'] = 'favorite';
-      normalized['op'] = 'delete';
-      normalized['type'] = 'forum';
-      if ((normalized['favid'] ?? '').isEmpty) return '未找到取消关注记录, 请刷新后重试';
-    }
-    final uri = actionUri.replace(queryParameters: normalized);
-
-    // 3) 发请求 —— 跟 follow_service 一样, 去掉 X-Requested-With 避免 Discuz 返回异常格式
-    final client = await NetClient.instance.client;
-    final headers = <String, String>{
-      'User-Agent': NetClient.ua,
-      'Accept': 'text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8',
-      'Accept-Language': 'zh-CN,zh;q=0.9',
-      'Referer': boardUrl(fid),
-      'Cookie': cookie,
-    };
-
-    try {
-      final resp = await NetClient.retry(() => client.get(uri, headers: headers))
-          .timeout(const Duration(seconds: 20));
-      if (resp.statusCode != 200) return '操作失败 HTTP ${resp.statusCode}';
-      final body = NetClient.decode(resp.bodyBytes);
-
-      // 4) 判定 (跟 follow_service 完全一致的顺序)
-      if (_success(body, follow)) return null;
-      if (_looksLikeLogin(body)) return '登录态已失效, 请重新登录论坛';
-      if (_tokenError(body)) return '操作令牌已失效, 请刷新后重试';
-      return follow ? '关注失败, 请稍后重试' : '取消关注失败, 请稍后重试';
-    } catch (_) {
-      return '操作失败, 请检查网络后重试';
-    }
+    return follow ? '关注失败, 请稍后重试' : '取消关注失败, 请稍后重试';
   }
 
   static bool _success(String body, bool follow) {
     final lower = body.toLowerCase();
     if (lower.contains('succeed') || body.contains('成功')) return true;
-    if (follow && (body.contains('已关注') || body.contains('取消关注'))) return true;
+    if (follow && body.contains('已关注')) return true;
     if (!follow && (body.contains('关注') || body.contains('已关注'))) {
       // 取消关注后按钮回到"关注"文字也算成功
       return !lower.contains('失败') && !lower.contains('error');
