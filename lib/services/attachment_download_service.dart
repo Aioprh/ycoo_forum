@@ -123,7 +123,13 @@ class AttachmentDownloadService {
       if (meta == null && tipInfo.length == 1) meta = tipInfo.values.first;
 
       var name = _bestFileName(_cleanFileName(anchor.text), anchor, uri);
-      if (meta?.title.isNotEmpty == true) name = meta!.title;
+      // Discuz 的提示浮层标题有时只是“附件/下载”或主题标题，
+      // 只有它明确带文件扩展名时才覆盖真正的文件名，避免附件显示错名。
+      final metaTitle = _cleanFileName(meta?.title ?? '');
+      if (metaTitle.isNotEmpty &&
+          (_hasKnownFileExtension(metaTitle) || name == '论坛附件')) {
+        name = metaTitle;
+      }
       name = _ensureFilenameExtension(name, uri);
       if (_looksLikeImageFile(name, uri)) continue;
 
@@ -177,7 +183,21 @@ class AttachmentDownloadService {
     try { return Uri.decodeFull(value); } catch (_) { return value; }
   }
 
-  String _cleanFileName(String value) => value.replaceAll(RegExp(r'\s+'), ' ').trim();
+  String _cleanFileName(String value) {
+    var result = value.replaceAll(RegExp(r'\s+'), ' ').trim();
+    if (result.isEmpty) return '';
+    try {
+      result = Uri.decodeFull(result);
+    } catch (_) {}
+    // 某些模板把完整下载 URL 塞进 filename/data-name，取最后一段即可。
+    final uri = Uri.tryParse(result);
+    if (uri != null && uri.pathSegments.isNotEmpty &&
+        (uri.hasScheme || result.contains('/'))) {
+      result = Uri.decodeComponent(uri.pathSegments.last);
+    }
+    result = result.replaceAll(RegExp(r'[\\/:*?"<>|]+'), '_').trim();
+    return result;
+  }
 
   String _bestFileName(String anchorText, dom.Element? anchor, Uri uri) {
     final candidates = <String>[
