@@ -478,7 +478,7 @@ class ApiService {
       final floor = _normSpace(post.querySelector('.f_d.y, .pi .authi em, .pls .authi em')?.text ?? '').replaceAll(RegExp(r'[^0-9A-Za-z一二三四五六七八九十楼主]'), '');
       final time = _normSpace(post.querySelector('.kmtime, .comiis_tm, .authi em')?.text ?? '');
       final displayFloor = floor.isEmpty ? (out.isEmpty ? '楼主' : '${out.length + 1}楼') : floor;
-      out.add('<div class="post-card"$pidAttr$repliesAttr><div class="post-hd"><span class="p-floor">$displayFloor</span>${author.isEmpty ? '' : '<b class="p-author">$author</b>'}${level.isEmpty ? '' : '<span class="p-level">$level</span>'}</div>${time.isEmpty ? '' : '<div class="p-time">$time</div>'}<div class="p-body">${_cleanPostHtml(html, author: author, level: level, time: time)}</div></div>');
+      out.add('<div class="post-card"$pidAttr$repliesAttr><div class="post-hd"><span class="p-floor">$displayFloor</span>${author.isEmpty ? '' : '<b class="p-author">$author</b>'}${level.isEmpty ? '' : '<span class="p-level">$level</span>'}</div>${time.isEmpty ? '' : '<div class="p-time">$time</div>'}<div class="p-body">${_cleanPostHtml(html)}</div></div>');
     }
     if (out.isNotEmpty) return out;
     for (final selector in ['.comiis_aimg_show', '.comiis_message_table', '.t_f', '.pcb', '.postmessage', '[id^="postmessage_"]']) {
@@ -491,49 +491,11 @@ class ApiService {
     return out;
   }
 
-  static String _cleanPostHtml(
-    String html, {
-    String author = '',
-    String level = '',
-    String time = '',
-  }) {
-    final fragment = parser.parseFragment(html);
-
-    // 正文提取保持 7071667 的原始方式，只在这里做“精确节点”清理。
-    // 目标只有一个：去掉帖子头部已经展示过的「楼主/用户名/等级/时间」，
-    // 绝不删除正文所在的父容器，因此正文内容保持原样。
-    for (final node in fragment.querySelectorAll(
-      '#k_collect, .k_collect, script, style, noscript',
-    ).toList()) {
-      node.remove();
-    }
-
-    final metadata = <String>{
-      '楼主',
-      author.trim(),
-      level.trim(),
-      time.trim(),
-      '楼主发布的主题内容',
-    }..removeWhere((e) => e.isEmpty);
-
-    // 关键：正文本身保持原样，只删除论坛模板明确用于显示楼层头部的节点。
-    // 不能按正文文本 contains 删除，也不能删除这些节点的父容器，否则会把真正正文一起删掉。
-    for (final node in fragment.querySelectorAll(
-      '.top_user, .top_lev, .kmtime, .comiis_tm, '
-      '.f_d.y, .pi .authi em, .pls .authi em',
-    ).toList()) {
-      node.remove();
-    }
-
-    // “楼主”有些模板是独立文本节点，不带上面的 class；只删除一个完全匹配的叶子节点。
-    for (final node in fragment.querySelectorAll('*').toList()) {
-      if (node.children.isNotEmpty) continue;
-      if (_normSpace(node.text) == '楼主') {
-        node.remove();
-      }
-    }
-
-    return fragment.nodes.map((node) => node.toString()).join().trim();
+  static String _cleanPostHtml(String html) {
+    var value = html;
+    value = value.replaceAll(RegExp(r'<script[\s\S]*?</script>', caseSensitive: false), '');
+    value = value.replaceAll(RegExp(r'<style[\s\S]*?</style>', caseSensitive: false), '');
+    return value.trim();
   }
 
   static String? _firstInputValue(dom.Document doc, String name) => doc.querySelector('input[name="$name"]')?.attributes['value']?.trim();
