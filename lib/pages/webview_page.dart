@@ -1,5 +1,7 @@
 import 'package:flutter/material.dart';
 import 'package:webview_flutter/webview_flutter.dart';
+import 'package:share_plus/share_plus.dart';
+import 'package:url_launcher/url_launcher.dart';
 
 import '../services/site_config.dart';
 import '../services/api_service.dart';
@@ -19,6 +21,7 @@ class _WebViewPageState extends State<WebViewPage> {
   WebViewController? _controller;
   bool _loading = true;
   bool _error = false;
+  late String _currentUrl;
   String? _nativeMessage;
 
   bool get _nativePurchase =>
@@ -56,6 +59,7 @@ class _WebViewPageState extends State<WebViewPage> {
   @override
   void initState() {
     super.initState();
+    _currentUrl = widget.url;
     if (_nativePurchase) {
       _runNativePurchase();
     } else {
@@ -105,10 +109,14 @@ class _WebViewPageState extends State<WebViewPage> {
         )
         ..setNavigationDelegate(NavigationDelegate(
           onPageStarted: (url) {
+            _currentUrl = url;
             if (mounted) setState(() { _loading = true; _error = false; });
           },
           onProgress: (progress) { if (mounted) setState(() {}); },
-          onPageFinished: (url) { if (mounted) setState(() => _loading = false); },
+          onPageFinished: (url) {
+            _currentUrl = url;
+            if (mounted) setState(() => _loading = false);
+          },
           onWebResourceError: (error) { if (mounted) setState(() => _error = true); },
         ));
       await controller.loadRequest(target);
@@ -139,6 +147,38 @@ class _WebViewPageState extends State<WebViewPage> {
       await Future<void>.delayed(const Duration(milliseconds: 500));
       if (mounted) Navigator.of(context).pop(true);
     }
+  }
+
+  Future<void> _openExternalBrowser() async {
+    final uri = Uri.tryParse(_currentUrl.trim());
+    if (uri == null || (uri.scheme != 'http' && uri.scheme != 'https')) {
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(content: Text('当前页面没有可用的网页地址')),
+        );
+      }
+      return;
+    }
+    final opened = await launchUrl(uri, mode: LaunchMode.externalApplication);
+    if (!opened && mounted) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(content: Text('未找到可用的浏览器')),
+      );
+    }
+  }
+
+  Future<void> _shareCurrentLink() async {
+    final url = _currentUrl.trim();
+    final uri = Uri.tryParse(url);
+    if (url.isEmpty || uri == null || (uri.scheme != 'http' && uri.scheme != 'https')) {
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(content: Text('当前页面没有可分享的链接')),
+        );
+      }
+      return;
+    }
+    await Share.share(url, subject: widget.title);
   }
 
   Future<void> _reload() async {
@@ -181,6 +221,37 @@ class _WebViewPageState extends State<WebViewPage> {
         actions: [
           IconButton(tooltip: '后退', onPressed: () async { if (await _controller?.canGoBack() == true) await _controller?.goBack(); }, icon: const Icon(Icons.arrow_back_outlined)),
           IconButton(tooltip: '重新加载', onPressed: _reload, icon: const Icon(Icons.refresh)),
+          PopupMenuButton<String>(
+            tooltip: '更多',
+            onSelected: (value) {
+              switch (value) {
+                case 'browser':
+                  _openExternalBrowser();
+                  break;
+                case 'share':
+                  _shareCurrentLink();
+                  break;
+              }
+            },
+            itemBuilder: (context) => const [
+              PopupMenuItem<String>(
+                value: 'browser',
+                child: ListTile(
+                  contentPadding: EdgeInsets.zero,
+                  leading: Icon(Icons.open_in_browser_rounded),
+                  title: Text('浏览器打开'),
+                ),
+              ),
+              PopupMenuItem<String>(
+                value: 'share',
+                child: ListTile(
+                  contentPadding: EdgeInsets.zero,
+                  leading: Icon(Icons.share_rounded),
+                  title: Text('分享链接'),
+                ),
+              ),
+            ],
+          ),
         ],
       ),
       body: Stack(children: [
