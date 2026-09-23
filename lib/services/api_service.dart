@@ -244,6 +244,8 @@ class ApiService {
     var likeCount = _firstInt(RegExp(r'class="comiis_recommend_nums[^"]*">\s*(\d+)'), html) ?? 0;
     if (likeCount <= 0) likeCount = doc.querySelectorAll('.comiis_recommend_list_a li').length;
     final likedByMe = myUid > 0 && doc.querySelectorAll('.comiis_recommend_list_a a[href*="uid=$myUid"]').isNotEmpty;
+    // 顺便从帖子 HTML 里解析附件列表, 零额外网络请求。
+    final attachments = AttachmentDownloadService.parseAttachmentsFromHtml(html);
     return ThreadDetail(
       tid: tid,
       title: title.isEmpty ? '帖子详情' : title,
@@ -265,6 +267,7 @@ class ApiService {
       firstPid: firstPid,
       likeCount: likeCount,
       likedByMe: likedByMe,
+      attachments: attachments,
     );
   }
 

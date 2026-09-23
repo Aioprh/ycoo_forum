@@ -1,6 +1,8 @@
 import 'package:html/dom.dart' as dom;
 import 'package:html/parser.dart' as parser;
 
+import '../services/attachment_download_service.dart';
+
 /// 帖子详情: 原生展示头部, 正文和评论分别交给 Flutter 渲染。
 class ThreadDetail {
   final int tid;
@@ -44,6 +46,9 @@ class ThreadDetail {
   final int commentTotalPages;
   int authorUid;
 
+  /// 从帖子 HTML 里顺便解析出来的附件列表, 零额外网络请求。
+  final List<ForumAttachmentInfo> attachments;
+
   static final Map<int, ThreadDetail> _firstPageCache = <int, ThreadDetail>{};
 
   ThreadDetail({
@@ -67,6 +72,7 @@ class ThreadDetail {
     this.commentPage = 1,
     this.commentTotalPages = 1,
     int authorUid = 0,
+    this.attachments = const [],
   })  : _bodyHtml = bodyHtml,
         author = author,
         avatar = avatar,

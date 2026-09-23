@@ -5,44 +5,33 @@ import '../services/attachment_download_service.dart';
 import '../services/site_config.dart';
 
 class ForumAttachmentSection extends StatelessWidget {
-  final int tid;
+  final List<ForumAttachmentInfo> attachments;
   final String? cookie;
   final String? referer;
 
   const ForumAttachmentSection({
     super.key,
-    required this.tid,
+    required this.attachments,
     this.cookie,
     this.referer,
   });
 
   @override
   Widget build(BuildContext context) {
-    if (tid <= 0) return const SizedBox.shrink();
-    return FutureBuilder<List<ForumAttachmentInfo>>(
-      future: AttachmentDownloadService.instance.fetchAttachments(
-        tid: tid,
-        cookie: cookie,
-        referer: referer ?? SiteConfig.base,
-      ),
-      builder: (context, snapshot) {
-        final items = snapshot.data ?? const <ForumAttachmentInfo>[];
-        if (items.isEmpty) return const SizedBox.shrink();
-        return Column(
-          crossAxisAlignment: CrossAxisAlignment.start,
-          children: [
-            Padding(
-              padding: const EdgeInsets.only(left: 4, top: 8, bottom: 8),
-              child: Text(
-                '本帖附件 · ${items.length}',
-                style: Theme.of(context).textTheme.titleSmall?.copyWith(fontWeight: FontWeight.w700),
-              ),
-            ),
-            for (final item in items)
-              _Tile(item: item, cookie: cookie, referer: referer),
-          ],
-        );
-      },
+    if (attachments.isEmpty) return const SizedBox.shrink();
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        Padding(
+          padding: const EdgeInsets.only(left: 4, top: 8, bottom: 8),
+          child: Text(
+            '本帖附件 · ${attachments.length}',
+            style: Theme.of(context).textTheme.titleSmall?.copyWith(fontWeight: FontWeight.w700),
+          ),
+        ),
+        for (final item in attachments)
+          _Tile(item: item, cookie: cookie, referer: referer),
+      ],
     );
   }
 }

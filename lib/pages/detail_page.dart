@@ -461,9 +461,9 @@ class _DetailPageState extends State<DetailPage> {
               : (d.bodyHtml.trim().isEmpty
                     ? _empty(context, '暂无正文内容')
                     : _nativeBodyCard(context, d.bodyHtml)),
-          if (d.tid > 0)
+          if (d.attachments.isNotEmpty)
               ForumAttachmentSection(
-                tid: d.tid,
+                attachments: d.attachments,
                 cookie: AuthService.instance.authCookie,
                 referer: SiteConfig.base,
               ),

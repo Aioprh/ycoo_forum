@@ -37,6 +37,14 @@ class AttachmentDownloadService {
     return _isRealFileAttachment(uri);
   }
 
+  /// 从已经拿到的帖子 HTML 里直接解析附件列表, 不发任何网络请求。
+  /// 供 ApiService.fetchThreadDetail 顺便调用, 避免重复抓页面。
+  static List<ForumAttachmentInfo> parseAttachmentsFromHtml(String html) {
+    if (html.trim().isEmpty) return const [];
+    final svc = AttachmentDownloadService._();
+    return svc._extractAttachmentInfos(html);
+  }
+
   Future<bool> download({required String url, String? cookie, String? referer, String? filename}) async {
     if (!Platform.isAndroid) return false;
     final uri = Uri.tryParse(url.trim());
