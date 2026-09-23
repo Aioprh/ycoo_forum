@@ -184,6 +184,35 @@ class _NodeWidget extends StatelessWidget {
     }
 
     switch (tag) {
+      // ApiService 会把正文包装成 content-section > post-card > p-body。
+      // 这些只是数据容器，必须继续递归渲染子节点；不能把整个容器
+      // 当成纯文本处理，否则正文中的 HTML 会被压扁/丢失。
+      case 'content-section':
+        return _NodeList(
+          nodes: element.nodes.where(_hasRenderableNode).toList(),
+          onLinkTap: onLinkTap,
+        );
+      case 'post-card':
+        final body = element.querySelector(':scope > .p-body');
+        if (body != null) {
+          return _NodeList(
+            nodes: body.nodes.where(_hasRenderableNode).toList(),
+            onLinkTap: onLinkTap,
+          );
+        }
+        return _NodeList(
+          nodes: element.nodes.where(_hasRenderableNode).toList(),
+          onLinkTap: onLinkTap,
+        );
+      case 'p-body':
+        return _NodeList(
+          nodes: element.nodes.where(_hasRenderableNode).toList(),
+          onLinkTap: onLinkTap,
+        );
+      case 'post-hd':
+      case 'p-time':
+        // 详情页顶部已经显示楼层/作者/等级/时间。
+        return const SizedBox.shrink();
       case 'br':
         return const SizedBox.shrink();
       case 'img':
