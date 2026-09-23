@@ -497,7 +497,6 @@ class ApiService {
         html = post.innerHtml.trim();
       }
       if (html.isEmpty) continue;
-      if (html.isEmpty) continue;
       // 提取真实楼层 pid(取自容器 id="post_<pid>"/"postmessage_<pid>"),写入卡片供楼中楼回复使用。
       final pid = _postPid(post);
       final pidAttr = pid > 0 ? ' data-pid="$pid"' : '';
