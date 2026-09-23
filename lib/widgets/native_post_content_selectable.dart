@@ -210,8 +210,8 @@ class _NodeWidget extends StatelessWidget {
               ? TextStyle(fontSize: size, height: 1.35, fontWeight: FontWeight.w800)
               : null,
           padding: heading
-              ? const EdgeInsets.only(top: 6, bottom: 10)
-              : const EdgeInsets.only(bottom: 9),
+              ? const EdgeInsets.only(top: 4, bottom: 6)
+              : const EdgeInsets.only(bottom: 4),
         );
       case 'ul':
       case 'ol':
@@ -261,8 +261,39 @@ class _NodeWidget extends StatelessWidget {
       case 'dl':
       case 'dt':
       case 'dd':
+        final text = _visibleListText(element);
+        if (text.contains('本帖隐藏内容') || text.contains('查看本帖隐藏内容')) {
+          final scheme = Theme.of(context).colorScheme;
+          return Container(
+            width: double.infinity,
+            margin: const EdgeInsets.only(bottom: 8, top: 2),
+            padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 10),
+            decoration: BoxDecoration(
+              color: scheme.primaryContainer.withValues(alpha: .32),
+              borderRadius: BorderRadius.circular(12),
+              border: Border.all(color: scheme.outlineVariant.withValues(alpha: .45)),
+            ),
+            child: Row(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Icon(Icons.lock_outline_rounded, size: 18, color: scheme.primary),
+                const SizedBox(width: 8),
+                Expanded(
+                  child: Text(
+                    text,
+                    style: TextStyle(
+                      fontSize: 14,
+                      height: 1.45,
+                      color: scheme.onSurface,
+                    ),
+                  ),
+                ),
+              ],
+            ),
+          );
+        }
         return Padding(
-          padding: const EdgeInsets.only(bottom: 8),
+          padding: const EdgeInsets.only(bottom: 3),
           child: _NodeList(
             nodes: element.nodes.where(_hasRenderableNode).toList(),
             onLinkTap: onLinkTap,
@@ -305,7 +336,11 @@ class _NodeWidget extends StatelessWidget {
     final uri = Uri.tryParse(_resolveUrl(href));
     if (uri == null) return;
     if (uri.scheme == 'http' || uri.scheme == 'https') {
-      await launchUrl(uri, mode: LaunchMode.externalApplication);
+      if (onLinkTap != null) {
+        onLinkTap!(_resolveUrl(href));
+      } else {
+        await launchUrl(uri, mode: LaunchMode.externalApplication);
+      }
     }
   }
 }
@@ -475,7 +510,11 @@ class _TextBlock extends StatelessWidget {
     final uri = Uri.tryParse(_resolveUrl(href));
     if (uri == null) return;
     if (uri.scheme == 'http' || uri.scheme == 'https') {
-      await launchUrl(uri, mode: LaunchMode.externalApplication);
+      if (onLinkTap != null) {
+        onLinkTap!(_resolveUrl(href));
+      } else {
+        await launchUrl(uri, mode: LaunchMode.externalApplication);
+      }
     }
   }
 }
