@@ -531,23 +531,62 @@ class ApiService {
     return out;
   }
 
-  static String _cleanPostHtml(String html) {
-    // 这里只清理脚本节点。正文节点已经在 _collectPosts 中精确提取，
-    // 不再按作者/等级/时间文本做二次匹配，避免误删正文。
+  static String _cleanPostHtml(
+    String html, {
+    String author = '',
+    String level = '',
+    String floor = '',
+    String time = '',
+  }) {
+    // 绝不能按“节点最终文本”删除父节点。
+    // 正文图片常被包在同一个 div 里：该 div 的 text 可能刚好等于
+    // 作者/时间，但删除父节点会把图片和真正正文一起删掉。
+    // 只按论坛模板的明确元数据节点清理，正文节点本身保持原样。
     final fragment = parser.parseFragment(html);
+    const selectors = <String>[
+      '.post-hd',
+      '.p-time',
+      '.top_user',
+      '.top_lev',
+      '.kmtime',
+      '.comiis_tm',
+      '.comiis_postli_top',
+      '.comiis_postli_time',
+      '#k_collect',
+      '.k_collect',
+    ];
+
+    for (final selector in selectors) {
+      for (final node in fragment.querySelectorAll(selector).toList()) {
+        node.remove();
+      }
+    }
+
     for (final node in fragment.querySelectorAll('script, style, noscript').toList()) {
       node.remove();
     }
-    return fragment.nodes.map((node) => node.toString()).join().trim();
-  }
 
-  static int _domOrder(dom.Element root, dom.Element a, dom.Element b) {
-    if (a == b) return 0;
-    final nodes = root.querySelectorAll('*').toList();
-    final ai = nodes.indexOf(a);
-    final bi = nodes.indexOf(b);
-    if (ai < 0 || bi < 0) return 0;
-    return ai.compareTo(bi);
+    // 兼容极少数模板把“楼主/作者/时间”直接作为正文根节点文本输出的情况。
+    // 只处理 fragment 的直接文本节点，绝不删除带正文/图片的父容器。
+    final metadata = <String>{
+      author.trim(),
+      level.trim(),
+      floor.trim(),
+      time.trim(),
+      '楼主',
+      '+淘帖 (0)',
+      '+淘帖(0)',
+      '淘帖 (0)',
+      '淘帖(0)',
+    }..removeWhere((e) => e.isEmpty);
+
+    for (final node in fragment.nodes.toList()) {
+      if (node is! dom.Text) continue;
+      final text = _normSpace(node.text ?? '');
+      if (metadata.contains(text)) node.remove();
+    }
+
+    return fragment.nodes.map((node) => node.toString()).join().trim();
   }
 
   static String? _firstInputValue(dom.Document doc, String name) => doc.querySelector('input[name="$name"]')?.attributes['value']?.trim();
