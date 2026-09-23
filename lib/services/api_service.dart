@@ -452,25 +452,8 @@ class ApiService {
     final out = <String>[];
     final postNodes = doc.querySelectorAll('.comiis_postli, #postlist .plhin, #postlist .plc, #postlist > div[id^="post_"], div[id^="postmessage_"]');
     for (final post in postNodes) {
-      // 优先进入论坛模板真正的正文节点。
-      // .comiis_messages / .comiis_message_table 有时是整块帖子容器，
-      // 里面同时包含“楼主、作者、等级、时间、+淘帖”等元数据。
-      // 如果直接取它的 innerHtml，这些元数据就会被再次当成正文渲染。
-      dom.Element? content;
-      final container = post.querySelector(
-        '.comiis_aimg_show, .comiis_messages, .comiis_message_table',
-      );
-      if (container != null) {
-        content = container.querySelector(
-          '.t_f, .pcb, .comiis_postcontent, .comiis_message, '
-          '.message, .postmessage, [id^="postmessage_"]',
-        );
-        content ??= container;
-      }
-      content ??= post.querySelector(
-        '.t_f, .pcb, .comiis_postcontent, .comiis_message, '
-        '.message, .postmessage, [id^="postmessage_"]',
-      );
+      dom.Element? content = post.querySelector('.comiis_aimg_show, .comiis_messages, .comiis_message_table');
+      content ??= post.querySelector('.t_f, .pcb, .comiis_postcontent, .comiis_message, .message, .postmessage, [id^="postmessage_"]');
       if (content == null && post.localName == 'div' && (post.id.startsWith('postmessage_') || post.id.startsWith('post_'))) content = post;
       if (content == null) continue;
       final html = content.innerHtml.trim();
@@ -509,26 +492,10 @@ class ApiService {
   }
 
   static String _cleanPostHtml(String html) {
-    final fragment = parser.parseFragment(html);
-    for (final selector in [
-      // 只移除论坛帖子模板的元数据节点，不按文本内容过滤，
-      // 避免误伤正文中的普通文字、链接、图片以及引用内容。
-      '.post-hd',
-      '.p-time',
-      '.top_user',
-      '.top_lev',
-      '.kmtime',
-      '.comiis_tm',
-      '#k_collect',
-    ]) {
-      for (final node in fragment.querySelectorAll(selector).toList()) {
-        node.remove();
-      }
-    }
-    for (final node in fragment.querySelectorAll('script, style').toList()) {
-      node.remove();
-    }
-    return fragment.nodes.map((node) => node.toString()).join().trim();
+    var value = html;
+    value = value.replaceAll(RegExp(r'<script[\s\S]*?</script>', caseSensitive: false), '');
+    value = value.replaceAll(RegExp(r'<style[\s\S]*?</style>', caseSensitive: false), '');
+    return value.trim();
   }
 
   static String? _firstInputValue(dom.Document doc, String name) => doc.querySelector('input[name="$name"]')?.attributes['value']?.trim();

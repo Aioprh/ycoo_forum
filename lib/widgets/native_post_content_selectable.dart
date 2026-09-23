@@ -62,8 +62,14 @@ bool _isRealImage(dom.Element image) {
   final raw = _rawImageValue(image);
   if (raw.isEmpty || _isPlaceholderImage(raw)) return false;
 
-  // 论坛图片经常使用 attachment.php 作为外层链接，不能因为链接看起来像
-  // “附件下载”就把里面的真实图片过滤掉。图片本身由 img 的真实地址决定。
+  final parent = image.parent;
+  if (parent is dom.Element && (parent.localName ?? '').toLowerCase() == 'a') {
+    final href = parent.attributes['href']?.trim() ?? '';
+    final uri = Uri.tryParse(_resolveUrl(href));
+    if (_isFileAttachment(uri) && !_isImageEndpoint(uri) && !_isImageFileName(uri)) {
+      return false;
+    }
+  }
   return true;
 }
 
@@ -166,20 +172,6 @@ class _NodeWidget extends StatelessWidget {
     final tag = (element.localName ?? '').toLowerCase();
 
     switch (tag) {
-      case 'post-card':
-        // 帖子卡片的作者、等级、时间、淘帖等元数据已经由详情页顶部展示。
-        // 正文渲染只取 p-body，避免这些元数据再次进入正文，同时保留 p-body 内的真实文字、链接和图片。
-        final body = element.querySelector(':scope > .p-body');
-        if (body == null) return const SizedBox.shrink();
-        return _NodeList(
-          nodes: body.nodes.where(_hasRenderableNode).toList(),
-          onLinkTap: onLinkTap,
-        );
-      case 'p-body':
-        return _NodeList(
-          nodes: element.nodes.where(_hasRenderableNode).toList(),
-          onLinkTap: onLinkTap,
-        );
       case 'br':
         return const SizedBox.shrink();
       case 'img':
@@ -261,24 +253,6 @@ class _NodeWidget extends StatelessWidget {
           child: Divider(height: 1),
         );
       case 'div':
-        // API 将每一楼包装成 <div class="post-card">，它不是自定义 HTML 标签，
-        // 因此不能靠 case 'post-card' 匹配。这里只渲染其中真正的 p-body，
-        // 从根源上去掉正文里的楼主/作者/等级/时间/+淘帖元数据。
-        if (element.classes.contains('post-card')) {
-          final body = element.querySelector(':scope > .p-body') ?? element.querySelector('.p-body');
-          if (body == null) return const SizedBox.shrink();
-          return _NodeList(
-            nodes: body.nodes.where(_hasRenderableNode).toList(),
-            onLinkTap: onLinkTap,
-          );
-        }
-        return Padding(
-          padding: const EdgeInsets.only(bottom: 3),
-          child: _NodeList(
-            nodes: element.nodes.where(_hasRenderableNode).toList(),
-            onLinkTap: onLinkTap,
-          ),
-        );
       case 'section':
       case 'article':
       case 'main':
