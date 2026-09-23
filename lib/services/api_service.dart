@@ -220,7 +220,16 @@ class ApiService {
     final posts = _collectPosts(doc);
     // 第 1 页 posts[0] 是楼主正文; 翻页(>1)的页面里没有楼主, 全部是回帖, 不能再次 skip。
     final hasAuthor = page <= 1;
-    final body = posts.isEmpty || page > 1 ? '' : '<div class="content-section">${posts.first}</div>';
+    String body = '';
+    if (posts.isNotEmpty && page <= 1) {
+      // 正文只取 p-body 内的真实内容, 过滤掉 post-hd(楼主/用户名/Lv) 和 p-time 等头部信息
+      final fragment = parser.parseFragment(posts.first);
+      final pBody = fragment.querySelector('.p-body');
+      final bodyInner = pBody?.innerHtml ?? '';
+      if (bodyInner.trim().isNotEmpty) {
+        body = '<div class="content-section"><div class="p-body">$bodyInner</div></div>';
+      }
+    }
     final commentFloors = posts.isEmpty
         ? const <String>[]
         : (hasAuthor ? posts.skip(1) : posts).toList();
