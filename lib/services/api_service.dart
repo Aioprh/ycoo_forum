@@ -478,7 +478,7 @@ class ApiService {
       final floor = _normSpace(post.querySelector('.f_d.y, .pi .authi em, .pls .authi em')?.text ?? '').replaceAll(RegExp(r'[^0-9A-Za-z一二三四五六七八九十楼主]'), '');
       final time = _normSpace(post.querySelector('.kmtime, .comiis_tm, .authi em')?.text ?? '');
       final displayFloor = floor.isEmpty ? (out.isEmpty ? '楼主' : '${out.length + 1}楼') : floor;
-      out.add('<div class="post-card"$pidAttr$repliesAttr><div class="post-hd"><span class="p-floor">$displayFloor</span>${author.isEmpty ? '' : '<b class="p-author">$author</b>'}${level.isEmpty ? '' : '<span class="p-level">$level</span>'}</div>${time.isEmpty ? '' : '<div class="p-time">$time</div>'}<div class="p-body">${_cleanPostHtml(html)}</div></div>');
+      out.add('<div class="post-card"$pidAttr$repliesAttr><div class="post-hd"><span class="p-floor">$displayFloor</span>${author.isEmpty ? '' : '<b class="p-author">$author</b>'}${level.isEmpty ? '' : '<span class="p-level">$level</span>'}</div>${time.isEmpty ? '' : '<div class="p-time">$time</div>'}<div class="p-body">${_cleanPostHtml(html, author: author, level: level, floor: displayFloor, time: time)}</div></div>');
     }
     if (out.isNotEmpty) return out;
     for (final selector in ['.comiis_aimg_show', '.comiis_message_table', '.t_f', '.pcb', '.postmessage', '[id^="postmessage_"]']) {
@@ -491,11 +491,52 @@ class ApiService {
     return out;
   }
 
-  static String _cleanPostHtml(String html) {
-    var value = html;
-    value = value.replaceAll(RegExp(r'<script[\s\S]*?</script>', caseSensitive: false), '');
-    value = value.replaceAll(RegExp(r'<style[\s\S]*?</style>', caseSensitive: false), '');
-    return value.trim();
+  static String _cleanPostHtml(
+    String html, {
+    String author = '',
+    String level = '',
+    String floor = '',
+    String time = '',
+  }) {
+    // 不再按 CSS 类名大范围删除节点。
+    // 原站不同帖子模板的正文容器结构并不一致，粗暴删除 .top_user/
+    // .kmtime 等节点可能把真实正文一起删掉，甚至留下孤立的引号。
+    // 这里仅删除“文本内容与当前楼层头部完全相同”的节点，并清掉明确的
+    // 收藏按钮/脚本节点，因此正文、图片和正常同名文字都不会被结构性破坏。
+    final fragment = parser.parseFragment(html);
+    final metadata = <String>{
+      author.trim(),
+      level.trim(),
+      floor.trim(),
+      time.trim(),
+      '楼主',
+    }..removeWhere((e) => e.isEmpty);
+
+    for (final node in fragment.querySelectorAll('*').toList()) {
+      final id = node.id.trim();
+      final classes = node.classes;
+      final text = _normSpace(node.text);
+
+      if (id == 'k_collect' ||
+          classes.contains('k_collect') ||
+          node.localName == 'script' ||
+          node.localName == 'style' ||
+          node.localName == 'noscript') {
+        node.remove();
+        continue;
+      }
+
+      // 只匹配完整节点文本，绝不对包含正文的父容器做 contains 删除。
+      if (metadata.contains(text) ||
+          text == '+淘帖 (0)' ||
+          text == '+淘帖(0)' ||
+          text == '淘帖 (0)' ||
+          text == '淘帖(0)') {
+        node.remove();
+      }
+    }
+
+    return fragment.nodes.map((node) => node.toString()).join().trim();
   }
 
   static String? _firstInputValue(dom.Document doc, String name) => doc.querySelector('input[name="$name"]')?.attributes['value']?.trim();
