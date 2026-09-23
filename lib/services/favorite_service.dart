@@ -1,5 +1,6 @@
 import 'package:html/dom.dart' as dom;
 import 'package:html/parser.dart' as parser;
+import 'package:http/http.dart' as http;
 
 import 'auth_service.dart';
 import 'net_client.dart';
@@ -302,8 +303,39 @@ class FavoriteBoardService {
       };
 
       try {
-        final resp = await NetClient.retry(() => client.get(uri, headers: headers))
-            .timeout(const Duration(seconds: 20));
+        http.Response resp;
+
+        if (!follow) {
+          // Discuz 的取消收藏在不同模板上虽然会生成 GET href，
+          // 实际处理常走 POST deletesubmit。仅 GET 可能返回页面但不会删除记录。
+          // 优先按 Discuz 的删除表单提交，失败后再回退到原始 action GET。
+          final form = <String, String>{
+            if ((normalized['formhash'] ?? '').isNotEmpty)
+              'formhash': normalized['formhash']!,
+            'deletesubmit': '1',
+            'type': normalized['type'] ?? 'forum',
+            'handlekey': 'a_delete_${normalized['favid'] ?? ''}',
+          };
+          resp = await NetClient.retry(() => client.post(
+                uri,
+                headers: {
+                  ...headers,
+                  'Content-Type': 'application/x-www-form-urlencoded',
+                  'Origin': _base,
+                },
+                body: form,
+              )).timeout(const Duration(seconds: 20));
+
+          // 某些 Comiis 模板只接受 GET href，POST 无效时继续使用页面给出的原始链接。
+          if (resp.statusCode != 200) {
+            resp = await NetClient.retry(() => client.get(uri, headers: headers))
+                .timeout(const Duration(seconds: 20));
+          }
+        } else {
+          resp = await NetClient.retry(() => client.get(uri, headers: headers))
+              .timeout(const Duration(seconds: 20));
+        }
+
         if (resp.statusCode != 200) {
           if (attempt == 0) continue;
           return '操作失败 HTTP ${resp.statusCode}';
