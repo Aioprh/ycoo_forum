@@ -165,8 +165,10 @@ String _sanitizeForumHtml(String html) {
     final style = (e.attributes['style'] ?? '').toLowerCase().replaceAll(' ', '');
     if (style.contains('display:none') || style.contains('visibility:hidden')) return true;
     if (RegExp(r'(^|[-_])(pay|paid|buy|purchase|locked|lock|price)([-_]|$)').hasMatch(attrs)) return true;
-    // 过滤正文里混入的用户信息块、论坛工具按钮等非正文内容
-    if (RegExp(r'(^|[-\s_])(post-hd|p-time|comiis_postli_top|comiis_postli_time|comiis_top_nums|comiis_rate|comiis_tags|comiis_dzhan_img|k_collect|top_nums|followmod)([-\s_]|$)').hasMatch(attrs)) return true;
+    // 仅过滤真正属于正文内容的论坛工具节点。
+    // post-hd / p-author / p-level 是 NativeCommentList 解析评论用户资料所需的
+    // 我们自己生成的评论头部，绝不能在 ThreadDetail.commentsHtml 清洗时删掉。
+    if (RegExp(r'(^|[-\s_])(comiis_postli_top|comiis_postli_time|comiis_top_nums|comiis_rate|comiis_tags|comiis_dzhan_img|k_collect|top_nums|followmod)([-\s_]|$)').hasMatch(attrs)) return true;
     final text = e.text.replaceAll(RegExp(r'\s+'), ' ').trim();
     if (text.contains('本主题需向作者支付') || text.contains('购买后查看完整内容')) return true;
     final iconOnly = (tag == 'i' || tag == 'span' || tag == 'em' || tag == 'b' || tag == 'font') &&
