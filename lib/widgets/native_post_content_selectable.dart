@@ -267,6 +267,24 @@ class _NodeWidget extends StatelessWidget {
           child: Divider(height: 1),
         );
       case 'div':
+        // API 将每一楼包装成 <div class="post-card">，它不是自定义 HTML 标签，
+        // 因此不能靠 case 'post-card' 匹配。这里只渲染其中真正的 p-body，
+        // 从根源上去掉正文里的楼主/作者/等级/时间/+淘帖元数据。
+        if (element.classes.contains('post-card')) {
+          final body = element.querySelector(':scope > .p-body') ?? element.querySelector('.p-body');
+          if (body == null) return const SizedBox.shrink();
+          return _NodeList(
+            nodes: body.nodes.where(_hasRenderableNode).toList(),
+            onLinkTap: onLinkTap,
+          );
+        }
+        return Padding(
+          padding: const EdgeInsets.only(bottom: 3),
+          child: _NodeList(
+            nodes: element.nodes.where(_hasRenderableNode).toList(),
+            onLinkTap: onLinkTap,
+          ),
+        );
       case 'section':
       case 'article':
       case 'main':
