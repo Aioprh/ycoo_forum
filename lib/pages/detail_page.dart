@@ -571,7 +571,7 @@ class _DetailPageState extends State<DetailPage> {
     final sameForum = host == baseHost || host.endsWith('.$baseHost');
 
     // 帖子正文里的论坛主题链接：直接进入原生帖子详情，而不是再套一层网页。
-    final threadMatch = RegExp(r'(?:^|/)thread-(\\d+)(?:[-_]|\\.|/|$)', caseSensitive: false)
+    final threadMatch = RegExp(r'(?:^|/)thread-(\d+)(?:[-_]|\.|/|$)', caseSensitive: false)
         .firstMatch(uri.path);
     final tid = threadMatch == null ? null : int.tryParse(threadMatch.group(1)!);
     if (sameForum && tid != null && tid > 0) {
