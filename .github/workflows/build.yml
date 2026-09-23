@@ -155,7 +155,19 @@ jobs:
           tag_name: v${{ steps.meta.outputs.name }}
           target_commitish: ${{ steps.meta.outputs.sha }}
           name: 源论坛 YcooForum v${{ steps.meta.outputs.name }}
+          body: |
+            ## 源论坛 YcooForum v${{ steps.meta.outputs.name }}
+
+            Android 正式版 APK（按 ABI 拆分）：
+            - arm64-v8a
+            - armeabi-v7a
+            - x86_64
+
+            构建提交：${{ steps.meta.outputs.sha }}
           generate_release_notes: true
+          make_latest: true
+          draft: false
+          prerelease: false
           files: |
             build/app/outputs/flutter-apk/app-arm64-v8a-release.apk
             build/app/outputs/flutter-apk/app-armeabi-v7a-release.apk
