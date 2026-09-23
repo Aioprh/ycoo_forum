@@ -516,15 +516,19 @@ class ApiService {
       '楼主发布的主题内容',
     }..removeWhere((e) => e.isEmpty);
 
-    // 这里只处理叶子节点：节点没有元素子节点时，才可能是头部字段本身。
-    // 不对有子节点的正文容器做 text contains/remove。
+    // 关键：正文本身保持原样，只删除论坛模板明确用于显示楼层头部的节点。
+    // 不能按正文文本 contains 删除，也不能删除这些节点的父容器，否则会把真正正文一起删掉。
+    for (final node in fragment.querySelectorAll(
+      '.top_user, .top_lev, .kmtime, .comiis_tm, '
+      '.f_d.y, .pi .authi em, .pls .authi em',
+    ).toList()) {
+      node.remove();
+    }
+
+    // “楼主”有些模板是独立文本节点，不带上面的 class；只删除一个完全匹配的叶子节点。
     for (final node in fragment.querySelectorAll('*').toList()) {
       if (node.children.isNotEmpty) continue;
-      final text = _normSpace(node.text);
-      if (text.isEmpty) continue;
-
-      // 只有明确的楼主标记直接删除。
-      if (metadata.contains(text)) {
+      if (_normSpace(node.text) == '楼主') {
         node.remove();
       }
     }
