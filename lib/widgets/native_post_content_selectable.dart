@@ -27,6 +27,15 @@ bool _hasRenderableNode(dom.Node node) {
   if (node is! dom.Element) return false;
 
   final tag = (node.localName ?? '').toLowerCase();
+
+  // post-card 是 ApiService 为每一楼生成的包装节点。
+  // 楼层/作者/等级/时间已经在帖子顶部展示，这些节点不能再次进入正文。
+  // 这里只过滤我们自己生成的元数据节点，不修改正文 HTML，因此不会影响图片、文字和引用内容。
+  if (node.classes.contains('post-hd') ||
+      node.classes.contains('p-time') ||
+      node.id == 'k_collect') {
+    return false;
+  }
   if (tag == 'br') return false;
   if (tag == 'img') return _isRealImage(node);
   if (tag == 'a' && node.querySelector('img') != null) {
