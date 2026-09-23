@@ -209,7 +209,7 @@ class ApiService {
         '.comiis_post_top .forumname, [class*="bankuai"] .tit',
       )?.text ?? '');
     }
-    boardName = boardName.replaceAll(RegExp(r'\\s+'), ' ').trim();
+    boardName = boardName.replaceAll(RegExp(r'\s+'), ' ').trim();
     var title = _firstMeta(doc, 'og:title') ?? _firstMeta(doc, 'title') ?? '';
     final titleMatch = RegExp(r'<title>(.*?)</title>', caseSensitive: false, dotAll: true).firstMatch(html);
     if (title.isEmpty && titleMatch != null) title = _stripTags(titleMatch.group(1)!);
