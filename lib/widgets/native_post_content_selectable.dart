@@ -62,14 +62,8 @@ bool _isRealImage(dom.Element image) {
   final raw = _rawImageValue(image);
   if (raw.isEmpty || _isPlaceholderImage(raw)) return false;
 
-  final parent = image.parent;
-  if (parent is dom.Element && (parent.localName ?? '').toLowerCase() == 'a') {
-    final href = parent.attributes['href']?.trim() ?? '';
-    final uri = Uri.tryParse(_resolveUrl(href));
-    if (_isFileAttachment(uri) && !_isImageEndpoint(uri) && !_isImageFileName(uri)) {
-      return false;
-    }
-  }
+  // 论坛图片经常使用 attachment.php 作为外层链接，不能因为链接看起来像
+  // “附件下载”就把里面的真实图片过滤掉。图片本身由 img 的真实地址决定。
   return true;
 }
 
