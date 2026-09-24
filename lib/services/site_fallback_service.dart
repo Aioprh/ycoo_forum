@@ -97,8 +97,10 @@ class SiteFallbackService {
       final href = a.attributes['href'] ?? '';
       final fid = _id(RegExp(r'(?:forum-|[?&]fid=)(\d+)', caseSensitive: false), href);
       if (fid == null || fid == 0) continue;
-      var name = _clean(a.text);
-      if (name.isEmpty) name = _clean(a.querySelector('span')?.text ?? '');
+      var name = _clean(a.querySelector('em')?.text ?? '');
+      if (!_validBoardName(name)) name = _clean(a.querySelector('img')?.attributes['alt'] ?? '');
+      if (!_validBoardName(name)) name = _clean(a.text);
+      if (!_validBoardName(name)) name = _clean(a.querySelector('span')?.text ?? '');
       if (!_validBoardName(name)) {
         final parent = _container(a);
         name = _clean(parent?.querySelector('span')?.text ?? parent?.text ?? '');
@@ -135,6 +137,8 @@ class SiteFallbackService {
 
   static bool _validBoardName(String value) {
     if (value.length < 2 || value.length > 60) return false;
+    // 纯数字(如今日帖数徽章 "578")不是版块名
+    if (RegExp(r'^[\d\s:：]+$').hasMatch(value)) return false;
     const bad = {'首页', '登录', '注册', '论坛', '返回', '更多', '版块'};
     return !bad.contains(value) && !value.contains('http');
   }

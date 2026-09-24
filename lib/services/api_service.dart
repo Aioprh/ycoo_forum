@@ -159,25 +159,61 @@ class ApiService {
   Future<List<ForumCategory>> fetchBoards() async {
     final html = await _get(boardUrl);
     final doc = parser.parse(html);
-    final names = doc.querySelectorAll('.comiis_bbs_show h2').map((e) => _normSpace(e.text)).where((e) => e.isNotEmpty).toList();
-    final groups = doc.querySelectorAll('.comiis_forum_nbox');
-    final cats = <ForumCategory>[];
-    for (var i = 0; i < groups.length; i++) {
-      final name = i < names.length ? names[i] : '其他';
-      final boards = <ForumBoard>[];
-      for (final li in groups[i].querySelectorAll('li')) {
-        final a = li.querySelector('a');
-        final href = a?.attributes['href'] ?? '';
-        final fid = _firstInt(RegExp(r'forum-(\d+)'), href) ?? 0;
-        if (fid == 0) continue;
-        final boardName = _normSpace(a?.querySelector('span')?.text ?? a?.text ?? '');
-        if (boardName.isEmpty) continue;
-        boards.add(ForumBoard(fid: fid, name: boardName, icon: _abs(a?.querySelector('img')?.attributes['src'] ?? ''), today: _normSpace(a?.querySelector('p')?.text ?? '')));
-      }
-      if (boards.isNotEmpty) cats.add(ForumCategory(name: name, boards: boards));
+
+    // 版块列表页面同时存在两套结构, 两处都收集后按 fid 去重:
+    //   1) 新版快捷列表: <li class="b_b"><a class="bbslist_ico"><img alt="书源发布"/></a>
+    //                                    <a class="post_tit"><em>书源发布</em></a></li>
+    //   2) 老版分组列表: <div class="comiis_forum_nbox"><li><a href="forum-2-1.html">
+    //                        <em><img alt="书源发布"/></em><span>书源发布</span><p>今日: 567</p></a></li>
+    // 注意: 登录后源站会在版块卡片最前面插一个纯数字徽章(如今日帖数 "578"),
+    // 直接取第一个 <span> 会把徽章当成版块名, 所以名字提取必须跳过纯数字节点。
+    final anchors = <dom.Element>[];
+    for (final li in doc.querySelectorAll('li.b_b, li.b_a')) {
+      anchors.addAll(li.querySelectorAll('a[href]'));
     }
-    if (cats.isEmpty) throw Exception('未解析到版块数据');
-    return cats;
+    for (final li in doc.querySelectorAll('.comiis_forum_nbox li')) {
+      anchors.addAll(li.querySelectorAll('a[href]'));
+    }
+
+    final boards = <ForumBoard>[];
+    final seen = <int>{};
+    for (final a in anchors) {
+      final href = a.attributes['href'] ?? '';
+      // 只认 href 里的真实 fid: 分类 Tab 的 href 是 javascript:; 会被跳过
+      final fid = _firstInt(RegExp(r'(?:forum-|[?&]fid=)(\d+)'), href) ?? 0;
+      if (fid <= 0 || !seen.add(fid)) continue;
+      final name = _boardNameOf(a);
+      if (name.isEmpty) {
+        seen.remove(fid); // 名字没取到, 让同 fid 的下一个链接再试
+        continue;
+      }
+      boards.add(ForumBoard(
+        fid: fid,
+        name: name,
+        icon: _abs(a.querySelector('img')?.attributes['src'] ?? ''),
+        today: _normSpace(a.querySelector('p')?.text ?? ''),
+      ));
+    }
+
+    if (boards.isEmpty) throw Exception('未解析到版块数据');
+    return [ForumCategory(name: '全部版块', boards: boards)];
+  }
+
+  /// 从版块链接里稳妥地取版块名, 依次尝试:
+  /// `<em>` 文本 → `<img alt>` → 首个"非纯数字"的 `<span>` → 整段文本。
+  /// 源站登录后会在卡片前插纯数字徽章(如今日帖数), 纯数字一律不算版块名。
+  static String _boardNameOf(dom.Element a) {
+    bool ok(String s) => s.isNotEmpty && s.length <= 30 && !RegExp(r'^[\d\s:：]+$').hasMatch(s);
+    final em = _normSpace(a.querySelector('em')?.text ?? '');
+    if (ok(em)) return em;
+    final alt = _normSpace(a.querySelector('img')?.attributes['alt'] ?? '');
+    if (ok(alt)) return alt;
+    for (final sp in a.querySelectorAll('span')) {
+      final t = _normSpace(sp.text);
+      if (ok(t)) return t;
+    }
+    final all = _normSpace(a.text);
+    return ok(all) ? all : '';
   }
 
   static String detailUrl(int tid) => '$_base' 'thread-$tid-1-1.html';
