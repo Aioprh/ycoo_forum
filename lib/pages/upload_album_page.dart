@@ -3,6 +3,7 @@ import 'dart:io';
 import 'package:file_picker/file_picker.dart';
 import 'package:flutter/material.dart';
 
+import '../services/attachment_upload_service.dart';
 import '../services/auth_service.dart';
 import '../services/space_write_service.dart';
 import '../utils/forum_text.dart';
@@ -180,7 +181,7 @@ class _UploadAlbumPageState extends State<UploadAlbumPage> {
                         const SizedBox(height: 8),
                         Text('添加图片', style: const TextStyle(fontWeight: FontWeight.w700)),
                         const SizedBox(height: 3),
-                        Text('从图库选择图片, 可多选 · 单张最大 10 MB', style: TextStyle(fontSize: 11, color: scheme.onSurfaceVariant)),
+                        Text('从图库选择图片, 可多选 · 单张最大 ${(AttachmentUploadService.maxBytes / 1024 / 1024).toStringAsFixed(0)} MB', style: TextStyle(fontSize: 11, color: scheme.onSurfaceVariant)),
                       ]),
                     ),
                   )

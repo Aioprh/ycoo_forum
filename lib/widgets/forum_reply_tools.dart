@@ -87,7 +87,7 @@ class ForumReplyTools {
       throw Exception('无法读取所选图片');
     }
     if (file.size > AttachmentUploadService.maxBytes) {
-      throw Exception('图片不能超过 10 MB');
+      throw Exception('图片不能超过 ${(AttachmentUploadService.maxBytes / 1024 / 1024).toStringAsFixed(0)} MB');
     }
     final uploaded = await AttachmentUploadService.instance.upload(fid: fid, file: file);
     return '[attachimg]${uploaded.aid}[/attachimg]';

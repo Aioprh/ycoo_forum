@@ -48,8 +48,8 @@ class AttachmentUploadService {
       final v = int.tryParse(dataMatch.group(1)!);
       if (v != null && v > 0) return v;
     }
-    // 4. 文案: "最大 20MB" / "限制 20 MB" / "允许 5MB"
-    final textMatch = RegExp(r'(?:最大|限制|允许|不超过)\s*(\d+(?:\.\d+)?)\s*MB', caseSensitive: false).firstMatch(html);
+    // 4. 文案: "大小限制: 20MB" / "最大 20MB" / "限制 20 MB" / "允许 5MB"
+    final textMatch = RegExp(r'(?:大小限制|max\s*(?:size|limit)|最大|限制|允许|不超过)\s*:?\s*(\d+(?:\.\d+)?)\s*MB', caseSensitive: false).firstMatch(html);
     if (textMatch != null) {
       final v = double.tryParse(textMatch.group(1)!);
       if (v != null && v > 0) return (v * 1024 * 1024).round();
