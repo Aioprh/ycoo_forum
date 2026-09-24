@@ -23,7 +23,39 @@ class AttachmentUploadService {
   AttachmentUploadService._();
   static final instance = AttachmentUploadService._();
   static String get _base => SiteConfig.base;
-  static const int maxBytes = 10 * 1024 * 1024;
+  // 默认 10MB, 实际限制从发帖页动态解析后覆盖
+  static int _maxBytes = 10 * 1024 * 1024;
+  static int get maxBytes => _maxBytes;
+
+  /// 从发帖页 HTML 解析当前用户组的附件大小上限(bytes)。
+  /// Discuz 模板里常见的形式: JS 变量 maxattachsize / hidden input / sizelimit 文案。
+  static int _parseMaxAttachSize(String html) {
+    // 1. JS: var maxattachsize = 10485760;
+    final jsMatch = RegExp(r'''maxattachsize\s*[:=]\s*['"]?(\d+)''', caseSensitive: false).firstMatch(html);
+    if (jsMatch != null) {
+      final v = int.tryParse(jsMatch.group(1)!);
+      if (v != null && v > 0) return v;
+    }
+    // 2. hidden input: <input type="hidden" name="maxattachsize" value="10485760" />
+    final inputMatch = RegExp(r'''name=["']?maxattachsize["']?\s+value=["']?(\d+)''', caseSensitive: false).firstMatch(html);
+    if (inputMatch != null) {
+      final v = int.tryParse(inputMatch.group(1)!);
+      if (v != null && v > 0) return v;
+    }
+    // 3. data-maxsize 属性
+    final dataMatch = RegExp(r'''data-max(?:attach)?size=["']?(\d+)''', caseSensitive: false).firstMatch(html);
+    if (dataMatch != null) {
+      final v = int.tryParse(dataMatch.group(1)!);
+      if (v != null && v > 0) return v;
+    }
+    // 4. 文案: "最大 20MB" / "限制 20 MB" / "允许 5MB"
+    final textMatch = RegExp(r'(?:最大|限制|允许|不超过)\s*(\d+(?:\.\d+)?)\s*MB', caseSensitive: false).firstMatch(html);
+    if (textMatch != null) {
+      final v = double.tryParse(textMatch.group(1)!);
+      if (v != null && v > 0) return (v * 1024 * 1024).round();
+    }
+    return 0; // 0 表示未找到
+  }
 
   Map<String, String> _headers({String? referer, bool ajax = false}) => {
     'User-Agent': NetClient.ua,
@@ -36,12 +68,27 @@ class AttachmentUploadService {
     if ((AuthService.instance.authCookie ?? '').isNotEmpty) 'Cookie': AuthService.instance.authCookie!,
   };
 
+  /// 预取当前用户组的附件大小上限。选版块后调一次, UI 显示真实限制。
+  /// 内部抓发帖页, 解析 maxattachsize 后缓存。
+  Future<void> refreshMaxBytes(int fid) async {
+    if (fid <= 0 || !AuthService.instance.isLoggedIn) return;
+    try {
+      final client = await NetClient.instance.client;
+      final pageUrl = Uri.parse('${_base}forum.php?mod=post&action=newthread&fid=$fid&mobile=2');
+      final resp = await NetClient.retry(() => client.get(pageUrl, headers: _headers(referer: _base)).timeout(NetClient.timeout));
+      if (resp.statusCode != 200) return;
+      final html = NetClient.decode(resp.bodyBytes);
+      final parsed = _parseMaxAttachSize(html);
+      if (parsed > 0) _maxBytes = parsed;
+    } catch (_) {}
+  }
+
   Future<UploadedAttachment> upload({required int fid, required PlatformFile file}) async {
     if (!AuthService.instance.isLoggedIn || (AuthService.instance.authCookie ?? '').isEmpty) throw Exception('请先登录论坛');
     if (fid <= 0) throw Exception('未选择有效版块');
     if (file.path == null || file.path!.isEmpty) throw Exception('无法读取所选文件');
     final size = file.size;
-    if (size > maxBytes) throw Exception('附件不能超过 10 MB');
+    if (size > maxBytes) throw Exception('附件不能超过 ${(maxBytes / 1024 / 1024).toStringAsFixed(0)} MB');
 
     final client = await NetClient.instance.client;
     final pageUrl = Uri.parse('${_base}forum.php?mod=post&action=newthread&fid=$fid&mobile=2');
@@ -50,6 +97,9 @@ class AttachmentUploadService {
       final pageResp = await NetClient.retry(() => client.get(pageUrl, headers: _headers(referer: _base)).timeout(NetClient.timeout));
       if (pageResp.statusCode != 200) throw Exception('读取发帖页面失败 HTTP ${pageResp.statusCode}');
       final html = NetClient.decode(pageResp.bodyBytes);
+      // 从发帖页解析当前用户组的附件大小上限, 覆盖默认 10MB
+      final parsed = _parseMaxAttachSize(html);
+      if (parsed > 0 && parsed != _maxBytes) _maxBytes = parsed;
       final doc = parser.parse(html);
       final formhash = NetClient.extractFormHash(html) ?? _hidden(doc, 'formhash');
       if (formhash.isEmpty) throw Exception('未取得发帖令牌(formhash)，请刷新后重试');
