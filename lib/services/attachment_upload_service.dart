@@ -27,10 +27,17 @@ class AttachmentUploadService {
   // 权威缓存: 由 UserPermissionService.refresh() 写入; 发帖页解析也回写这里
   static int _maxBytesCached = 10 * 1024 * 1024;
   static int get maxBytes => _maxBytesCached;
+  static int _cachedUid = 0;
 
   /// 由 UserPermissionService / refreshMaxBytes 写入
   static void updateMaxBytes(int bytes) {
     if (bytes > 0) _maxBytesCached = bytes;
+  }
+
+  /// 换用户/登出时清缓存, 回到默认 10MB
+  static void resetCache() {
+    _maxBytesCached = 10 * 1024 * 1024;
+    _cachedUid = 0;
   }
 
   /// 从发帖页 HTML 解析当前用户组的附件大小上限(bytes)。

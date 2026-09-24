@@ -11,6 +11,7 @@ import '../services/auth_service.dart';
 import '../services/post_draft_service.dart';
 import '../services/site_fallback_service.dart';
 import '../services/thread_publish_service.dart';
+import '../services/user_permission_service.dart';
 
 /// Material 3 原生发帖页。
 /// 保留完整发帖能力：BBCode 工具栏、图片/附件上传、拖动排序、草稿、定时发布、
@@ -184,7 +185,7 @@ class _CreateThreadPageState extends State<CreateThreadPage> {
         _loadingBoards = false;
         _error = boards.isEmpty ? '暂时没有可发帖的版块' : null;
       });
-      if (_fid != null) { _loadTypes(_fid!); AttachmentUploadService.instance.refreshMaxBytes(_fid!).then((_) { if (mounted) setState(() {}); }); }
+      if (_fid != null) { _loadTypes(_fid!); AttachmentUploadService.instance.refreshMaxBytes(_fid!).then((_) { if (mounted) setState(() {}); }); UserPermissionService.instance.refresh(); }
     } catch (_) {
       if (mounted) setState(() { _loadingBoards = false; _error = '版块加载失败，请稍后重试'; });
     }
@@ -458,7 +459,7 @@ class _CreateThreadPageState extends State<CreateThreadPage> {
           Container(padding: const EdgeInsets.fromLTRB(18, 16, 18, 14), decoration: BoxDecoration(gradient: LinearGradient(colors: [scheme.primaryContainer, scheme.secondaryContainer]), borderRadius: BorderRadius.circular(24)), child: Row(children: [Container(width: 46, height: 46, decoration: BoxDecoration(color: scheme.surface.withOpacity(.72), borderRadius: BorderRadius.circular(15)), child: Icon(Icons.forum_rounded, color: scheme.primary)), const SizedBox(width: 13), const Expanded(child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [Text('分享点什么吧', style: TextStyle(fontSize: 18, fontWeight: FontWeight.w900)), SizedBox(height: 3), Text('原生编辑 · 网页端 BBCode · 图片与附件', style: TextStyle(fontSize: 12))]))])),
           const SizedBox(height: 14),
           if (_loadingBoards) const LinearProgressIndicator(minHeight: 2),
-          if (_boards.isNotEmpty) ...[DropdownButtonFormField<int>(value: _fid, decoration: _field('发布到版块', '选择一个版块', Icons.forum_outlined, scheme), items: _boards.map((b) => DropdownMenuItem(value: b.fid, child: Text(b.name))).toList(), onChanged: _submitting || _uploading ? null : (v) { setState(() { _fid = v; _dirty = true; }); if (v != null) { _loadTypes(v); AttachmentUploadService.instance.refreshMaxBytes(v).then((_) { if (mounted) setState(() {}); }); } }), const SizedBox(height: 11)],
+          if (_boards.isNotEmpty) ...[DropdownButtonFormField<int>(value: _fid, decoration: _field('发布到版块', '选择一个版块', Icons.forum_outlined, scheme), items: _boards.map((b) => DropdownMenuItem(value: b.fid, child: Text(b.name))).toList(), onChanged: _submitting || _uploading ? null : (v) { setState(() { _fid = v; _dirty = true; }); if (v != null) { _loadTypes(v); AttachmentUploadService.instance.refreshMaxBytes(v).then((_) { if (mounted) setState(() {}); }); UserPermissionService.instance.refresh(); } }), const SizedBox(height: 11)],
           if (_types.isNotEmpty) ...[DropdownButtonFormField<int>(value: _typeid, decoration: _field('主题分类', '选择分类', Icons.label_outline_rounded, scheme), items: _types.map((t) => DropdownMenuItem(value: t.id, child: Text(t.name))).toList(), onChanged: _submitting || _uploading ? null : (v) => setState(() { _typeid = v; _dirty = true; })), const SizedBox(height: 11)],
           if (_loadingTypes) const Padding(padding: EdgeInsets.only(bottom: 10), child: LinearProgressIndicator(minHeight: 2)),
           TextFormField(controller: _title, enabled: !_submitting && !_uploading, maxLength: 100, textInputAction: TextInputAction.next, decoration: _field('标题', '一句话概括你的帖子', Icons.title_rounded, scheme), validator: (v) => v == null || v.trim().isEmpty ? '请输入标题' : null),
