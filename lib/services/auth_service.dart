@@ -3,7 +3,7 @@ import 'package:http/http.dart' as http;
 import 'package:html/dom.dart' as dom;
 import 'package:html/parser.dart' as html_parser;
 import 'package:shared_preferences/shared_preferences.dart';
-import 'attachment_upload_service.dart';
+import 'user_permission_service.dart';
 import 'site_config.dart';
 import 'login_log.dart';
 import 'net_client.dart';
@@ -337,7 +337,7 @@ class AuthService {
     _uid = null;
     _avatarUrl = null;
     _cookie = null;
-    AttachmentUploadService.resetCache();
+    UserPermissionService.resetCache();
     await _save();
   }
 

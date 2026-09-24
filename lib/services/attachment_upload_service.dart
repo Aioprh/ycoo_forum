@@ -23,21 +23,19 @@ class AttachmentUploadService {
   AttachmentUploadService._();
   static final instance = AttachmentUploadService._();
   static String get _base => SiteConfig.base;
-  // 默认 10MB, 实际限制从发帖页动态解析后覆盖
-  static int _maxBytes = 10 * 1024 * 1024;
-  static int get maxBytes => _maxBytes;
-  // 当前缓存对应的 uid, 换用户时自动重置
-  static int _cachedUid = 0;
 
-  /// 登录状态变化时调用, 清除缓存避免跨用户串用限制
-  static void resetCache() {
-    _maxBytes = 10 * 1024 * 1024;
-    _cachedUid = 0;
+  // 权威缓存: 由 UserPermissionService.refresh() 写入; 发帖页解析也回写这里
+  static int _maxBytesCached = 10 * 1024 * 1024;
+  static int get maxBytes => _maxBytesCached;
+
+  /// 由 UserPermissionService / refreshMaxBytes 写入
+  static void updateMaxBytes(int bytes) {
+    if (bytes > 0) _maxBytesCached = bytes;
   }
 
   /// 从发帖页 HTML 解析当前用户组的附件大小上限(bytes)。
   /// Discuz 模板里常见的形式: JS 变量 maxattachsize / hidden input / sizelimit 文案。
-  static int _parseMaxAttachSize(String html) {
+  static int parseMaxSizeFromHtml(String html) {
     // 1. JS: var maxattachsize = 10485760;
     final jsMatch = RegExp(r'''maxattachsize\s*[:=]\s*['"]?(\d+)''', caseSensitive: false).firstMatch(html);
     if (jsMatch != null) {
@@ -89,9 +87,9 @@ class AttachmentUploadService {
       final resp = await NetClient.retry(() => client.get(pageUrl, headers: _headers(referer: _base)).timeout(NetClient.timeout));
       if (resp.statusCode != 200) return;
       final html = NetClient.decode(resp.bodyBytes);
-      final parsed = _parseMaxAttachSize(html);
+      final parsed = parseMaxSizeFromHtml(html);
       if (parsed > 0) {
-        _maxBytes = parsed;
+        updateMaxBytes(parsed);
         _cachedUid = myUid;
       }
     } catch (_) {}
@@ -112,8 +110,8 @@ class AttachmentUploadService {
       if (pageResp.statusCode != 200) throw Exception('读取发帖页面失败 HTTP ${pageResp.statusCode}');
       final html = NetClient.decode(pageResp.bodyBytes);
       // 从发帖页解析当前用户组的附件大小上限, 覆盖默认 10MB
-      final parsed = _parseMaxAttachSize(html);
-      if (parsed > 0 && parsed != _maxBytes) _maxBytes = parsed;
+      final parsed = parseMaxSizeFromHtml(html);
+      if (parsed > 0 && parsed != _maxBytesCached) updateMaxBytes(parsed);
       final doc = parser.parse(html);
       final formhash = NetClient.extractFormHash(html) ?? _hidden(doc, 'formhash');
       if (formhash.isEmpty) throw Exception('未取得发帖令牌(formhash)，请刷新后重试');
