@@ -1,9 +1,11 @@
+import 'dart:async';
 import 'dart:convert';
 import 'dart:io';
 
 import 'package:flutter/services.dart';
 import 'package:html/dom.dart' as dom;
 import 'package:html/parser.dart' as parser;
+import 'package:http/http.dart' as http;
 
 import 'site_config.dart';
 import 'net_client.dart';
@@ -205,14 +207,27 @@ class AttachmentDownloadService {
     await Future.wait(
       targets.take(8).map((item) async {
         try {
-          final response = await client
-              .get(Uri.parse(item.url), headers: headers)
-              .timeout(NetClient.timeout);
-          final disposition = response.headers['content-disposition'] ?? '';
-          final name = _filenameFromContentDisposition(disposition);
+          final uri = Uri.parse(item.url);
+          String? name;
+
+          // 尝试1: 带 Range 的轻量请求, 避免下载大文件 body
+          final rangeReq = http.Request('GET', uri)..headers.addAll(headers);
+          final rangeResp = await client.send(rangeReq).timeout(NetClient.timeout);
+          name = _filenameFromContentDisposition(rangeResp.headers['content-disposition'] ?? '');
+          unawaited(rangeResp.stream.drain());
+
+          // 尝试2: 某些服务器对 Range 请求不返回 Content-Disposition,
+          // 用不带 Range 的请求再试一次 (send 只读 headers, drain 丢弃 body)
+          if (!_isUsableAttachmentTitle(name)) {
+            final fullHeaders = Map<String, String>.from(headers)..remove('Range');
+            final fullReq = http.Request('GET', uri)..headers.addAll(fullHeaders);
+            final fullResp = await client.send(fullReq).timeout(NetClient.timeout);
+            name = _filenameFromContentDisposition(fullResp.headers['content-disposition'] ?? '');
+            unawaited(fullResp.stream.drain());
+          }
+
           if (_isUsableAttachmentTitle(name)) {
-            replacements[item.url] =
-                _ensureFilenameExtension(name, Uri.parse(item.url));
+            replacements[item.url] = _ensureFilenameExtension(name, uri);
           }
         } catch (_) {}
       }),
@@ -235,6 +250,7 @@ class AttachmentDownloadService {
   String _filenameFromContentDisposition(String value) {
     if (value.trim().isEmpty) return '';
 
+    // RFC 5987: filename*=UTF-8''<percent-encoded>
     final utf8Match = RegExp(
       r"filename\*=UTF-8''([^;]+)",
       caseSensitive: false,
@@ -242,6 +258,17 @@ class AttachmentDownloadService {
     if (utf8Match != null) {
       try {
         return _cleanFileName(Uri.decodeFull(utf8Match.group(1)!));
+      } catch (_) {}
+    }
+
+    // 兼容 filename*="" 形式 (部分服务器会加引号)
+    final utf8Quoted = RegExp(
+      r'''filename\*=UTF-8''"([^"]+)"''',
+      caseSensitive: false,
+    ).firstMatch(value);
+    if (utf8Quoted != null) {
+      try {
+        return _cleanFileName(Uri.decodeFull(utf8Quoted.group(1)!));
       } catch (_) {}
     }
 
