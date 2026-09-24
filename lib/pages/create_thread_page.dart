@@ -184,7 +184,7 @@ class _CreateThreadPageState extends State<CreateThreadPage> {
         _loadingBoards = false;
         _error = boards.isEmpty ? '暂时没有可发帖的版块' : null;
       });
-      if (_fid != null) _loadTypes(_fid!);
+      if (_fid != null) { _loadTypes(_fid!); AttachmentUploadService.instance.refreshMaxBytes(_fid!).then((_) { if (mounted) setState(() {}); }); }
     } catch (_) {
       if (mounted) setState(() { _loadingBoards = false; _error = '版块加载失败，请稍后重试'; });
     }
@@ -206,6 +206,11 @@ class _CreateThreadPageState extends State<CreateThreadPage> {
 
   Future<void> _pickAttachments({bool imagesOnly = false}) async {
     if (_uploading || _submitting || _fid == null) return;
+    // 如果 maxBytes 还是默认值 (发帖页还没回来), 先刷新一下
+    if (AttachmentUploadService.maxBytes == 10 * 1024 * 1024) {
+      await AttachmentUploadService.instance.refreshMaxBytes(_fid!).timeout(const Duration(seconds: 4), onTimeout: () {});
+    }
+    if (!mounted) return;
     try {
       final picked = await FilePicker.platform.pickFiles(allowMultiple: true, withData: false, type: imagesOnly ? FileType.image : FileType.any);
       if (picked == null || picked.files.isEmpty) return;
