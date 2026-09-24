@@ -26,6 +26,14 @@ class AttachmentUploadService {
   // 默认 10MB, 实际限制从发帖页动态解析后覆盖
   static int _maxBytes = 10 * 1024 * 1024;
   static int get maxBytes => _maxBytes;
+  // 当前缓存对应的 uid, 换用户时自动重置
+  static int _cachedUid = 0;
+
+  /// 登录状态变化时调用, 清除缓存避免跨用户串用限制
+  static void resetCache() {
+    _maxBytes = 10 * 1024 * 1024;
+    _cachedUid = 0;
+  }
 
   /// 从发帖页 HTML 解析当前用户组的附件大小上限(bytes)。
   /// Discuz 模板里常见的形式: JS 变量 maxattachsize / hidden input / sizelimit 文案。
@@ -72,6 +80,9 @@ class AttachmentUploadService {
   /// 内部抓发帖页, 解析 maxattachsize 后缓存。
   Future<void> refreshMaxBytes(int fid) async {
     if (fid <= 0 || !AuthService.instance.isLoggedIn) return;
+    final myUid = AuthService.instance.uid ?? 0;
+    // 换用户了, 先清缓存
+    if (_cachedUid > 0 && _cachedUid != myUid) resetCache();
     try {
       final client = await NetClient.instance.client;
       final pageUrl = Uri.parse('${_base}forum.php?mod=post&action=newthread&fid=$fid&mobile=2');
@@ -79,7 +90,10 @@ class AttachmentUploadService {
       if (resp.statusCode != 200) return;
       final html = NetClient.decode(resp.bodyBytes);
       final parsed = _parseMaxAttachSize(html);
-      if (parsed > 0) _maxBytes = parsed;
+      if (parsed > 0) {
+        _maxBytes = parsed;
+        _cachedUid = myUid;
+      }
     } catch (_) {}
   }
 
