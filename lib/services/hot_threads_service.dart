@@ -3,6 +3,7 @@ import 'package:html/dom.dart' as dom;
 import 'package:html/parser.dart' as parser;
 
 import '../models/thread_item.dart';
+import '../utils/forum_cover.dart';
 import 'auth_service.dart';
 import 'net_client.dart';
 import 'site_config.dart';
@@ -68,7 +69,7 @@ class HotThreadsService {
           nums.add(int.tryParse(e.text.trim()) ?? 0);
         }
       }
-      result.add(ThreadItem(tid: tid, title: title, author: author, avatar: avatar, fid: fid, boardName: board, level: level, time: time, subtitle: _subtitle(rootText, title), cover: _abs(root?.querySelector('img')?.attributes['src'] ?? ''), likeCount: nums.isNotEmpty ? nums[0] : _numberAfter(rootText, const ['点赞', '喜欢']), replyCount: nums.length > 1 ? nums[1] : _numberAfter(rootText, const ['回复', '评论']), viewCount: nums.length > 2 ? nums[2] : _numberAfter(rootText, const ['浏览', '查看', '阅读'])));
+      result.add(ThreadItem(tid: tid, title: title, author: author, avatar: avatar, fid: fid, boardName: board, level: level, time: time, subtitle: _subtitle(rootText, title), covers: forumCovers(root, fallbackToFirstImage: true), likeCount: nums.isNotEmpty ? nums[0] : _numberAfter(rootText, const ['点赞', '喜欢']), replyCount: nums.length > 1 ? nums[1] : _numberAfter(rootText, const ['回复', '评论']), viewCount: nums.length > 2 ? nums[2] : _numberAfter(rootText, const ['浏览', '查看', '阅读'])));
       if (result.length >= 50) break;
     }
     return result;

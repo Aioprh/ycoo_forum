@@ -111,7 +111,7 @@ class MemberService {
         level: '',
         time: '',
         subtitle: parentText == title ? '' : parentText.replaceFirst(title, '').trim(),
-        cover: '',
+        covers: const [],
         likeCount: counts.$1,
         replyCount: counts.$2,
         viewCount: counts.$3,

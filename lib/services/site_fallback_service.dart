@@ -3,6 +3,7 @@ import 'package:html/parser.dart' as parser;
 
 import '../models/board.dart';
 import '../models/thread_item.dart';
+import '../utils/forum_cover.dart';
 import 'site_config.dart';
 import 'auth_service.dart';
 import 'net_client.dart';
@@ -80,7 +81,7 @@ class SiteFallbackService {
         level: level,
         time: time,
         subtitle: text.length > title.length ? _trimSubtitle(text, title) : '',
-        cover: avatar,
+        covers: forumCovers(root, fallbackToFirstImage: true),
         likeCount: 0,
         replyCount: _numberAfter(text, ['回复', '评论']) ?? 0,
         viewCount: _numberAfter(text, ['浏览', '查看']) ?? 0,

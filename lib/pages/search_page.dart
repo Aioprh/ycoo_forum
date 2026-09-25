@@ -137,7 +137,7 @@ class _SearchPageState extends State<SearchPage> {
         level: '',
         time: info.$4,
         subtitle: _summaryFromDd(dds[i], title),
-        cover: '',
+        covers: const [],
         likeCount: 0,
         replyCount: 0,
         viewCount: 0,

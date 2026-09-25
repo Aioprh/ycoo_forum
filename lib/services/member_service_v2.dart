@@ -110,7 +110,7 @@ class MemberServiceV2 {
         fid: int.tryParse(RegExp(r'(?:forum-|[?&]fid=)(\d+)').firstMatch(a.parent?.outerHtml ?? '')?.group(1) ?? '') ?? 0,
         boardName: boardName, level: '', time: '',
         subtitle: parent == title ? '' : parent.replaceFirst(title, '').trim(),
-        cover: '', likeCount: counts.$1, replyCount: counts.$2, viewCount: counts.$3,
+        covers: const [], likeCount: counts.$1, replyCount: counts.$2, viewCount: counts.$3,
       ));
     }
     return result;
