@@ -438,8 +438,14 @@ class _DetailPageState extends State<DetailPage> {
         surfaceTintColor: Colors.transparent,
         scrolledUnderElevation: 0,
       ),
-      body: _buildBody(context),
-      bottomNavigationBar: _composer(context),
+      body: Column(
+        children: [
+          Expanded(child: _buildBody(context)),
+          // 输入栏放在 body 内而不是 bottomNavigationBar:
+          // bottomNavigationBar 固定在屏幕底部、不随键盘上移, 弹出输入法时会把它整条盖住。
+          _composer(context),
+        ],
+      ),
     );
   }
 
