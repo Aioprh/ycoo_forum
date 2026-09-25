@@ -2,6 +2,9 @@ import 'package:flutter/material.dart';
 
 import '../models/thread_item.dart';
 import '../pages/detail_page.dart';
+import '../services/api_service.dart';
+import '../widgets/native_image_viewer.dart';
+import '../widgets/native_post_content.dart';
 import 'thread_card.dart';
 
 typedef ThreadsLoader = Future<List<ThreadItem>> Function(int page);
@@ -29,6 +32,7 @@ class _ThreadListViewState extends State<ThreadListView> {
   bool _loading = false;
   bool _hasMore = true;
   String? _error;
+  final Map<int, List<String>> _fullImageCache = <int, List<String>>{};
 
   @override
   void initState() {
@@ -90,6 +94,82 @@ class _ThreadListViewState extends State<ThreadListView> {
     }
   }
 
+  Future<void> _openImage(ThreadItem item, int index) async {
+    final cached = _fullImageCache[item.tid];
+    if (cached != null && cached.isNotEmpty) {
+      final targetIndex = _matchImageIndex(item.covers[index], cached, index, item.covers.length);
+      if (!mounted) return;
+      await openImageViewer(
+        context,
+        url: cached[targetIndex],
+        gallery: cached,
+      );
+      return;
+    }
+
+    // 列表缩略图可能已经被论坛裁剪，列表页本身不一定提供可靠的原图地址。
+    // 点击时读取帖子正文，用正文实际渲染的图片 URL 作为原图来源。
+    try {
+      final detail = await ApiService.instance.fetchThreadDetail(item.tid);
+      final images = postImageUrls(detail.bodyHtml);
+      if (images.isNotEmpty) {
+        _fullImageCache[item.tid] = images;
+        final targetIndex = _matchImageIndex(item.covers[index], images, index, item.covers.length);
+        if (!mounted) return;
+        await openImageViewer(
+          context,
+          url: images[targetIndex],
+          gallery: images,
+        );
+        return;
+      }
+    } catch (_) {
+      // 正文读取失败时继续使用列表已有地址兜底。
+    }
+
+    if (!mounted) return;
+    final gallery = item.fullCovers.length == item.covers.length
+        ? item.fullCovers
+        : item.covers;
+    final targetIndex = index < gallery.length ? index : 0;
+    if (gallery.isEmpty) return;
+    await openImageViewer(
+      context,
+      url: gallery[targetIndex],
+      gallery: gallery,
+    );
+  }
+
+  int _matchImageIndex(String thumbnail, List<String> originals, int fallback, int sourceCount) {
+    final thumbKey = _imageIdentity(thumbnail);
+    if (thumbKey.isNotEmpty) {
+      for (var i = 0; i < originals.length; i++) {
+        if (_imageIdentity(originals[i]) == thumbKey) return i;
+      }
+    }
+
+    // 如果 URL 本身无法建立映射，而两边数量一致，保持列表对应位置。
+    if (originals.length == sourceCount) {
+      return fallback.clamp(0, originals.length - 1);
+    }
+
+    // 无法确定映射时优先显示第一张正文原图，避免再次打开裁剪缩略图。
+    return 0;
+  }
+
+  String _imageIdentity(String value) {
+    final uri = Uri.tryParse(value.trim());
+    if (uri == null) return '';
+    var path = uri.path;
+    if (path.isEmpty) return '';
+    var name = path.substring(path.lastIndexOf('/') + 1).toLowerCase();
+    name = name
+        .replaceAll(RegExp(r'([_-](?:thumb|thumbnail|small|middle|medium|large))(?=\.)'), '')
+        .replaceAll(RegExp(r'([_-]\d{2,4}x\d{2,4})(?=\.)'), '');
+    return name;
+  }
+
+
   void _openDetail(ThreadItem item) {
     Navigator.of(context).push(
       MaterialPageRoute(
@@ -117,7 +197,11 @@ class _ThreadListViewState extends State<ThreadListView> {
         itemBuilder: (context, i) {
           if (i >= _items.length) return _footer(context);
           final item = _items[i];
-          return ThreadCard(item: item, onTap: () => _openDetail(item));
+          return ThreadCard(
+            item: item,
+            onTap: () => _openDetail(item),
+            onImageTap: (index) => _openImage(item, index),
+          );
         },
       ),
     );
