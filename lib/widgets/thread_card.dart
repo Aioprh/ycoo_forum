@@ -79,8 +79,10 @@ class ThreadCard extends StatelessWidget {
   Widget _image(BuildContext context, ThemeData theme, List<String> covers, int index, double width, double height) {
     final scheme = theme.colorScheme;
     final url = covers[index];
+    final fullCovers = item.fullCovers.length == item.covers.length ? item.fullCovers : item.covers;
+    final fullUrl = fullCovers[index];
     return GestureDetector(
-      onTap: () => openImageViewer(context, url: url, gallery: covers),
+      onTap: () => openImageViewer(context, url: fullUrl, gallery: fullCovers),
       child: Image.network(
         url,
         width: width,
