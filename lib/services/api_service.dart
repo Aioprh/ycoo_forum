@@ -78,6 +78,7 @@ class ApiService {
     final boardHref = boardA?.attributes['href'] ?? '';
     final nums = li.querySelectorAll('.comiis_xznalist_bottom span.comiis_tm').map((e) => int.tryParse(e.text.trim()) ?? 0).toList();
     final topAuthor = li.querySelector('.forumlist_li_top .top_user');
+    final coverSources = forumCoverSources(li);
     return ThreadItem(
       tid: tid,
       title: title,
@@ -88,7 +89,8 @@ class ApiService {
       level: _normSpace(li.querySelector('.forumlist_li_top .top_lev')?.text ?? ''),
       time: _normSpace(li.querySelector('.forumlist_li_time .f_d')?.text ?? ''),
       subtitle: _normSpace(li.querySelector('.list_body a')?.text ?? ''),
-      covers: forumCovers(li),
+      covers: coverSources.map((e) => e.thumbnail).toList(growable: false),
+      fullCovers: coverSources.map((e) => e.original).toList(growable: false),
       likeCount: nums.isNotEmpty ? nums[0] : 0,
       replyCount: nums.length > 1 ? nums[1] : 0,
       viewCount: nums.length > 2 ? nums[2] : 0,
@@ -116,7 +118,8 @@ class ApiService {
       final board = _normSpace(root?.querySelector('.comiis_xznalist_bk a, .forumname, .from')?.text ?? '');
       final subtitle = rootText.isEmpty || rootText == title ? '' : rootText.replaceFirst(title, '').trim();
       seen.add(tid);
-      result.add(ThreadItem(tid: tid, title: title, author: author, avatar: _abs(root?.querySelector('img')?.attributes['src'] ?? ''), fid: fid, boardName: board, level: _normSpace(root?.querySelector('.top_lev, .level')?.text ?? ''), time: time, subtitle: subtitle.length > 180 ? subtitle.substring(0, 180) : subtitle, covers: forumCovers(root, fallbackToFirstImage: true), likeCount: _numberAfter(rootText, ['点赞']) ?? 0, replyCount: _numberAfter(rootText, ['回复', '评论']) ?? 0, viewCount: _numberAfter(rootText, ['浏览', '查看']) ?? 0));
+      final coverSources = forumCoverSources(root, fallbackToFirstImage: true);
+      result.add(ThreadItem(tid: tid, title: title, author: author, avatar: _abs(root?.querySelector('img')?.attributes['src'] ?? ''), fid: fid, boardName: board, level: _normSpace(root?.querySelector('.top_lev, .level')?.text ?? ''), time: time, subtitle: subtitle.length > 180 ? subtitle.substring(0, 180) : subtitle, covers: coverSources.map((e) => e.thumbnail).toList(growable: false), fullCovers: coverSources.map((e) => e.original).toList(growable: false), likeCount: _numberAfter(rootText, ['点赞']) ?? 0, replyCount: _numberAfter(rootText, ['回复', '评论']) ?? 0, viewCount: _numberAfter(rootText, ['浏览', '查看']) ?? 0));
       if (result.length >= 50) break;
     }
     return result;
