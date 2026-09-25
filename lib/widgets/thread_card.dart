@@ -44,7 +44,7 @@ class ThreadCard extends StatelessWidget {
                     const SizedBox(width: 12),
                     ClipRRect(
                       borderRadius: BorderRadius.circular(14),
-                      child: _image(context, theme, item.covers.first, _singleCoverSize, _singleCoverSize),
+                      child: _image(context, theme, item.covers, 0, _singleCoverSize, _singleCoverSize),
                     ),
                   ],
                 ],
@@ -58,7 +58,7 @@ class ThreadCard extends StatelessWidget {
                       Expanded(
                         child: ClipRRect(
                           borderRadius: BorderRadius.circular(14),
-                          child: _image(context, theme, item.covers[i], double.infinity, _stripCoverHeight),
+                          child: _image(context, theme, item.covers, i, double.infinity, _stripCoverHeight),
                         ),
                       ),
                     ],
@@ -72,14 +72,15 @@ class ThreadCard extends StatelessWidget {
     );
   }
 
-  /// 预览图点击后直接进全屏大图。
+  /// 预览图点击后直接进全屏大图，并带上同组预览图，方便左右滑动。
   ///
   /// 这层 GestureDetector 比外层卡片的 InkWell 更深, 点击图片时手势
   /// 由它胜出, 不会连带把帖子详情页也打开。
-  Widget _image(BuildContext context, ThemeData theme, String url, double width, double height) {
+  Widget _image(BuildContext context, ThemeData theme, List<String> covers, int index, double width, double height) {
     final scheme = theme.colorScheme;
+    final url = covers[index];
     return GestureDetector(
-      onTap: () => openImageViewer(context, url: url),
+      onTap: () => openImageViewer(context, url: url, gallery: covers),
       child: Image.network(
         url,
         width: width,

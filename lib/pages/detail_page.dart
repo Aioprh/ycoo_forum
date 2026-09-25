@@ -32,6 +32,8 @@ class DetailPage extends StatefulWidget {
 
 class _DetailPageState extends State<DetailPage> {
   ThreadDetail? _detail;
+  /// 正文里按出现顺序排列的全部图片，用于全屏预览的左右滑动。
+  List<String> _bodyImages = const [];
   final _replyCtrl = TextEditingController();
   final _replyFocus = FocusNode();
   bool _loading = true, _sending = false, _buying = false, _rewarding = false;
@@ -89,6 +91,7 @@ class _DetailPageState extends State<DetailPage> {
         _detail = d;
         _likeCount = d.likeCount;
         _liked = d.likedByMe;
+        _bodyImages = postImageUrls(d.bodyHtml);
       });
       if (_loggedIn) await _loadInteractionState();
     } catch (e) {
@@ -548,8 +551,15 @@ class _DetailPageState extends State<DetailPage> {
     }
 
     // 正文图片：打开原生大图预览，不进入 WebView。
+    // 带上正文里的全部图片，预览时可以左右滑动切换。
     if (_isImageFileUrl(uri)) {
-      if (mounted) await openImageViewer(context, url: uri.toString());
+      if (mounted) {
+        await openImageViewer(
+          context,
+          url: uri.toString(),
+          gallery: _bodyImages.isEmpty ? null : _bodyImages,
+        );
+      }
       return;
     }
 

@@ -718,6 +718,26 @@ String _imageUrl(dom.Element element) {
   return '';
 }
 
+/// 按正文出现顺序取出全部可预览图片的 URL。
+///
+/// 这里刻意复用与正文渲染完全相同的 `_isRealImage` / `_imageUrl` 判定，
+/// 保证全屏预览左右滑动时，被点击的那张图能在列表里精确命中。
+List<String> postImageUrls(String html) {
+  if (html.trim().isEmpty) return const [];
+
+  final body = html_parser.parse(html).body;
+  if (body == null) return const [];
+
+  final urls = <String>[];
+  for (final image in body.querySelectorAll('img')) {
+    if (!_isRealImage(image)) continue;
+    final url = _imageUrl(image);
+    if (url.isEmpty || urls.contains(url)) continue;
+    urls.add(url);
+  }
+  return urls;
+}
+
 bool _isAttachmentLink(String href) {
   final v = href.toLowerCase();
   return v.contains('attachment.php') ||

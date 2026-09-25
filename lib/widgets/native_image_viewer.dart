@@ -13,18 +13,75 @@ import '../services/site_config.dart';
 Future<void> openImageViewer(
   BuildContext context, {
   required String url,
+  List<String>? gallery,
 }) {
+  final images = _collectImages(url, gallery);
   return Navigator.of(context).push(
     MaterialPageRoute(
-      builder: (_) => NativeImageViewer(url: url),
+      builder: (_) => NativeImageViewer(
+        images: images,
+        initialIndex: _indexOfImage(images, url),
+      ),
     ),
   );
 }
 
-class NativeImageViewer extends StatelessWidget {
-  final String url;
-  const NativeImageViewer({super.key, required this.url});
+/// gallery 是同一组图片（同一帖正文 / 同一张卡片的预览图）的顺序列表。
+///
+/// 被点击的那张必须能在其中命中，命中不了就退回单图，避免左右滑动时
+/// 滑出一组和当前帖子无关的图。
+List<String> _collectImages(String url, List<String>? gallery) {
+  final images = <String>[];
+  for (final raw in gallery ?? const <String>[]) {
+    final value = raw.trim();
+    if (value.isEmpty || images.contains(value)) continue;
+    images.add(value);
+  }
 
+  final current = url.trim();
+  // 命中不了说明这组图和当前图片不是一套，退回单图，避免左右滑动时
+  // 滑出与当前帖子无关的图片。
+  if (_indexOfImage(images, current) < 0) return <String>[current];
+  return images;
+}
+
+/// 先精确匹配，再按 Uri 规范化后比较，兼容 `Uri.toString()` 的轻微重写
+/// （百分号编码、主机名大小写等）。找不到返回 -1。
+int _indexOfImage(List<String> images, String target) {
+  final value = target.trim();
+  final exact = images.indexOf(value);
+  if (exact >= 0) return exact;
+
+  final normalized = _normalizeUrl(value);
+  for (var i = 0; i < images.length; i++) {
+    if (_normalizeUrl(images[i]) == normalized) return i;
+  }
+  return -1;
+}
+
+String _normalizeUrl(String value) {
+  final uri = Uri.tryParse(value.trim());
+  return uri == null ? value.trim() : uri.toString();
+}
+
+class NativeImageViewer extends StatefulWidget {
+  /// 全部待预览的图片，顺序与来源（正文 / 列表预览图）一致。
+  final List<String> images;
+
+  /// 打开时展示第几张。
+  final int initialIndex;
+
+  const NativeImageViewer({
+    super.key,
+    required this.images,
+    this.initialIndex = 0,
+  });
+
+  @override
+  State<NativeImageViewer> createState() => _NativeImageViewerState();
+}
+
+class _NativeImageViewerState extends State<NativeImageViewer> {
   static const _imageExtensions = <String>{
     'jpg',
     'jpeg',
@@ -37,6 +94,45 @@ class NativeImageViewer extends StatelessWidget {
     'heif',
     'avif',
   };
+
+  late final PageController _pager =
+      PageController(initialPage: widget.initialIndex);
+  late int _index = widget.initialIndex;
+  final _transform = TransformationController();
+  bool _zoomed = false;
+
+  /// 当前展示的图片。附件判定和下载都以它为准。
+  String get url => widget.images[_index];
+
+  @override
+  void initState() {
+    super.initState();
+    _transform.addListener(_onTransformChanged);
+  }
+
+  @override
+  void dispose() {
+    _transform.removeListener(_onTransformChanged);
+    _transform.dispose();
+    _pager.dispose();
+    super.dispose();
+  }
+
+  /// 放大后水平拖动交给 InteractiveViewer；只有回到原始比例才允许翻页，
+  /// 否则两者会抢同一个水平手势。
+  void _onTransformChanged() {
+    final zoomed = _transform.value.getMaxScaleOnAxis() > 1.01;
+    if (zoomed != _zoomed) setState(() => _zoomed = zoomed);
+  }
+
+  void _onPageChanged(int index) {
+    setState(() {
+      _index = index;
+      _zoomed = false;
+    });
+    // 换页后重置缩放, 否则上一张的放大状态会带到下一张。
+    _transform.value = Matrix4.identity();
+  }
 
   Uri? get _uri => Uri.tryParse(url);
 
@@ -148,6 +244,12 @@ class NativeImageViewer extends StatelessWidget {
       appBar: AppBar(
         backgroundColor: Colors.transparent,
         foregroundColor: Colors.white,
+        title: widget.images.length > 1
+            ? Text(
+                '${_index + 1} / ${widget.images.length}',
+                style: const TextStyle(fontSize: 15, fontWeight: FontWeight.w600),
+              )
+            : null,
         actions: [
           IconButton(
             onPressed: () => _download(context),
@@ -157,37 +259,50 @@ class NativeImageViewer extends StatelessWidget {
           const SizedBox(width: 4),
         ],
       ),
-      body: GestureDetector(
-        onTap: () => Navigator.of(context).pop(),
-        child: Center(
-          child: InteractiveViewer(
-            maxScale: 6,
-            minScale: 0.8,
-            child: Image.network(
-              url,
-              width: double.infinity,
-              fit: BoxFit.contain,
-              headers: headers,
-              filterQuality: FilterQuality.high,
-              loadingBuilder: (context, child, progress) => progress == null
-                  ? child
-                  : const Center(
-                      child: CircularProgressIndicator(
-                        strokeWidth: 2.5,
-                        color: Colors.white,
-                      ),
+      body: PageView.builder(
+        controller: _pager,
+        // 放大后禁用翻页, 让水平拖动用于平移图片本身。
+        physics: _zoomed
+            ? const NeverScrollableScrollPhysics()
+            : const PageScrollPhysics(),
+        itemCount: widget.images.length,
+        onPageChanged: _onPageChanged,
+        itemBuilder: (context, i) {
+          final imageUrl = widget.images[i];
+          return GestureDetector(
+            onTap: () => Navigator.of(context).pop(),
+            child: Center(
+              child: InteractiveViewer(
+                maxScale: 6,
+                minScale: 0.8,
+                transformationController: _transform,
+                child: Image.network(
+                  imageUrl,
+                  width: double.infinity,
+                  fit: BoxFit.contain,
+                  headers: headers,
+                  filterQuality: FilterQuality.high,
+                  loadingBuilder: (context, child, progress) => progress == null
+                      ? child
+                      : const Center(
+                          child: CircularProgressIndicator(
+                            strokeWidth: 2.5,
+                            color: Colors.white,
+                          ),
+                        ),
+                  errorBuilder: (_, __, ___) => Padding(
+                    padding: const EdgeInsets.all(28),
+                    child: Text(
+                      '图片加载失败\n$imageUrl',
+                      textAlign: TextAlign.center,
+                      style: const TextStyle(color: Colors.white70),
                     ),
-              errorBuilder: (_, __, ___) => Padding(
-                padding: const EdgeInsets.all(28),
-                child: Text(
-                  '图片加载失败\n$url',
-                  textAlign: TextAlign.center,
-                  style: const TextStyle(color: Colors.white70),
+                  ),
                 ),
               ),
             ),
-          ),
-        ),
+          );
+        },
       ),
       bottomNavigationBar: SafeArea(
         child: Padding(

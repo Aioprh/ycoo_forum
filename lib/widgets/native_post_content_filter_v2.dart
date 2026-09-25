@@ -61,6 +61,14 @@ class _ReplyRewardParts {
   const _ReplyRewardParts(this.label, this.cleanedHtml);
 }
 
+/// 与正文渲染走同一套预处理后，按出现顺序取出全部可预览图片 URL。
+///
+/// 全屏预览靠它拿到同帖的其它图片，从而支持左右滑动切换。
+List<String> postImageUrls(String html) {
+  final cleaned = _extractReplyReward(_preparePostHtml(html)).cleanedHtml;
+  return selectable.postImageUrls(cleaned);
+}
+
 _ReplyRewardParts _extractReplyReward(String html) {
   if (html.trim().isEmpty) return const _ReplyRewardParts(null, '');
 
