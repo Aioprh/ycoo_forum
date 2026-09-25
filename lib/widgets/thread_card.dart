@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 
 import '../models/thread_item.dart';
+import 'native_image_viewer.dart';
 
 /// 原生帖子卡片：圆角、留白、缩略图和轻量元信息。
 class ThreadCard extends StatelessWidget {
@@ -43,7 +44,7 @@ class ThreadCard extends StatelessWidget {
                     const SizedBox(width: 12),
                     ClipRRect(
                       borderRadius: BorderRadius.circular(14),
-                      child: _image(theme, item.covers.first, _singleCoverSize, _singleCoverSize),
+                      child: _image(context, theme, item.covers.first, _singleCoverSize, _singleCoverSize),
                     ),
                   ],
                 ],
@@ -57,7 +58,7 @@ class ThreadCard extends StatelessWidget {
                       Expanded(
                         child: ClipRRect(
                           borderRadius: BorderRadius.circular(14),
-                          child: _image(theme, item.covers[i], double.infinity, _stripCoverHeight),
+                          child: _image(context, theme, item.covers[i], double.infinity, _stripCoverHeight),
                         ),
                       ),
                     ],
@@ -71,18 +72,25 @@ class ThreadCard extends StatelessWidget {
     );
   }
 
-  Widget _image(ThemeData theme, String url, double width, double height) {
+  /// 预览图点击后直接进全屏大图。
+  ///
+  /// 这层 GestureDetector 比外层卡片的 InkWell 更深, 点击图片时手势
+  /// 由它胜出, 不会连带把帖子详情页也打开。
+  Widget _image(BuildContext context, ThemeData theme, String url, double width, double height) {
     final scheme = theme.colorScheme;
-    return Image.network(
-      url,
-      width: width,
-      height: height,
-      fit: BoxFit.cover,
-      errorBuilder: (_, _, _) => Container(
+    return GestureDetector(
+      onTap: () => openImageViewer(context, url: url),
+      child: Image.network(
+        url,
         width: width,
         height: height,
-        color: scheme.surfaceContainerHighest,
-        child: Icon(Icons.image_not_supported_outlined, color: theme.hintColor),
+        fit: BoxFit.cover,
+        errorBuilder: (_, _, _) => Container(
+          width: width,
+          height: height,
+          color: scheme.surfaceContainerHighest,
+          child: Icon(Icons.image_not_supported_outlined, color: theme.hintColor),
+        ),
       ),
     );
   }
