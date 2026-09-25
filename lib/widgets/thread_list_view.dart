@@ -150,7 +150,7 @@ class _ThreadListViewState extends State<ThreadListView> {
 
     // 如果 URL 本身无法建立映射，而两边数量一致，保持列表对应位置。
     if (originals.length == sourceCount) {
-      return fallback.clamp(0, originals.length - 1);
+      return fallback < 0 ? 0 : (fallback >= originals.length ? originals.length - 1 : fallback);
     }
 
     // 无法确定映射时优先显示第一张正文原图，避免再次打开裁剪缩略图。
