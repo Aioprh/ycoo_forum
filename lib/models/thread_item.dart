@@ -11,7 +11,8 @@ class ThreadItem {
   final String level; // 用户等级,如 Lv.4
   final String time; // 相对时间文本,如 "2 小时前"
   final String subtitle; // 摘要 / 付费提示等一行简介
-  final List<String> covers; // 预览缩略图, 0~3 张(来自列表页的 pyqlist 图组)
+  final List<String> covers; // 列表展示用缩略图, 0~3 张(来自列表页的 pyqlist 图组)
+  final List<String> fullCovers; // 点击查看用原图地址, 与 covers 按索引对应
   final int likeCount; // 点赞
   final int replyCount; // 回复
   final int viewCount; // 浏览
@@ -27,6 +28,7 @@ class ThreadItem {
     required this.time,
     required this.subtitle,
     required this.covers,
+    this.fullCovers = const <String>[],
     required this.likeCount,
     required this.replyCount,
     required this.viewCount,
