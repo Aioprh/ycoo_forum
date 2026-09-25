@@ -566,15 +566,15 @@ class _DetailPageState extends State<DetailPage> {
       return;
     }
 
-    final host = uri.host.toLowerCase();
-    final baseHost = Uri.parse(SiteConfig.base).host.toLowerCase();
+    // 正文里的站内链接常写作 https://ycoo.net/...(不带 www), 与主站
+    // https://www.ycoo.net/ 是同一个论坛, 比较主机名时忽略 www. 前缀。
+    final host = _normalizeHost(uri.host);
+    final baseHost = _normalizeHost(Uri.parse(SiteConfig.base).host);
     final sameForum = host == baseHost || host.endsWith('.$baseHost');
 
     // 帖子正文里的论坛主题链接：直接进入原生帖子详情，而不是再套一层网页。
-    final threadMatch = RegExp(r'(?:^|/)thread-(\d+)(?:[-_]|\.|/|$)', caseSensitive: false)
-        .firstMatch(uri.path);
-    final tid = threadMatch == null ? null : int.tryParse(threadMatch.group(1)!);
-    if (sameForum && tid != null && tid > 0) {
+    final tid = sameForum ? _threadIdOf(uri) : null;
+    if (tid != null && tid > 0) {
       if (tid == _detail?.tid) return;
       if (!mounted) return;
       Navigator.of(context).push(
@@ -592,6 +592,44 @@ class _DetailPageState extends State<DetailPage> {
         builder: (_) => WebViewPage(url: uri.toString(), title: '网页'),
       ),
     );
+  }
+
+  /// 主机名归一化: 忽略大小写与 `www.` 前缀。
+  /// 站点正文里常把站内链接写成 `https://ycoo.net/...`, 与主站
+  /// `https://www.ycoo.net/` 实为同一论坛, 直接比较会判定为外链。
+  static String _normalizeHost(String host) {
+    var h = host.trim().toLowerCase();
+    if (h.startsWith('www.')) h = h.substring(4);
+    return h;
+  }
+
+  /// 从同站链接里解析所属主题 tid, 覆盖 Discuz 的几种帖子地址写法:
+  ///  - 伪静态: `/thread-12345-1-1.html`、`/thread-12345`
+  ///  - 查询式: `forum.php?mod=viewthread&tid=12345`、`viewthread.php?tid=12345`
+  ///  - 跳楼层: `forum.php?mod=redirect&goto=findpost&ptid=12345&pid=...`
+  /// 只认真正指向主题的链接; 发帖/回复(action=reply)、评分等操作页不在此列。
+  static int? _threadIdOf(Uri uri) {
+    final path = uri.path.toLowerCase();
+    final rewrite = RegExp(r'(?:^|/)thread-(\d+)(?:[-_./]|$)').firstMatch(path);
+    if (rewrite != null) {
+      final id = int.tryParse(rewrite.group(1)!);
+      if (id != null && id > 0) return id;
+    }
+
+    final mod = (uri.queryParameters['mod'] ?? '').toLowerCase();
+    final viewThread =
+        mod == 'viewthread' || RegExp(r'(?:^|/)viewthread\.php$').hasMatch(path);
+    if (viewThread) {
+      final id = int.tryParse(uri.queryParameters['tid'] ?? '');
+      if (id != null && id > 0) return id;
+    }
+
+    if (mod == 'redirect' &&
+        (uri.queryParameters['goto'] ?? '').toLowerCase() == 'findpost') {
+      final id = int.tryParse(uri.queryParameters['ptid'] ?? '');
+      if (id != null && id > 0) return id;
+    }
+    return null;
   }
 
   /// 判断 URL 是否为可预览的正文图片。
