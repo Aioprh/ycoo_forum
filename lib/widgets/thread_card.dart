@@ -7,8 +7,14 @@ import 'native_image_viewer.dart';
 class ThreadCard extends StatelessWidget {
   final ThreadItem item;
   final VoidCallback onTap;
+  final Future<void> Function(int index)? onImageTap;
 
-  const ThreadCard({super.key, required this.item, required this.onTap});
+  const ThreadCard({
+    super.key,
+    required this.item,
+    required this.onTap,
+    this.onImageTap,
+  });
 
   /// 单图时的缩略图边长。
   static const double _singleCoverSize = 112;
@@ -82,7 +88,13 @@ class ThreadCard extends StatelessWidget {
     final fullCovers = item.fullCovers.length == item.covers.length ? item.fullCovers : item.covers;
     final fullUrl = fullCovers[index];
     return GestureDetector(
-      onTap: () => openImageViewer(context, url: fullUrl, gallery: fullCovers),
+      onTap: () async {
+        if (onImageTap != null) {
+          await onImageTap!(index);
+          return;
+        }
+        await openImageViewer(context, url: fullUrl, gallery: fullCovers);
+      },
       child: Image.network(
         url,
         width: width,
