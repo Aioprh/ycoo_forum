@@ -2,33 +2,82 @@ import 'package:html/dom.dart' as dom;
 
 import '../services/site_config.dart';
 
-/// 取列表页帖子的预览缩略图(绝对地址)。
+/// 列表图片的缩略图 + 原图地址。
+class ForumCover {
+  final String thumbnail;
+  final String original;
+
+  const ForumCover({required this.thumbnail, required this.original});
+}
+
+/// 解析帖子列表中的图片。
 ///
-/// 站点在 `li.forumlist_li` 里用三种图组承载预览图, 类名不同:
-///   - `.comiis_pyqlist_img`                          单图
-///   - `.comiis_pyqlist_imgs .comiis_pyqlist_img2p`   双图
-///   - `.comiis_pyqlist_imgs .comiis_pyqlist_img3p`   三图
-/// 只按单图那个类名去取会漏掉全部多图帖子(列表里表现为没有缩略图),
-/// 所以这里统一用类名前缀匹配, 最多取 [max] 张。
-///
-/// [fallbackToFirstImage] 为 true 时, 容器里没有图组就退回第一张图
-/// —— 泛化解析那几条老路径一直这么取(拿到的通常是发帖人头像), 保留原行为。
-List<String> forumCovers(
-  dom.Element? node, {
+/// img.src 通常是论坛生成的缩略图；外层 a.href 或 data-original/data-src/
+/// zoomfile 等字段才可能指向原图。两者必须分开保存。
+List<ForumCover> forumCoverSources(dom.Element? node, {
   bool fallbackToFirstImage = false,
   int max = 3,
 }) {
-  if (node == null) return const <String>[];
-  final covers = <String>[];
+  if (node == null) return const <ForumCover>[];
+
+  final result = <ForumCover>[];
   for (final img in node.querySelectorAll('[class*="comiis_pyqlist_img"] img')) {
-    final src = _abs(img.attributes['src'] ?? '');
-    if (src.isEmpty || covers.contains(src)) continue;
-    covers.add(src);
-    if (covers.length >= max) break;
+    final thumbnail = _abs(img.attributes['src'] ?? '');
+    if (thumbnail.isEmpty || result.any((e) => e.thumbnail == thumbnail)) continue;
+    final original = _findOriginal(img, thumbnail);
+    result.add(ForumCover(
+      thumbnail: thumbnail,
+      original: original.isEmpty ? thumbnail : original,
+    ));
+    if (result.length >= max) break;
   }
-  if (covers.isNotEmpty || !fallbackToFirstImage) return covers;
-  final first = _abs(node.querySelector('img')?.attributes['src'] ?? '');
-  return first.isEmpty ? const <String>[] : [first];
+
+  if (result.isNotEmpty || !fallbackToFirstImage) return result;
+  final img = node.querySelector('img');
+  final thumbnail = _abs(img?.attributes['src'] ?? '');
+  if (thumbnail.isEmpty) return const <ForumCover>[];
+  final original = _findOriginal(img!, thumbnail);
+  return [ForumCover(
+    thumbnail: thumbnail,
+    original: original.isEmpty ? thumbnail : original,
+  )];
+}
+
+/// 兼容旧调用方，只返回缩略图。
+List<String> forumCovers(dom.Element? node, {
+  bool fallbackToFirstImage = false,
+  int max = 3,
+}) => forumCoverSources(
+  node,
+  fallbackToFirstImage: fallbackToFirstImage,
+  max: max,
+).map((e) => e.thumbnail).toList(growable: false);
+
+String _findOriginal(dom.Element img, String thumbnail) {
+  const attrs = ['data-original', 'data-src', 'data-url', 'zoomfile', 'comiis_loadimages'];
+  for (final key in attrs) {
+    final value = _abs(img.attributes[key] ?? '');
+    if (_isUsableOriginal(value, thumbnail)) return value;
+  }
+
+  // Comiis 常见结构：<a href="原图"><img src="缩略图"></a>
+  final anchor = img.parent;
+  if (anchor != null && anchor.localName == 'a') {
+    final href = _abs(anchor.attributes['href'] ?? '');
+    if (_isUsableOriginal(href, thumbnail)) return href;
+  }
+  return '';
+}
+
+bool _isUsableOriginal(String value, String thumbnail) {
+  if (value.isEmpty || value == thumbnail) return false;
+  final lower = value.toLowerCase();
+  if (lower.startsWith('javascript:') || lower == '#') return false;
+  // 避免把包住图片的帖子链接误认为原图。
+  if (lower.contains('thread-') || lower.contains('mod=viewthread') || lower.endsWith('.html')) {
+    return false;
+  }
+  return true;
 }
 
 String _abs(String value) {
