@@ -1,4 +1,4 @@
-import 'package:html/dom.dart';
+import 'package:html/dom.dart' as dom;
 
 import '../services/site_config.dart';
 
