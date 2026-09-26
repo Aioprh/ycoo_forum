@@ -136,6 +136,60 @@ bool _isPlaceholderImage(String value) {
       v.endsWith('question.png');
 }
 
+/// Discuz 默认表情文件名, 用于识别 CDN 改写后路径里不再带 `/smiley/` 的表情图。
+const Set<String> _knownSmileyFiles = {
+  'lol.gif', 'biggrin.gif', 'victory.gif', 'loveliness.gif', 'shy.gif',
+  'sweat.gif', 'grin.gif', 'titter.gif', 'cool.gif', 'haha.gif',
+  'handshake.gif', 'kiss.gif', 'call.gif', 'time.gif', 'mad.gif',
+  'curse.gif', 'huffy.gif', 'cry.gif', 'sad.gif', 'tongue.gif',
+  'blush.gif', 'shocked.gif', 'sleepy.gif', 'funk.gif', 'hug.gif',
+  'shutup.gif', 'dizzy.gif',
+};
+
+/// 判断一张图片是不是论坛表情(表情尺寸很小, 不能按正文大图铺满整行渲染)。
+bool _isSmileyImage(dom.Element image) {
+  if ((image.attributes['smilieid']?.trim() ?? '').isNotEmpty) return true;
+
+  final alt = (image.attributes['alt'] ?? '').trim().toLowerCase();
+  if (RegExp(r'^:[a-z0-9_\u4e00-\u9fa5]{1,24}:$').hasMatch(alt)) return true;
+
+  final raw = _rawImageValue(image);
+  if (raw.isEmpty) return false;
+  final path = Uri.tryParse(_resolveUrl(raw))?.path.toLowerCase() ?? raw.toLowerCase();
+  if (path.contains('/smiley/') || path.contains('/smilies/')) return true;
+
+  final name = path.split('/').last;
+  if (_knownSmileyFiles.contains(name) &&
+      (path.contains('static/image') || path.contains('smiley'))) {
+    return true;
+  }
+
+  // 部分 Comiis 模板把表情包在 `<a onclick="...smilies...">` 里。
+  final parent = image.parent;
+  if (parent is dom.Element) {
+    final onclick = parent.attributes['onclick']?.toLowerCase() ?? '';
+    if (onclick.contains('smilie')) return true;
+  }
+  return false;
+}
+
+/// 该元素内是否包含需要独占一行展示的真实图片(表情除外)。
+bool _hasBlockImage(dom.Element element) {
+  return element
+      .querySelectorAll('img')
+      .any((image) => _isRealImage(image) && !_isSmileyImage(image));
+}
+
+/// 元素内容只有文本 + 表情时, 交给 `_TextBlock` 让表情跟着文字同行内联显示。
+bool _isInlineSmileyFlow(dom.Element element) {
+  final images = element.querySelectorAll('img');
+  if (images.isEmpty || !images.every(_isSmileyImage)) return false;
+  if (_visibleListText(element).isEmpty) return false;
+  return element
+      .querySelectorAll('div,p,ul,ol,blockquote,pre,table,li')
+      .isEmpty;
+}
+
 class _NodeList extends StatelessWidget {
   final List<dom.Node> nodes;
   final ValueChanged<String>? onLinkTap;
@@ -177,9 +231,12 @@ class _NodeWidget extends StatelessWidget {
       case 'img':
         return _imageWidget(context, element, null);
       case 'a':
-        final image = element.querySelector('img');
-        if (image != null) {
-          return _imageWidget(context, image, element);
+        // 真实大图独占一行; 只有表情/文字时走行内文本流, 让表情跟随文字。
+        if (_hasBlockImage(element)) {
+          final block = element.querySelectorAll('img').firstWhere(
+                (img) => _isRealImage(img) && !_isSmileyImage(img),
+              );
+          return _imageWidget(context, block, element);
         }
         return _TextBlock(nodes: element.nodes, onLinkTap: onLinkTap);
       case 'p':
@@ -189,7 +246,7 @@ class _NodeWidget extends StatelessWidget {
       case 'h4':
       case 'h5':
       case 'h6':
-        if (element.querySelector('img') != null) {
+        if (_hasBlockImage(element)) {
           return _NodeList(
             nodes: element.nodes.where(_hasRenderableNode).toList(),
             onLinkTap: onLinkTap,
@@ -261,6 +318,13 @@ class _NodeWidget extends StatelessWidget {
       case 'dl':
       case 'dt':
       case 'dd':
+        if (_isInlineSmileyFlow(element)) {
+          return _TextBlock(
+            nodes: element.nodes,
+            onLinkTap: onLinkTap,
+            padding: const EdgeInsets.only(bottom: 3),
+          );
+        }
         final text = _visibleListText(element);
         if (text.contains('本帖隐藏内容') || text.contains('查看本帖隐藏内容')) {
           final scheme = Theme.of(context).colorScheme;
@@ -312,6 +376,11 @@ class _NodeWidget extends StatelessWidget {
     if (!_isRealImage(image)) return const SizedBox.shrink();
     final src = _imageUrl(image);
     if (src.isEmpty) return const SizedBox.shrink();
+
+    // 表情是论坛自带的小图, 按自身尺寸点缀展示, 不参与正文大图布局。
+    if (_isSmileyImage(image)) {
+      return _SmileyBlock(src: src);
+    }
 
     final href = link?.attributes['href']?.trim();
     VoidCallback? onTap;
@@ -411,7 +480,19 @@ class _TextBlock extends StatelessWidget {
       spans.add(const TextSpan(text: '\n'));
       return;
     }
-    if (tag == 'img') return;
+    if (tag == 'img') {
+      // 正文里的表情跟随文字同行内联显示, 其它图片仍由块级布局处理。
+      if (_isSmileyImage(node)) {
+        final src = _imageUrl(node);
+        if (src.isNotEmpty) {
+          spans.add(WidgetSpan(
+            alignment: PlaceholderAlignment.middle,
+            child: _SmileyImage(src: src, size: 24),
+          ));
+        }
+      }
+      return;
+    }
 
     var next = current;
     if (tag == 'strong' || tag == 'b') {
@@ -428,11 +509,21 @@ class _TextBlock extends StatelessWidget {
     }
 
     if (tag == 'a') {
-      if (node.querySelector('img') != null) return;
+      if (_hasBlockImage(node)) return;
       final href = node.attributes['href']?.trim() ?? '';
       final uri = Uri.tryParse(_resolveUrl(href));
       if (uri == null || (uri.scheme != 'http' && uri.scheme != 'https')) {
         _appendNodes(spans, node.nodes, next, scheme);
+        return;
+      }
+      // 链接里含表情时逐节点递归, 避免 `node.text` 把表情图丢掉。
+      if (node.querySelector('img') != null) {
+        _appendNodes(
+          spans,
+          node.nodes,
+          next.copyWith(color: scheme.primary),
+          scheme,
+        );
         return;
       }
       spans.add(
@@ -639,14 +730,7 @@ class _ImageBlock extends StatelessWidget {
   Widget build(BuildContext context) {
     if (src.isEmpty) return const SizedBox.shrink();
 
-    final cookie = AuthService.instance.authCookie;
-    final headers = <String, String>{
-      'Accept': 'image/avif,image/webp,image/apng,image/svg+xml,image/*,*/*;q=0.8',
-      'Referer': SiteConfig.base,
-    };
-    if (cookie != null && cookie.isNotEmpty) {
-      headers['Cookie'] = cookie;
-    }
+    final headers = _imageHeaders();
 
     final image = ClipRRect(
       borderRadius: BorderRadius.circular(14),
@@ -679,6 +763,57 @@ class _ImageBlock extends StatelessWidget {
       child: onTap == null
           ? image
           : GestureDetector(onTap: onTap, child: image),
+    );
+  }
+}
+
+/// 正文图片/表情统一带上的请求头(防盗链 + 登录态)。
+Map<String, String> _imageHeaders() {
+  final headers = <String, String>{
+    'Accept': 'image/avif,image/webp,image/apng,image/svg+xml,image/*,*/*;q=0.8',
+    'Referer': SiteConfig.base,
+  };
+  final cookie = AuthService.instance.authCookie;
+  if (cookie != null && cookie.isNotEmpty) {
+    headers['Cookie'] = cookie;
+  }
+  return headers;
+}
+
+/// 单独成行的表情: 保持论坛表情的小尺寸, 不再铺满正文宽度。
+class _SmileyBlock extends StatelessWidget {
+  final String src;
+
+  const _SmileyBlock({required this.src});
+
+  @override
+  Widget build(BuildContext context) {
+    return Padding(
+      padding: const EdgeInsets.only(top: 2, bottom: 6),
+      child: _SmileyImage(src: src, size: 30),
+    );
+  }
+}
+
+/// 表情图片本体: 固定小尺寸, 加载失败时退化为同尺寸占位, 避免撑开正文。
+class _SmileyImage extends StatelessWidget {
+  final String src;
+  final double size;
+
+  const _SmileyImage({required this.src, required this.size});
+
+  @override
+  Widget build(BuildContext context) {
+    final placeholder = SizedBox(width: size, height: size);
+    return Image.network(
+      src,
+      width: size,
+      height: size,
+      fit: BoxFit.contain,
+      headers: _imageHeaders(),
+      errorBuilder: (context, error, stackTrace) => placeholder,
+      loadingBuilder: (context, child, progress) =>
+          progress == null ? child : placeholder,
     );
   }
 }
@@ -731,6 +866,8 @@ List<String> postImageUrls(String html) {
   final urls = <String>[];
   for (final image in body.querySelectorAll('img')) {
     if (!_isRealImage(image)) continue;
+    // 表情不属于正文大图, 不进全屏预览的左右滑动列表。
+    if (_isSmileyImage(image)) continue;
     final url = _imageUrl(image);
     if (url.isEmpty || urls.contains(url)) continue;
     urls.add(url);
