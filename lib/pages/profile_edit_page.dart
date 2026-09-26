@@ -5,6 +5,7 @@ import 'package:html/dom.dart' as dom;
 import '../services/site_config.dart';
 import '../services/auth_service.dart';
 import '../services/net_client.dart';
+import 'avatar_edit_page.dart';
 
 class ProfileEditPage extends StatefulWidget {
   const ProfileEditPage({super.key});
@@ -22,6 +23,7 @@ class _ProfileEditPageState extends State<ProfileEditPage> {
   final _birthday = TextEditingController();
   final Map<String, String> _hidden = {};
   String? _gender;
+  String? _avatarUrl;
   bool _loading = true;
   bool _saving = false;
   String? _error;
@@ -50,6 +52,7 @@ class _ProfileEditPageState extends State<ProfileEditPage> {
     try {
       await AuthService.instance.init();
       if (!AuthService.instance.isLoggedIn) throw Exception('请先登录论坛');
+      if (mounted) _avatarUrl = _bust(AuthService.instance.avatarUrl);
       final client = await NetClient.instance.client;
       final r = await NetClient.retry(() => client.get(
         _uri('home.php?mod=spacecp&ac=profile&mobile=2'),
@@ -81,6 +84,20 @@ class _ProfileEditPageState extends State<ProfileEditPage> {
       if (mounted) setState(() => _loading = false);
     } catch (e) {
       if (mounted) setState(() { _error = e.toString().replaceFirst('Exception: ', ''); _loading = false; });
+    }
+  }
+
+  /// 头像地址固定不变，追加时间戳避免 Flutter 图片缓存继续显示旧头像。
+  String? _bust(String? url) {
+    if (url == null || url.isEmpty) return null;
+    return '$url${url.contains('?') ? '&' : '?'}t=${DateTime.now().millisecondsSinceEpoch}';
+  }
+
+  Future<void> _openAvatar() async {
+    final changed = await Navigator.of(context)
+        .push<bool>(MaterialPageRoute(builder: (_) => const AvatarEditPage()));
+    if (changed == true && mounted) {
+      setState(() => _avatarUrl = _bust(AuthService.instance.avatarUrl));
     }
   }
 
@@ -209,15 +226,30 @@ class _ProfileEditPageState extends State<ProfileEditPage> {
                   child: ListView(
                     padding: const EdgeInsets.fromLTRB(16, 12, 16, 32),
                     children: [
-                      Card(child: Padding(padding: const EdgeInsets.all(18), child: Row(children: [
-                        CircleAvatar(radius: 30, backgroundColor: scheme.primaryContainer, child: const Icon(Icons.person, size: 30)),
-                        const SizedBox(width: 14),
-                        Expanded(child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
-                          Text(AuthService.instance.username ?? '当前账号', style: const TextStyle(fontSize: 18, fontWeight: FontWeight.w800)),
-                          const SizedBox(height: 4),
-                          Text('修改后会同步到论坛个人主页', style: TextStyle(color: scheme.onSurfaceVariant)),
-                        ])),
-                      ]))),
+                      Card(
+                        clipBehavior: Clip.antiAlias,
+                        child: InkWell(
+                          onTap: _openAvatar,
+                          child: Padding(padding: const EdgeInsets.all(18), child: Row(children: [
+                            Stack(children: [
+                              CircleAvatar(
+                                radius: 30,
+                                backgroundColor: scheme.primaryContainer,
+                                backgroundImage: _avatarUrl == null ? null : NetworkImage(_avatarUrl!),
+                                child: _avatarUrl == null ? const Icon(Icons.person, size: 30) : null,
+                              ),
+                              Positioned(right: 0, bottom: 0, child: Container(width: 20, height: 20, decoration: BoxDecoration(color: scheme.primary, shape: BoxShape.circle, border: Border.all(color: scheme.surface, width: 2)), child: Icon(Icons.photo_camera, size: 11, color: scheme.onPrimary))),
+                            ]),
+                            const SizedBox(width: 14),
+                            Expanded(child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
+                              Text(AuthService.instance.username ?? '当前账号', style: const TextStyle(fontSize: 18, fontWeight: FontWeight.w800)),
+                              const SizedBox(height: 4),
+                              Text('点击更换头像，修改后会同步到论坛个人主页', style: TextStyle(color: scheme.onSurfaceVariant)),
+                            ])),
+                            Icon(Icons.chevron_right, color: scheme.onSurfaceVariant),
+                          ])),
+                        ),
+                      ),
                       const SizedBox(height: 14),
                       const Text('基本资料', style: TextStyle(fontSize: 17, fontWeight: FontWeight.w800)),
                       const SizedBox(height: 10),

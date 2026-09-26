@@ -58,6 +58,7 @@ class _ProfilePageState extends State<ProfilePage> {
     _username ??= AuthService.instance.username;
     _uid ??= AuthService.instance.uid;
     _avatarUrl ??= AuthService.instance.avatarUrl;
+    _avatarUrl = _bustAvatar(_avatarUrl);
     _alreadySigned =
         AuthService.instance.isLoggedIn ? await CheckinService.instance.isCheckedInToday() : false;
     if (mounted) setState(() => _ready = true);
@@ -317,6 +318,12 @@ class _ProfilePageState extends State<ProfilePage> {
         ),
       ],
     );
+  }
+
+  /// 头像地址固定不变，追加时间戳避免 Flutter 图片缓存继续显示旧头像。
+  String? _bustAvatar(String? url) {
+    if (url == null || url.isEmpty) return null;
+    return '$url${url.contains('?') ? '&' : '?'}t=${DateTime.now().millisecondsSinceEpoch}';
   }
 
   Widget _avatar(bool loggedIn) {
