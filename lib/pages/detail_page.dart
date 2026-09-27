@@ -18,6 +18,7 @@ import 'native_profile_page.dart';
 import '../widgets/native_post_content.dart';
 import '../widgets/forum_attachment_section.dart';
 import 'login_page.dart';
+import 'thread_list_page.dart';
 import 'edit_thread_page.dart';
 import 'webview_page.dart';
 
@@ -414,14 +415,7 @@ class _DetailPageState extends State<DetailPage> {
           onPressed: () => Navigator.maybePop(context),
           icon: const Icon(Icons.arrow_back_rounded),
         ),
-        title: Text(
-          (_detail?.boardName.isNotEmpty ?? false)
-              ? _detail!.boardName
-              : widget.title,
-          maxLines: 1,
-          overflow: TextOverflow.ellipsis,
-          style: const TextStyle(fontSize: 16, fontWeight: FontWeight.w700),
-        ),
+        title: _boardTitle(context),
         actions: [
           if (_canEdit)
             IconButton(
@@ -715,6 +709,59 @@ class _DetailPageState extends State<DetailPage> {
     }
     Navigator.of(context).push(
       MaterialPageRoute(builder: (_) => NativeProfilePage(uid: uid, username: name)),
+    );
+  }
+
+  /// 顶栏标题: 显示帖子所属板块名, 高亮并可点击进入该板块。
+  /// 板块信息尚未就绪时回退为进入时的标题。
+  Widget _boardTitle(BuildContext context) {
+    final c = Theme.of(context).colorScheme;
+    final d = _detail;
+    final board = d?.boardName.trim() ?? '';
+    if (d == null || board.isEmpty) {
+      return Text(
+        widget.title,
+        maxLines: 1,
+        overflow: TextOverflow.ellipsis,
+        style: const TextStyle(fontSize: 16, fontWeight: FontWeight.w700),
+      );
+    }
+    final tappable = d.fid != 0;
+    return InkWell(
+      borderRadius: BorderRadius.circular(10),
+      onTap: tappable
+          ? () => Navigator.of(context).push(
+                MaterialPageRoute(
+                  builder: (_) => BoardThreadListPage(filter: board, fid: d.fid),
+                ),
+              )
+          : null,
+      child: Padding(
+        padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 5),
+        child: Row(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            Icon(Icons.forum_rounded, size: 16, color: c.primary),
+            const SizedBox(width: 5),
+            Flexible(
+              child: Text(
+                board,
+                maxLines: 1,
+                overflow: TextOverflow.ellipsis,
+                style: TextStyle(
+                  fontSize: 16,
+                  fontWeight: FontWeight.w800,
+                  color: c.primary,
+                ),
+              ),
+            ),
+            if (tappable) ...[
+              const SizedBox(width: 1),
+              Icon(Icons.chevron_right_rounded, size: 18, color: c.primary),
+            ],
+          ],
+        ),
+      ),
     );
   }
 

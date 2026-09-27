@@ -233,14 +233,16 @@ class ApiService {
   Future<ThreadDetail> fetchThreadDetail(int tid, {int page = 1, int? authorId}) async {
     final html = await _get(commentListUrl(tid, page, authorId: authorId), query: {'mobile': '2'});
     final doc = parser.parse(html);
-    final boardLink = doc.querySelector(
-      '.comiis_bankuai .bankuai_tit a, '
-      '.comiis_bankuai a[href*="forum-"], '
-      '.comiis_bkname a[href*="forum-"], '
-      '.comiis_forumname a[href*="forum-"], '
-      'a[href*="forum-"], '
-      'a[href*="fid="][class*="forum"]',
-    );
+    // 由精确到宽泛依次尝试板块链接。
+    // 宽泛的 a[href*="forum-"] 会先命中页面顶部的面包屑导航链
+    // (如 <a href="forum-2-1.html" class="kmtit">详情</a>), 必须放在最后,
+    // 否则板块名会被解析成"详情", 标题里的"-板块"后缀也就无法剔除。
+    final boardLink = doc.querySelector('.comiis_bankuai .bankuai_tit a') ??
+        doc.querySelector('.comiis_bankuai a[href*="forum-"]') ??
+        doc.querySelector('.comiis_bkname a[href*="forum-"]') ??
+        doc.querySelector('.comiis_forumname a[href*="forum-"]') ??
+        doc.querySelector('a[href*="fid="][class*="forum"]') ??
+        doc.querySelector('a[href*="forum-"]');
     var boardName = _normSpace(boardLink?.text ?? '');
     // 有些帖子（尤其只发布书源/订阅源链接的帖子）页面结构不带旧版
     // .comiis_bankuai，继续从常见版块标题节点补齐分区名称。
