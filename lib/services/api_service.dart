@@ -328,12 +328,17 @@ class ApiService {
   _PaidState _parsePaidState(dom.Document doc) {
     final firstPost = _firstPostNode(doc);
     final firstText = _normSpace(firstPost?.text ?? '');
+    final pageText = _normSpace(doc.body?.text ?? '');
     final root = firstPost ?? doc.body;
     if (root != null) {
       for (final e in root.querySelectorAll('a,button,input,form')) {
         final all = '${_normSpace(e.text)} ${e.attributes['value'] ?? ''} ${e.attributes['title'] ?? ''} ${e.attributes['onclick'] ?? ''} ${e.attributes['href'] ?? ''}';
         if (!all.contains('购买主题') && !all.contains('本主题需向作者支付') && !all.toLowerCase().contains('action=pay') && !all.toLowerCase().contains('buythread')) continue;
-        final price = _firstInt(RegExp(r'(?:支付|需要)\s*(\d+)\s*星币'), all);
+        // 星币数量通常写在提示块(如 .locked)里, 按钮自身往往只有"购买主题"四个字,
+        // 因此依次回退 按钮文本 -> 首楼文本 -> 整页文本, 保证能取到具体价格。
+        final price = _firstInt(RegExp(r'(?:支付|需要)\s*(\d+)\s*星币'), all) ??
+            _parsePaidPrice(firstText) ??
+            _parsePaidPrice(pageText);
         final href = _abs(e.attributes['href'] ?? '');
         if (href.isNotEmpty && !href.startsWith('javascript:')) return _PaidState(true, price, '星币', href);
         final onclick = e.attributes['onclick'] ?? '';
@@ -345,9 +350,21 @@ class ApiService {
       }
     }
     if (firstText.contains('本主题需向作者支付') && firstText.contains('星币')) {
-      return _PaidState(true, _firstInt(RegExp(r'支付\s*(\d+)\s*星币'), firstText), '星币', '');
+      return _PaidState(true, _parsePaidPrice(firstText) ?? _parsePaidPrice(pageText), '星币', '');
     }
     return const _PaidState(false, null, '星币', '');
+  }
+
+  /// 从文本中解析付费主题的星币价格, 兼容"本主题需向作者支付 10 星币""支付 10 星币"
+  /// "需要 10 星币""售价 10 星币"等常见写法。
+  static int? _parsePaidPrice(String text) {
+    final t = _normSpace(text);
+    final match =
+        RegExp(r'(?:向作者支付|需支付|支付|需要|售价|价格)\s*(\d+)\s*星币').firstMatch(t) ??
+        RegExp(r'(\d+)\s*星币').firstMatch(t);
+    if (match == null) return null;
+    final value = int.tryParse(match.group(1)!);
+    return (value != null && value > 0) ? value : null;
   }
 
   Future<PurchaseResult> purchaseThread(int tid) async {

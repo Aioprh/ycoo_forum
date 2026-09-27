@@ -721,14 +721,14 @@ class _DetailPageState extends State<DetailPage> {
     final c = Theme.of(context).colorScheme;
     return Container(
       margin: const EdgeInsets.only(bottom: 8),
-      padding: const EdgeInsets.fromLTRB(18, 18, 18, 16),
+      padding: const EdgeInsets.fromLTRB(16, 13, 16, 11),
       decoration: BoxDecoration(
         gradient: LinearGradient(
           begin: Alignment.topLeft,
           end: Alignment.bottomRight,
           colors: [c.primaryContainer.withValues(alpha: .72), c.surface],
         ),
-        borderRadius: BorderRadius.circular(26),
+        borderRadius: BorderRadius.circular(22),
         border: Border.all(color: c.outlineVariant.withValues(alpha: .45)),
       ),
       child: Column(
@@ -748,25 +748,25 @@ class _DetailPageState extends State<DetailPage> {
                     ),
               child: _tag(context, Icons.forum_rounded, d.boardName),
             ),
-          const SizedBox(height: 14),
+          const SizedBox(height: 10),
           Text(
             d.title,
             style: Theme.of(context).textTheme.headlineSmall?.copyWith(
-              fontSize: 23,
-              height: 1.28,
+              fontSize: 20,
+              height: 1.24,
               fontWeight: FontWeight.w800,
             ),
           ),
-          const SizedBox(height: 16),
+          const SizedBox(height: 11),
           Row(
             children: [
               ResolvedUserAvatar(
                 uid: 0,
                 username: d.author,
-                radius: 22,
+                radius: 18,
                 onTap: () => _openAuthorProfile(context, d.author),
               ),
-              const SizedBox(width: 10),
+              const SizedBox(width: 9),
               Expanded(
                 child: Wrap(
                   spacing: 7,
@@ -791,7 +791,7 @@ class _DetailPageState extends State<DetailPage> {
               ),
             ],
           ),
-          const SizedBox(height: 10),
+          const SizedBox(height: 8),
           Wrap(
             spacing: 6,
             runSpacing: 7,
@@ -854,7 +854,7 @@ class _DetailPageState extends State<DetailPage> {
   Widget _metaChip(BuildContext context, IconData icon, String text) {
     final c = Theme.of(context).colorScheme;
     return Container(
-      padding: const EdgeInsets.symmetric(horizontal: 9, vertical: 6),
+      padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 5),
       decoration: BoxDecoration(
         color: c.surface.withValues(alpha: .72),
         borderRadius: BorderRadius.circular(10),
@@ -1019,13 +1019,31 @@ class _DetailPageState extends State<DetailPage> {
             style: TextStyle(fontSize: 18, fontWeight: FontWeight.w800),
           ),
           const SizedBox(height: 6),
-          Text(
-            d.price == null
-                ? '购买后即可查看完整内容'
-                : '支付 ${d.price} ${d.currency} 后查看完整内容',
-            textAlign: TextAlign.center,
-            style: TextStyle(color: c.onSurfaceVariant),
-          ),
+          if (d.price != null)
+            Text.rich(
+              TextSpan(
+                style: TextStyle(color: c.onSurfaceVariant),
+                children: [
+                  const TextSpan(text: '需支付 '),
+                  TextSpan(
+                    text: '${d.price} ${d.currency}',
+                    style: TextStyle(
+                      color: c.primary,
+                      fontSize: 16,
+                      fontWeight: FontWeight.w800,
+                    ),
+                  ),
+                  const TextSpan(text: ' 后查看完整内容'),
+                ],
+              ),
+              textAlign: TextAlign.center,
+            )
+          else
+            Text(
+              '购买后即可查看完整内容',
+              textAlign: TextAlign.center,
+              style: TextStyle(color: c.onSurfaceVariant),
+            ),
           const SizedBox(height: 18),
           FilledButton.icon(
             onPressed: _buying ? null : _purchase,
