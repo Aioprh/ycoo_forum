@@ -1,3 +1,5 @@
+import 'dart:async';
+
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:html/dom.dart' as dom;
@@ -70,9 +72,10 @@ class _DetailPageState extends State<DetailPage> {
     await _fetch();
   }
 
-  Future<void> _fetch() async {
+  /// 拉取帖子详情。返回主内容是否加载成功(互动状态的刷新不计入)。
+  Future<bool> _fetch() async {
     // 防重入: 快速连点刷新不会产生互相覆盖的竞态。
-    if (_fetching) return;
+    if (_fetching) return false;
     final hadDetail = _detail != null;
     if (mounted)
       setState(() {
@@ -80,20 +83,21 @@ class _DetailPageState extends State<DetailPage> {
         _loading = !hadDetail;
         _error = null;
       });
+    var ok = false;
     try {
       final d = await ApiService.instance.fetchThreadDetail(
         widget.tid,
         page: _commentPage,
         authorId: _authorOnly ? _detail?.authorUid : null,
       );
-      if (!mounted) return;
+      if (!mounted) return ok;
       setState(() {
         _detail = d;
         _likeCount = d.likeCount;
         _liked = d.likedByMe;
         _bodyImages = postImageUrls(d.bodyHtml);
       });
-      if (_loggedIn) await _loadInteractionState();
+      ok = true;
     } catch (e) {
       if (mounted) {
         setState(() {
@@ -104,9 +108,22 @@ class _DetailPageState extends State<DetailPage> {
         if (hadDetail) _snack('刷新失败：$e');
       }
     } finally {
-      if (mounted) setState(() => _fetching = false);
-      if (mounted) setState(() => _loading = false);
+      if (mounted)
+        setState(() {
+          _fetching = false;
+          _loading = false;
+        });
     }
+    // 点赞/收藏等互动状态属次要信息, 单独异步加载:
+    // 不占用 _fetching, 否则其网络较慢时右上角刷新按钮会一直转圈且无法再点击。
+    if (mounted && _loggedIn) unawaited(_loadInteractionState());
+    return ok;
+  }
+
+  /// 右上角手动刷新: 刷新完成后给出明确反馈, 避免"点了没反应"的观感。
+  Future<void> _manualRefresh() async {
+    final ok = await _fetch();
+    if (mounted && ok) _snack('已刷新');
   }
 
   Future<void> _loadInteractionState() async {
@@ -424,7 +441,7 @@ class _DetailPageState extends State<DetailPage> {
               icon: const Icon(Icons.edit_outlined),
             ),
           IconButton(
-            onPressed: _fetching ? null : _fetch,
+            onPressed: _fetching ? null : _manualRefresh,
             icon: _fetching
                 ? const SizedBox(
                     width: 20, height: 20,
@@ -452,7 +469,7 @@ class _DetailPageState extends State<DetailPage> {
     if (_error != null || _detail == null) return _errorView(context);
     final d = _detail!;
     return RefreshIndicator(
-      onRefresh: _fetch,
+      onRefresh: () => _fetch(),
       child: ListView(
         physics: const AlwaysScrollableScrollPhysics(),
         padding: const EdgeInsets.fromLTRB(12, 4, 12, 28),
