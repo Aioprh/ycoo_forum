@@ -504,7 +504,12 @@ class ApiService {
 
   static List<String> _collectPosts(dom.Document doc) {
     final out = <String>[];
-    final postNodes = doc.querySelectorAll('.comiis_postli, #postlist .plhin, #postlist .plc, #postlist > div[id^="post_"], div[id^="postmessage_"]');
+    // 该选择器是并集: 外层楼层容器(.comiis_postli 等)与它内部的
+    // div[id^="postmessage_"] 会同时命中, 使同一楼层被解析成两张卡片。
+    // 内层节点不含作者/等级等头部节点, 会被渲染成"匿名用户"并多占一楼。
+    // 这里剔除被其它命中节点包裹的内层节点, 保证一个楼层只产出一张卡片。
+    final matched = doc.querySelectorAll('.comiis_postli, #postlist .plhin, #postlist .plc, #postlist > div[id^="post_"], div[id^="postmessage_"]').toList();
+    final postNodes = matched.where((node) => !matched.any((other) => !identical(other, node) && _containsNode(other, node))).toList();
     for (final post in postNodes) {
       dom.Element? content = post.querySelector('.comiis_aimg_show, .comiis_messages, .comiis_message_table');
       content ??= post.querySelector('.t_f, .pcb, .comiis_postcontent, .comiis_message, .message, .postmessage, [id^="postmessage_"]');
@@ -545,6 +550,14 @@ class ApiService {
       if (out.isNotEmpty) return out;
     }
     return out;
+  }
+
+  /// 判断 [node] 是否被 [ancestor] 包裹(用于剔除重复命中的内层节点)。
+  static bool _containsNode(dom.Element ancestor, dom.Element node) {
+    for (var parent = node.parent; parent != null; parent = parent.parent) {
+      if (identical(parent, ancestor)) return true;
+    }
+    return false;
   }
 
   /// 从楼层原始 DOM 提取真实用户 UID。
