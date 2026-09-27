@@ -18,7 +18,6 @@ import 'native_profile_page.dart';
 import '../widgets/native_post_content.dart';
 import '../widgets/forum_attachment_section.dart';
 import 'login_page.dart';
-import 'thread_list_page.dart';
 import 'edit_thread_page.dart';
 import 'webview_page.dart';
 
@@ -416,7 +415,9 @@ class _DetailPageState extends State<DetailPage> {
           icon: const Icon(Icons.arrow_back_rounded),
         ),
         title: Text(
-          widget.title,
+          (_detail?.boardName.isNotEmpty ?? false)
+              ? _detail!.boardName
+              : widget.title,
           maxLines: 1,
           overflow: TextOverflow.ellipsis,
           style: const TextStyle(fontSize: 16, fontWeight: FontWeight.w700),
@@ -734,25 +735,10 @@ class _DetailPageState extends State<DetailPage> {
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
-          if (d.boardName.isNotEmpty)
-            GestureDetector(
-              onTap: d.fid == 0
-                  ? null
-                  : () => Navigator.of(context).push(
-                      MaterialPageRoute(
-                        builder: (_) => BoardThreadListPage(
-                          filter: d.boardName,
-                          fid: d.fid,
-                        ),
-                      ),
-                    ),
-              child: _tag(context, Icons.forum_rounded, d.boardName),
-            ),
-          const SizedBox(height: 10),
           Text(
             d.title,
             style: Theme.of(context).textTheme.headlineSmall?.copyWith(
-              fontSize: 20,
+              fontSize: 17,
               height: 1.24,
               fontWeight: FontWeight.w800,
             ),
@@ -807,34 +793,6 @@ class _DetailPageState extends State<DetailPage> {
                 ),
             ],
           ),
-        ],
-      ),
-    );
-  }
-
-  Widget _tag(BuildContext context, IconData icon, String text) {
-    final c = Theme.of(context).colorScheme;
-    return Container(
-      padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 6),
-      decoration: BoxDecoration(
-        color: c.surface.withValues(alpha: .75),
-        borderRadius: BorderRadius.circular(12),
-      ),
-      child: Row(
-        mainAxisSize: MainAxisSize.min,
-        children: [
-          Icon(icon, size: 15, color: c.primary),
-          const SizedBox(width: 6),
-          Text(
-            text,
-            style: TextStyle(
-              fontSize: 12,
-              fontWeight: FontWeight.w700,
-              color: c.primary,
-            ),
-          ),
-          const SizedBox(width: 3),
-          Icon(Icons.chevron_right_rounded, size: 15, color: c.primary),
         ],
       ),
     );
