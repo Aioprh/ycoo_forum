@@ -536,9 +536,11 @@ class ApiService {
       final repliesAttr = hasReplies ? ' data-replies="1"' : '';
       final author = _postAuthor(post);
       final level = _normSpace(post.querySelector('.top_lev, .p_pop')?.text ?? '');
-      final floor = _normSpace(post.querySelector('.f_d.y, .pi .authi em, .pls .authi em')?.text ?? '').replaceAll(RegExp(r'[^0-9A-Za-z一二三四五六七八九十楼主]'), '');
       final time = _normSpace(post.querySelector('.kmtime, .comiis_tm, .authi em')?.text ?? '');
-      final displayFloor = floor.isEmpty ? (out.isEmpty ? '楼主' : '${out.length + 1}楼') : floor;
+      // 正文(楼主)单独展示, 不计入评论楼层。评论按顺序从"1楼"开始编号:
+      // 原站把楼主算作 1 楼, 首位回帖标注为"沙发"(数字缺省), 第 5 个帖子起
+      // 才显示"5#"等数字, 直接沿用会让首条评论显示成"2楼", 整体多 1。
+      final displayFloor = out.isEmpty ? '楼主' : '${out.length}楼';
       out.add('<div class="post-card"$pidAttr$uidAttr$repliesAttr><div class="post-hd"><span class="p-floor">$displayFloor</span>${author.isEmpty ? '' : '<b class="p-author">$author</b>'}${level.isEmpty ? '' : '<span class="p-level">$level</span>'}</div>${time.isEmpty ? '' : '<div class="p-time">$time</div>'}<div class="p-body">${_cleanPostHtml(html)}</div></div>');
     }
     if (out.isNotEmpty) return out;
