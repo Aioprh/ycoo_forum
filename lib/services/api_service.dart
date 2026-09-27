@@ -266,6 +266,13 @@ class ApiService {
       // 正文只取 p-body 内的真实内容, 过滤掉 post-hd(楼主/用户名/Lv) 和 p-time 等头部信息
       final fragment = parser.parseFragment(posts.first);
       final pBody = fragment.querySelector('.p-body');
+      // 付费主题里, 原站的"本主题需向作者支付/购买主题"提示块由 App 自己渲染付费卡片,
+      // 这里从正文中剔除避免重复; 楼主公开的正文内容(门槛之外的部分)仍然保留。
+      if (pBody != null && paid.isPaid) {
+        for (final gate in pBody.querySelectorAll('div').toList()) {
+          if (_normSpace(gate.text).contains('本主题需向作者支付')) gate.remove();
+        }
+      }
       final bodyInner = pBody?.innerHtml ?? '';
       if (bodyInner.trim().isNotEmpty) {
         body = '<div class="content-section"><div class="p-body">$bodyInner</div></div>';
