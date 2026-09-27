@@ -466,7 +466,15 @@ class _DetailPageState extends State<DetailPage> {
           _quickActions(context, d),
           _sectionHeader(context, '正文', '楼主发布的主题内容', Icons.article_rounded),
           d.isPaid
-              ? _paidNotice(context, d)
+              ? Column(
+                  crossAxisAlignment: CrossAxisAlignment.stretch,
+                  children: [
+                    // 付费主题也会展示楼主公开的正文, 只把门槛之后的完整内容留给购买。
+                    if (d.bodyHtml.trim().isNotEmpty)
+                      _nativeBodyCard(context, d.bodyHtml),
+                    _paidNotice(context, d),
+                  ],
+                )
               : (d.bodyHtml.trim().isEmpty
                     ? _empty(context, '暂无正文内容')
                     : _nativeBodyCard(context, d.bodyHtml)),
