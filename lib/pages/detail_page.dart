@@ -1255,52 +1255,61 @@ class _DetailPageState extends State<DetailPage> {
           fontSize: 20,
           fontWeight: FontWeight.w600,
         ),
-        content: Column(
-          mainAxisSize: MainAxisSize.min,
-          crossAxisAlignment: CrossAxisAlignment.center,
-          children: [
-            Text('当前第 $cur 页 / 共 $total 页',
-                textAlign: TextAlign.center,
-                style: TextStyle(color: c.onSurfaceVariant, fontSize: 14)),
-            const SizedBox(height: 16),
-            SizedBox(
-              width: double.maxFinite,
-              child: SingleChildScrollView(
-                child: Wrap(
-                  alignment: WrapAlignment.center,
-                  runAlignment: WrapAlignment.center,
-                  spacing: 10,
-                  runSpacing: 10,
-                  children: List.generate(total, (i) {
-                    final p = i + 1;
-                    final isCur = p == cur;
-                    return SizedBox(
-                      width: 56,
-                      height: 48,
-                      child: Material(
-                        color: isCur ? c.primary : c.surfaceContainerHighest,
-                        borderRadius: BorderRadius.circular(12),
-                        child: InkWell(
-                          borderRadius: BorderRadius.circular(12),
-                          onTap: () => Navigator.of(ctx).pop(p),
-                          child: Center(
-                            child: Text(
-                              '$p',
-                              style: TextStyle(
-                                color: isCur ? c.onPrimary : c.onSurface,
-                                fontSize: 16,
-                                fontWeight: isCur ? FontWeight.w600 : FontWeight.normal,
+        content: SizedBox(
+          width: double.maxFinite,
+          child: ConstrainedBox(
+            // 页码可能多达上百页, 限制最大高度并允许滚动, 避免弹窗超出屏幕。
+            constraints: BoxConstraints(
+              maxHeight: MediaQuery.of(ctx).size.height * 0.55,
+            ),
+            child: Column(
+              mainAxisSize: MainAxisSize.min,
+              crossAxisAlignment: CrossAxisAlignment.center,
+              children: [
+                Text('当前第 $cur 页 / 共 $total 页',
+                    textAlign: TextAlign.center,
+                    style: TextStyle(color: c.onSurfaceVariant, fontSize: 14)),
+                const SizedBox(height: 16),
+                Flexible(
+                  child: SingleChildScrollView(
+                    child: Wrap(
+                      alignment: WrapAlignment.center,
+                      runAlignment: WrapAlignment.center,
+                      spacing: 10,
+                      runSpacing: 10,
+                      children: List.generate(total, (i) {
+                        final p = i + 1;
+                        final isCur = p == cur;
+                        return SizedBox(
+                          width: 56,
+                          height: 48,
+                          child: Material(
+                            color: isCur ? c.primary : c.surfaceContainerHighest,
+                            borderRadius: BorderRadius.circular(12),
+                            child: InkWell(
+                              borderRadius: BorderRadius.circular(12),
+                              onTap: () => Navigator.of(ctx).pop(p),
+                              child: Center(
+                                child: Text(
+                                  '$p',
+                                  style: TextStyle(
+                                    color: isCur ? c.onPrimary : c.onSurface,
+                                    fontSize: 16,
+                                    fontWeight:
+                                        isCur ? FontWeight.w600 : FontWeight.normal,
+                                  ),
+                                ),
                               ),
                             ),
                           ),
-                        ),
-                      ),
-                    );
-                  }),
+                        );
+                      }),
+                    ),
+                  ),
                 ),
-              ),
+              ],
             ),
-          ],
+          ),
         ),
         actions: [
           TextButton(
