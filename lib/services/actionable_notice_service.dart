@@ -181,18 +181,24 @@ class ActionableNoticeService {
       actor: actor,
       time: timeText,
       unread: unread,
-      actions: _actions(node),
+      actions: _actions(node, actor),
     );
   }
 
-  List<InteractiveNoticeAction> _actions(Element node) {
+  List<InteractiveNoticeAction> _actions(Element node, String actor) {
     final result = <InteractiveNoticeAction>[];
     final seen = <String>{};
     for (final a in node.querySelectorAll('a[href]')) {
       final href = _attr(a, 'href').trim();
-      final label = _clean(a);
+      var label = _clean(a);
       if (href.isEmpty || label.isEmpty || href.startsWith('#') || href.toLowerCase().startsWith('javascript:')) continue;
       if (_navigation(label) || label.length > 30) continue;
+      // 移动模板里"访客头像/昵称"链接的文字就是用户名(id), 菜单里直接显示
+      // 英文 id 很突兀, 这里统一改成中文说明。
+      final isProfileLink = _uid(href) > 0 || _has(href, 'mod=space');
+      if ((actor.isNotEmpty && label == actor) || (isProfileLink && !_hasCjk(label))) {
+        label = '访问Ta的空间';
+      }
       if (!seen.add('$label|$href')) continue;
       result.add(InteractiveNoticeAction(label: label, href: href));
       if (result.length >= 4) break;
@@ -245,13 +251,20 @@ class ActionableNoticeService {
 
   static String _bestHref(Element node) {
     final candidates = <String>[];
+    var threadHref = '';
     for (final a in node.querySelectorAll('a[href]')) {
       final href = _attr(a, 'href').trim();
       if (href.isEmpty || href.startsWith('#') || href.toLowerCase().startsWith('javascript:')) continue;
-      if (_tid(href) > 0) return href;
+      if (_tid(href) > 0) {
+        // 带 pid 的跳楼链接能直达具体楼层, 优先级最高。
+        if (_pid(href) > 0) return href;
+        if (threadHref.isEmpty) threadHref = href;
+        continue;
+      }
       if (_uid(href) > 0) candidates.add(href);
       if (_has(href, 'notice') || _has(href, 'space') || _has(href, 'thread') || _has(href, 'mod=')) candidates.add(href);
     }
+    if (threadHref.isNotEmpty) return threadHref;
     return candidates.isEmpty ? '' : candidates.first;
   }
 
@@ -309,6 +322,8 @@ class ActionableNoticeService {
   }
 
   static bool _navigation(String text) => RegExp(r'^(首页|登录|注册|退出|下一页|上一页|更多|设置|通知|好友|关注|粉丝|任务中心|主题专区)$').hasMatch(text);
+
+  static bool _hasCjk(String text) => RegExp(r'[\u4e00-\u9fa5]').hasMatch(text);
 
   Future<List<NativeNotice>> fetch({String view = 'all', String? type}) async {
     final query = StringBuffer('home.php?mod=space&do=notice&view=$view');
