@@ -167,15 +167,18 @@ class ActionableNoticeService {
     final bodyNode = node.querySelector('.ntc_body,.nts_body,dd,.comiis_notice_txt,.comiis_notice_content') ?? node;
     final body = _clean(bodyNode);
     final titleText = _clean(titleNode);
-    final displayTitle = titleText.isNotEmpty ? titleText : _fallbackTitle(body);
     final time = _clean(node.querySelector('em,time,.xg1,.xg2,[class*="time"],[class*="date"]'));
-    final subtitle = time.isNotEmpty && !body.contains(time) ? '$time $body' : body;
+    // 移动模板的 <h2 class="f_d"> 只放时间, 直接把解析结果当标题会显示成"昨天 08:58"。
+    final titleIsTime = _timeLike(titleText);
+    final timeText = time.isNotEmpty ? time : (titleIsTime ? titleText : '');
+    final displayTitle = titleIsTime ? (body.isEmpty ? titleText : body) : (titleText.isNotEmpty ? titleText : _fallbackTitle(body));
+    final subtitle = titleIsTime ? timeText : (timeText.isNotEmpty && !body.contains(timeText) ? '$timeText $body' : body);
     final unread = _has(_attr(node, 'class'), 'new') || _has(_attr(node, 'class'), 'unread') || node.querySelector('.new,.unread,[class*="new"],[class*="unread"]') != null;
 
     return InteractiveNotice(
       notice: NativeNotice(title: displayTitle, subtitle: subtitle, href: fallbackHref, body: body, uid: uid, tid: tid),
       actor: actor,
-      time: time,
+      time: timeText,
       unread: unread,
       actions: _actions(node),
     );
@@ -219,7 +222,25 @@ class ActionableNoticeService {
 
   String _fallbackTitle(String body) => body.length > 60 ? body.substring(0, 60) : body;
 
-  static String _clean(Element? node) => node == null ? '' : node.text.replaceAll(RegExp(r'\s+'), ' ').trim();
+  static String _clean(Element? node) => node == null ? '' : _text(node.text);
+
+  /// 清理节点文本: 去掉图标字体占位符(私有区字符)与多余空白,
+  /// 否则标题/时间里会混入 \uE6xx 这类字形, 影响"是否只是时间"的判断。
+  static String _text(String value) => value
+      .replaceAll(RegExp(r'[\uE000-\uF8FF\uFFFD\uFEFF]'), '')
+      .replaceAll(RegExp(r'[\u0000-\u0008\u000B\u000C\u000E-\u001F]'), '')
+      .replaceAll(RegExp(r'\s+'), ' ')
+      .trim();
+
+  /// 判断一段文本是否只是时间(如 "7 天前"、"昨天 08:58"、"2026-9-1 12:45")。
+  /// 移动模板把时间放在 h2 里, 需要据此区分"标题"与"时间行"。
+  static bool _timeLike(String text) {
+    final t = _text(text).replaceAll(RegExp(r'[›»·|]'), ' ').replaceAll(RegExp(r'\s+'), ' ').trim();
+    if (t.isEmpty) return false;
+    return RegExp(
+      r'^(?:\d{4}-\d{1,2}-\d{1,2}(?:\s+\d{1,2}:\d{2})?|\d+秒前|\d+\s*(?:秒|分钟|小时|天|周|个月|年)前|刚刚|今天(?:\s+\d{1,2}:\d{2})?|昨天(?:\s+\d{1,2}:\d{2})?|前天(?:\s+\d{1,2}:\d{2})?|\d{1,2}:\d{2})$',
+    ).hasMatch(t);
+  }
 
   static String _bestHref(Element node) {
     final candidates = <String>[];
@@ -239,11 +260,13 @@ class ActionableNoticeService {
     final raw = href.trim();
     if (raw.isEmpty) return 0;
     final uri = Uri.tryParse(raw);
-    final queryTid = uri?.queryParameters['tid'] ?? uri?.queryParameters['topicid'];
+    final queryTid = uri?.queryParameters['tid'] ?? uri?.queryParameters['topicid'] ?? uri?.queryParameters['ptid'];
     final queryValue = int.tryParse(queryTid ?? '');
     if (queryValue != null && queryValue > 0) return queryValue;
     final decoded = Uri.decodeFull(raw);
-    final m = RegExp(r'(?:thread-|[?&]tid=|[?&]topicid=)(\d+)', caseSensitive: false).firstMatch(decoded);
+    // "回复了我的帖子" 这类通知链接形如
+    // forum.php?mod=redirect&goto=findpost&ptid=129873&pid=2793554, 主题 id 在 ptid 上。
+    final m = RegExp(r'(?:thread-|[?&](?:p?tid|topicid)=)(\d+)', caseSensitive: false).firstMatch(decoded);
     return int.tryParse(m?.group(1) ?? '') ?? 0;
   }
 
@@ -301,8 +324,14 @@ class ActionableNoticeService {
       final title = _clean(node.querySelector('h2,.ntc_title,.nts_title,dt,strong'));
       final body = _clean(node.querySelector('.ntc_body,.nts_body,dd,.comiis_notice_txt,.comiis_notice_content') ?? node);
       final time = _clean(node.querySelector('em,time,.xg1,.xg2,[class*="time"],[class*="date"]'));
-      final displayTitle = title.isEmpty ? (body.length > 60 ? body.substring(0, 60) : body) : title;
-      final subtitle = time.isNotEmpty && !body.contains(time) ? '$time $body' : body;
+      // 移动模板的 <h2 class="f_d"> 只放时间(还带屏蔽图标), 会解析成"昨天 08:58"这样的伪标题:
+      // 这类节点改用正文当标题, 时间挪到副标题。
+      final titleIsTime = _timeLike(title);
+      final timeText = time.isNotEmpty ? time : (titleIsTime ? title : '');
+      final displayTitle = titleIsTime
+          ? (body.isEmpty ? title : body)
+          : (title.isEmpty ? (body.length > 60 ? body.substring(0, 60) : body) : title);
+      final subtitle = titleIsTime ? timeText : (timeText.isNotEmpty && !body.contains(timeText) ? '$timeText $body' : body);
       final key = '$fallbackHref|$displayTitle|$body';
       if (!seen.add(key)) continue;
       result.add(NativeNotice(title: displayTitle, subtitle: subtitle, href: fallbackHref, body: body, uid: uid, tid: tid));

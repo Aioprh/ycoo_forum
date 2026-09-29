@@ -11,7 +11,9 @@ class NativeInteractivePage extends StatelessWidget {
   const NativeInteractivePage({super.key});
 
   static const _items = <_InteractiveType>[
-    _InteractiveType('打招呼', 'post', Icons.waving_hand_rounded, '收到的打招呼'),
+    // 站点移动模板的互动分类固定为 poke/friend/wall/comment/click/sharenotice,
+    // 此前"打招呼"用的是 post, 服务端识别不了会落回默认分类, 这里改正为 poke。
+    _InteractiveType('打招呼', 'poke', Icons.waving_hand_rounded, '收到的打招呼'),
     _InteractiveType('好友', 'friend', Icons.person_add_alt_1_rounded, '好友请求与好友互动'),
     _InteractiveType('留言', 'wall', Icons.edit_note_rounded, '个人空间留言'),
     _InteractiveType('评论', 'comment', Icons.chat_bubble_rounded, '收到的评论与点评'),
@@ -194,7 +196,7 @@ class _NativeInteractiveTypePageState extends State<NativeInteractiveTypePage> {
 
   String _actionHint() {
     switch (widget.type.type) {
-      case 'post': return '查看坛友并处理打招呼';
+      case 'poke': return '查看坛友并处理打招呼';
       case 'friend': return '查看坛友并处理好友关系';
       case 'wall': return '查看留言来源';
       case 'comment': return '打开评论来源';

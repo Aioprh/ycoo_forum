@@ -1,6 +1,5 @@
 import 'package:flutter/material.dart';
 
-import 'member_feature_page.dart';
 import 'native_interactive_page.dart';
 import 'native_message_list_page.dart';
 import 'native_notice_list_page.dart';
@@ -65,7 +64,7 @@ class NativeNoticeHubPage extends StatelessWidget {
         const Divider(height: 1),
         _item(context: context, icon: Icons.people_alt_rounded, color: Colors.redAccent, title: '我的粉丝', subtitle: '关注我的用户', onTap: () => _open(context, const NativeSocialPage())),
         const Divider(height: 1),
-        _item(context: context, icon: Icons.forum_rounded, color: Colors.lightGreen, title: '我的帖子', subtitle: '我发布的主题和回帖', onTap: () => _open(context, const MemberFeaturePage(title: '我的主题', path: 'home.php?mod=space&do=thread&view=me&mobile=2', type: MemberFeatureType.threads))),
+        _item(context: context, icon: Icons.forum_rounded, color: Colors.lightGreen, title: '我的帖子', subtitle: '回复、点评等帖子相关通知', onTap: () => _open(context, const NativeNoticeListPage(title: '我的帖子', view: 'mypost'))),
         const Divider(height: 1),
         _item(context: context, icon: Icons.send_rounded, color: Colors.amber, title: '坛友互动', subtitle: '打招呼、好友、留言、评论、挺你、分享', onTap: () => _open(context, const NativeInteractivePage())),
         const Divider(height: 1),
