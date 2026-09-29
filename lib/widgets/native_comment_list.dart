@@ -25,6 +25,10 @@ class NativeCommentList extends StatelessWidget {
   /// 评论/楼中楼正文里的链接点击回调。不传时会退回外部浏览器打开,
   /// 因此调用方应与正文一样传入站内链接处理器。
   final ValueChanged<String>? onLinkTap;
+  /// 需要高亮并定位到的目标楼层 pid(如从"回复了我的帖子"通知进入)。
+  final int highlightPid;
+  /// 目标楼层的上下文 key, 外层页面用它把列表滚动到该条评论。
+  final Key? highlightKey;
 
   const NativeCommentList({
     super.key,
@@ -34,6 +38,8 @@ class NativeCommentList extends StatelessWidget {
     this.onReplySent,
     this.onFloorEdited,
     this.onLinkTap,
+    this.highlightPid = 0,
+    this.highlightKey,
   });
 
   List<_CommentFloor> _parse() {
@@ -112,6 +118,8 @@ class NativeCommentList extends StatelessWidget {
     final section = root.querySelector('.comments-section');
     final tid = int.tryParse(section?.attributes['data-tid'] ?? '') ?? 0;
     final fid = int.tryParse(section?.attributes['data-fid'] ?? '') ?? 0;
+    // 目标楼层只允许一个卡片持有 highlightKey, 避免重复 GlobalKey。
+    var targetTaken = false;
     return ListView.separated(
       shrinkWrap: true,
       physics: const NeverScrollableScrollPhysics(),
@@ -120,16 +128,21 @@ class NativeCommentList extends StatelessWidget {
       separatorBuilder: (_, __) => const SizedBox(height: 10),
       itemBuilder: (context, index) {
         final comment = comments[index];
+        final isTarget = !targetTaken && _isTarget(comment);
+        if (isTarget) targetTaken = true;
         // 评论翻页时, Flutter 会按 index 复用同一个位置的 State。若不加稳定且
         // 随 pid 变化的 key, 新一页的卡片会残留上一页那条评论的楼中楼状态
         // (展开/已拉取的 pid), 导致"第一页的楼中楼出现在第二页"。
         // 用 pid(辅以 index)作为 key, 让每条评论拥有独立 State。
         return _CommentCard(
-          key: ValueKey('comment-${comment.pid}-$index'),
+          key: isTarget && highlightKey != null
+              ? highlightKey
+              : ValueKey('comment-${comment.pid}-$index'),
           comment: comment,
           index: index,
           tid: tid,
           fid: fid,
+          highlight: isTarget,
           onFloorEdited: onFloorEdited,
           onLinkTap: onLinkTap,
           onReply: () => _handleReply(context, tid, fid, index, comment),
@@ -138,6 +151,9 @@ class NativeCommentList extends StatelessWidget {
       },
     );
   }
+
+  bool _isTarget(_CommentFloor comment) =>
+      highlightPid > 0 && comment.pid == highlightPid;
 
   Future<void> _handleReply(BuildContext context, int tid, int fid, int index,
       _CommentFloor comment) async {
@@ -246,6 +262,8 @@ class _CommentFloor {
 class _CommentCard extends StatefulWidget {
   final _CommentFloor comment;
   final int index, tid, fid;
+  /// 是否是"从通知进入"需要高亮提示的目标楼层。
+  final bool highlight;
   final Future<void> Function(int pid)? onFloorEdited;
   final Future<void> Function() onReply;
   final VoidCallback onProfile;
@@ -253,7 +271,8 @@ class _CommentCard extends StatefulWidget {
   const _CommentCard({
     super.key,
     required this.comment, required this.index, required this.tid, required this.fid,
-    required this.onReply, required this.onProfile, this.onFloorEdited, this.onLinkTap,
+    required this.onReply, required this.onProfile, this.highlight = false,
+    this.onFloorEdited, this.onLinkTap,
   });
   @override
   State<_CommentCard> createState() => _CommentCardState();
@@ -910,9 +929,16 @@ class _CommentCardState extends State<_CommentCard> {
     return Container(
       padding: const EdgeInsets.fromLTRB(14, 13, 14, 10),
       decoration: BoxDecoration(
-        color: colors.surfaceContainerLowest,
+        color: widget.highlight
+            ? colors.primaryContainer.withValues(alpha: .38)
+            : colors.surfaceContainerLowest,
         borderRadius: BorderRadius.circular(18),
-        border: Border.all(color: colors.outlineVariant.withValues(alpha: .55)),
+        border: Border.all(
+          color: widget.highlight
+              ? colors.primary
+              : colors.outlineVariant.withValues(alpha: .55),
+          width: widget.highlight ? 1.6 : 1,
+        ),
       ),
       child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
         Row(children: [

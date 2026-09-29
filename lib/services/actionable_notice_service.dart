@@ -163,6 +163,7 @@ class ActionableNoticeService {
     final fallbackHref = href.isNotEmpty ? href : _allHref(node);
     final tid = _tid(fallbackHref);
     final uid = _uid(fallbackHref);
+    final pid = _pid(fallbackHref);
     final titleNode = node.querySelector('h2,.ntc_title,.nts_title,dt,strong');
     final bodyNode = node.querySelector('.ntc_body,.nts_body,dd,.comiis_notice_txt,.comiis_notice_content') ?? node;
     final body = _clean(bodyNode);
@@ -176,7 +177,7 @@ class ActionableNoticeService {
     final unread = _has(_attr(node, 'class'), 'new') || _has(_attr(node, 'class'), 'unread') || node.querySelector('.new,.unread,[class*="new"],[class*="unread"]') != null;
 
     return InteractiveNotice(
-      notice: NativeNotice(title: displayTitle, subtitle: subtitle, href: fallbackHref, body: body, uid: uid, tid: tid),
+      notice: NativeNotice(title: displayTitle, subtitle: subtitle, href: fallbackHref, body: body, uid: uid, tid: tid, pid: pid),
       actor: actor,
       time: timeText,
       unread: unread,
@@ -270,6 +271,24 @@ class ActionableNoticeService {
     return int.tryParse(m?.group(1) ?? '') ?? 0;
   }
 
+  /// 解析通知链接里的目标楼层 pid。
+  /// "回复了我的帖子" 的通知指向
+  /// `forum.php?mod=redirect&goto=findpost&ptid=129873&pid=2793554`,
+  /// 需要取出 pid 才能在进入帖子后直达该条评论。
+  static int _pid(String href) {
+    final raw = href.trim();
+    if (raw.isEmpty) return 0;
+    final uri = Uri.tryParse(raw);
+    final direct = int.tryParse(uri?.queryParameters['pid'] ?? uri?.queryParameters['postpid'] ?? '');
+    if (direct != null && direct > 0) return direct;
+    String decoded = raw;
+    try {
+      decoded = Uri.decodeFull(raw);
+    } catch (_) {}
+    final m = RegExp(r'(?:[?&]|%3F|%26|&amp;|#)pid(?:=|%3D|_)?(\d+)', caseSensitive: false).firstMatch(decoded);
+    return int.tryParse(m?.group(1) ?? '') ?? 0;
+  }
+
   static int _uid(String href) {
     final raw = href.trim();
     if (raw.isEmpty) return 0;
@@ -321,6 +340,7 @@ class ActionableNoticeService {
       final fallbackHref = href.isNotEmpty ? href : _allHref(node);
       final tid = _tid(fallbackHref);
       final uid = _uid(fallbackHref);
+      final pid = _pid(fallbackHref);
       final title = _clean(node.querySelector('h2,.ntc_title,.nts_title,dt,strong'));
       final body = _clean(node.querySelector('.ntc_body,.nts_body,dd,.comiis_notice_txt,.comiis_notice_content') ?? node);
       final time = _clean(node.querySelector('em,time,.xg1,.xg2,[class*="time"],[class*="date"]'));
@@ -334,7 +354,7 @@ class ActionableNoticeService {
       final subtitle = titleIsTime ? timeText : (timeText.isNotEmpty && !body.contains(timeText) ? '$timeText $body' : body);
       final key = '$fallbackHref|$displayTitle|$body';
       if (!seen.add(key)) continue;
-      result.add(NativeNotice(title: displayTitle, subtitle: subtitle, href: fallbackHref, body: body, uid: uid, tid: tid));
+      result.add(NativeNotice(title: displayTitle, subtitle: subtitle, href: fallbackHref, body: body, uid: uid, tid: tid, pid: pid));
       if (result.length >= 100) break;
     }
     if (result.isEmpty && firstError != null) throw Exception(firstError.toString().replaceFirst('Exception: ', ''));

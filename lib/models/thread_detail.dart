@@ -39,15 +39,15 @@ class ThreadDetail {
   final String currency;
   final String purchaseUrl;
 
-  final int firstPid;
-  final int likeCount;
-  final bool likedByMe;
+  int firstPid;
+  int likeCount;
+  bool likedByMe;
   final int commentPage;
   final int commentTotalPages;
   int authorUid;
 
   /// 从帖子 HTML 里顺便解析出来的附件列表, 零额外网络请求。
-  final List<ForumAttachmentInfo> attachments;
+  List<ForumAttachmentInfo> attachments;
 
   static final Map<int, ThreadDetail> _firstPageCache = <int, ThreadDetail>{};
 
@@ -66,30 +66,40 @@ class ThreadDetail {
     this.price,
     this.currency = '星币',
     this.purchaseUrl = '',
-    this.firstPid = 0,
-    this.likeCount = 0,
-    this.likedByMe = false,
+    int firstPid = 0,
+    int likeCount = 0,
+    bool likedByMe = false,
     this.commentPage = 1,
     this.commentTotalPages = 1,
     int authorUid = 0,
-    this.attachments = const [],
+    List<ForumAttachmentInfo> attachments = const [],
   })  : _bodyHtml = bodyHtml,
         author = author,
         avatar = avatar,
         level = level,
         _commentsHtml = commentsHtml,
         this.authorUid = authorUid,
+        this.firstPid = firstPid,
+        this.likeCount = likeCount,
+        this.likedByMe = likedByMe,
+        this.attachments = attachments,
         _paid = isPaid {
     if (commentPage <= 1) {
       _firstPageCache[tid] = this;
     } else {
       final firstPage = _firstPageCache[tid];
       if (firstPage != null) {
+        // 翻页(含跳楼链接直达第 N 页)时只有回帖, 帖子级信息需要沿用首页缓存,
+        // 否则正文会变空、点赞数归零、首楼 pid 会被误当成评论 pid。
         this.author = firstPage.author;
         this.avatar = firstPage.avatar;
         this.level = firstPage.level;
         _bodyHtml = firstPage._bodyHtml;
         this.authorUid = firstPage.authorUid;
+        this.firstPid = firstPage.firstPid;
+        this.likeCount = firstPage.likeCount;
+        this.likedByMe = firstPage.likedByMe;
+        this.attachments = firstPage.attachments;
       }
     }
   }

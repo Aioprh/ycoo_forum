@@ -13,7 +13,8 @@ class NativeNotice {
   final String body;
   final int uid; // 关联作者 uid（可能为 0）
   final int tid; // 关联帖子 tid（可能为 0）
-  const NativeNotice({required this.title, required this.subtitle, this.href = '', this.body = '', this.uid = 0, this.tid = 0});
+  final int pid; // 关联楼层 pid（可能为 0）
+  const NativeNotice({required this.title, required this.subtitle, this.href = '', this.body = '', this.uid = 0, this.tid = 0, this.pid = 0});
 }
 
 class NativeMessage {

@@ -70,7 +70,7 @@ class _NativeNoticeListPageState extends State<NativeNoticeListPage> {
   Future<void> _open(NativeNotice item) async {
     if (!mounted) return;
     if (item.tid > 0) {
-      await Navigator.push(context, MaterialPageRoute(builder: (_) => DetailPage(tid: item.tid, title: forumText(item.title))));
+      await Navigator.push(context, MaterialPageRoute(builder: (_) => DetailPage(tid: item.tid, title: forumText(item.title), pid: item.pid)));
       return;
     }
 
