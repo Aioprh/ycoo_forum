@@ -564,6 +564,50 @@ class AuthService {
     }
   }
 
+  /// 删除自己的一条普通楼层回帖（Discuz `forum.php?mod=post&action=edit`）。
+  ///
+  /// 站点移动模板没有单独的删除地址：删除就是「把编辑表单里隐藏的 delete 置 1 再提交」，
+  /// 模板自身的 JS `comiis_delthread()` 也只是改了该隐藏域后点击保存按钮。
+  /// 因此这里先取真实编辑表单，原样回填并带上 delete=1 提交。
+  /// 成功返回 null，失败返回可读错误。
+  Future<String?> deletePostReply(int tid, int fid, int pid) async {
+    final client = await _http();
+    try {
+      final formUrl = Uri.parse('${base}forum.php?mod=post&action=edit&fid=$fid&tid=$tid&pid=$pid&page=1&mobile=2');
+      final formResp = await client.get(formUrl, headers: _headers()).timeout(NetClient.timeout);
+      final form = _parseReplyfloorForm(NetClient.decode(formResp.bodyBytes));
+      if (form.action == null) return '该回帖不存在或已删除';
+      final payload = <String, String>{...form.fields};
+      payload[form.textareaName ?? 'message'] = form.initial ?? '';
+      payload['fid'] = '$fid';
+      payload['tid'] = '$tid';
+      payload['pid'] = '$pid';
+      payload['editsubmit'] = 'yes';
+      payload['delete'] = '1';
+      final abs = Uri.parse(base).resolve(form.action!);
+      final submitUrl = abs.replace(queryParameters: {...abs.queryParameters, 'mobile': '2'});
+      final resp = await client.post(submitUrl, headers: {..._headers(referer: formUrl.toString()), 'Content-Type': 'application/x-www-form-urlencoded; charset=UTF-8', 'Origin': base, 'X-Requested-With': 'XMLHttpRequest'}, body: payload).timeout(NetClient.timeout);
+      final body = NetClient.decode(resp.bodyBytes);
+      // 服务端给了提示文案(成功/无权限等)时以文案为准：此时编辑页也可能已经取不到表单，
+      // 若直接按“没有表单”判定会把「无权限」误判成删除成功。
+      final message = _mobileMessage(body);
+      if (message != null) return message.contains('成功') ? null : message;
+      // 无提示(通常是被重定向回主题页): 再确认编辑页是否已经取不到表单。
+      final check = await client.get(formUrl, headers: _headers()).timeout(NetClient.timeout);
+      if (_parseReplyfloorForm(NetClient.decode(check.bodyBytes)).action == null) return null;
+      return '删除失败,请重试';
+    } catch (_) {
+      return '删除请求失败,请稍后重试';
+    }
+  }
+
+  /// Comiis 移动模板 showmessage 的提示文案(成功/失败共用同一套结构)。
+  String? _mobileMessage(String html) {
+    final match = RegExp(r'''comiis_password_top[\s\S]{0,400}?<p[^>]*>([^<]+)</p>''').firstMatch(html);
+    final text = match?.group(1)?.trim();
+    return (text == null || text.isEmpty) ? null : text;
+  }
+
   /// 楼中楼编辑/删除操作失败时的可读错误提取。
   String _floorError(String body, String fallback) {
     final needLogin = RegExp(r'''loginform|您需要(?:先)?登录才能|未登录|登录后才能''').hasMatch(body);

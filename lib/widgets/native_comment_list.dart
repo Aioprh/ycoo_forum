@@ -680,10 +680,35 @@ class _CommentCardState extends State<_CommentCard> {
 
   Future<void> _deleteNested(_FloorReply reply) async {
     if (!mounted) return;
+    if (!await _confirmDelete('删除这条回复？')) return;
+    if (!mounted) return;
+    final error = await AuthService.instance.deleteFloorReply(
+      widget.tid, reply.parentPid, reply.pid,
+    );
+    if (!mounted) return;
+    ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text(error ?? '已删除')));
+    if (error == null) await _loadReplies(force: true);
+  }
+
+  /// 删除自己这条普通楼层回帖。
+  Future<void> _deleteOwnFloor() async {
+    if (_pid <= 0) _pid = widget.comment.pid;
+    if (_pid <= 0) return;
+    if (!mounted) return;
+    if (!await _confirmDelete('删除这条回帖？')) return;
+    if (!mounted) return;
+    final error = await AuthService.instance.deletePostReply(widget.tid, widget.fid, _pid);
+    if (!mounted) return;
+    ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text(error ?? '已删除')));
+    if (error == null && widget.onFloorEdited != null) await widget.onFloorEdited!(_pid);
+  }
+
+  /// 删除前的二次确认弹窗。
+  Future<bool> _confirmDelete(String title) async {
     final confirmed = await showDialog<bool>(
       context: context,
       builder: (dialogContext) => AlertDialog(
-        title: const Text('删除这条回复？'),
+        title: Text(title),
         content: const Text('删除后不可恢复。'),
         actions: [
           TextButton(onPressed: () => Navigator.pop(dialogContext, false), child: const Text('取消')),
@@ -695,13 +720,7 @@ class _CommentCardState extends State<_CommentCard> {
         ],
       ),
     );
-    if (confirmed != true || !mounted) return;
-    final error = await AuthService.instance.deleteFloorReply(
-      widget.tid, reply.parentPid, reply.pid,
-    );
-    if (!mounted) return;
-    ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text(error ?? '已删除')));
-    if (error == null) await _loadReplies(force: true);
+    return confirmed == true;
   }
 
   /// 编辑自己这条普通楼层回帖正文。
@@ -850,7 +869,10 @@ class _CommentCardState extends State<_CommentCard> {
                 maxLines: 1, overflow: TextOverflow.ellipsis, style: const TextStyle(fontSize: 12, color: Colors.grey)),
           ),
           const Divider(height: 1),
-          if (mine) _menuTile(sheetContext, icon: Icons.edit_outlined, label: '编辑', onTap: _editOwnFloor),
+          if (mine) ...[
+            _menuTile(sheetContext, icon: Icons.edit_outlined, label: '编辑', onTap: _editOwnFloor),
+            _menuTile(sheetContext, icon: Icons.delete_outline, label: '删除', onTap: _deleteOwnFloor),
+          ],
           _menuTile(sheetContext, icon: Icons.outlined_flag, label: '举报',
               onTap: () => _openWebOp('misc.php?mod=report&rtype=post&rid=$pid&tid=${widget.tid}&fid=${widget.fid}&mobile=2', '举报')),
           _menuTile(sheetContext, icon: Icons.card_giftcard_outlined, label: '道具',
