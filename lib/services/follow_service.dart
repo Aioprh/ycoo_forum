@@ -17,7 +17,11 @@ class FollowService {
     if (cookie == null || cookie.isEmpty) return '请先登录论坛';
 
     final client = await NetClient.instance.client;
-    final profileUrl = '${_base}home.php?mod=space&uid=$uid&do=profile&mobile=2&_ycoo_follow=${DateTime.now().millisecondsSinceEpoch}';
+    // 必须取桌面版个人资料页: Comiis 移动模板的关注按钮是 JS 驱动的,
+    // 页面里既没有关注链接也没有 formhash, 所以旧实现永远找不到操作入口。
+    // 桌面模板会直接渲染出可用的关注地址:
+    // home.php?mod=spacecp&ac=follow&op=add&hash={FORMHASH}&fuid={uid}
+    final profileUrl = '${_base}home.php?mod=space&uid=$uid&do=profile&_ycoo_follow=${DateTime.now().millisecondsSinceEpoch}';
 
     try {
       final pageResp = await NetClient.retry(() => client.get(
@@ -28,7 +32,7 @@ class FollowService {
               'Accept-Language': 'zh-CN,zh;q=0.9',
               'Cache-Control': 'no-cache, no-store',
               'Pragma': 'no-cache',
-              'Referer': '${_base}home.php?mod=space&uid=$uid&mobile=2',
+              'Referer': '${_base}home.php?mod=space&uid=$uid&do=profile',
               'Cookie': cookie,
             },
           ).timeout(const Duration(seconds: 20)));
@@ -38,7 +42,7 @@ class FollowService {
       if (_looksLikeLogin(html)) return '登录态已失效，请重新登录论坛';
 
       // Discuz 的标准关注入口会把真正可用的 hash/formhash 直接渲染进 href：
-      // home.php?mod=spacecp&ac=follow&op=add&hash={FORMHASH}&fuid=xxx&mobile=2
+      // home.php?mod=spacecp&ac=follow&op=add&hash={FORMHASH}&fuid=xxx
       // 这里直接复用页面生成的完整操作 URL，不再自行猜测 token 放在哪里。
       final action = _findFollowAction(html, uid, follow);
       if (action == null) {
@@ -62,6 +66,8 @@ class FollowService {
       if (_success(body, follow)) return null;
       if (_looksLikeLogin(body)) return '登录态已失效，请重新登录论坛';
       if (_tokenError(body)) return '操作令牌已失效，请刷新后重试';
+      final message = _serverMessage(body);
+      if (message != null) return '${follow ? '关注' : '取消关注'}失败：$message';
       return follow ? '关注失败，请稍后重试' : '取消关注失败，请稍后重试';
     } catch (_) {
       return '操作失败，请检查网络后重试';
@@ -130,14 +136,31 @@ class FollowService {
   }
 
   static String _globalHash(dom.Document doc, String html) {
-    // 优先从 <input name="formhash"> / <input name="hash"> 取, 回退到页面脚本里常见的 hash 值。
+    // 优先从 <input name="formhash"> / <input name="hash"> 取。
     for (final input in doc.querySelectorAll('input[name="formhash"], input[name="hash"]')) {
       final v = input.attributes['value']?.trim() ?? '';
       if (v.isNotEmpty) return v;
     }
+    final shared = NetClient.extractFormHash(html);
+    if (shared != null && shared.isNotEmpty) return shared;
+    // Comiis 模板不在页面里放 hidden input, 令牌只以 URL 参数形式出现在关注链接中。
+    final fromUrl = RegExp(r'[?&]hash=([A-Za-z0-9_-]{6,128})').firstMatch(html)?.group(1);
+    if (fromUrl != null && fromUrl.isNotEmpty) return fromUrl;
     final hashRe = RegExp('(?:formhash|hash)\\s*[=:]\\s*["\']([a-zA-Z0-9]{6,})["\']', caseSensitive: false);
     final m = hashRe.firstMatch(html);
     return m?.group(1) ?? '';
+  }
+
+  /// 从 Discuz 的 showError/showDialog/succeedhandle_* 载荷里取出服务端提示,
+  /// 让失败原因可以直接展示给用户, 而不是笼统的"请稍后重试"。
+  static String? _serverMessage(String body) {
+    final m = RegExp(
+      r"""(?:showError|showDialog|succeedhandle_\w*)\(\s*(?:'[^']*'\s*,\s*)?'([^']{1,120})'""",
+    ).firstMatch(body);
+    if (m == null) return null;
+    final text = (parser.parseFragment(m.group(1)!).text ?? '').trim();
+    if (text.isEmpty || text.length > 60) return null;
+    return text;
   }
 
   static bool _success(String body, bool follow) {
