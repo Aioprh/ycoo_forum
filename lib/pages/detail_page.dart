@@ -10,6 +10,7 @@ import '../services/site_config.dart';
 import '../services/api_service.dart';
 import '../services/auth_service.dart';
 import '../services/attachment_download_service.dart';
+import '../services/browse_history_service.dart';
 import '../services/thread_interaction_service.dart';
 import '../widgets/native_comment_list.dart';
 import '../widgets/native_image_viewer.dart';
@@ -98,6 +99,8 @@ class _DetailPageState extends State<DetailPage> {
         _bodyImages = postImageUrls(d.bodyHtml);
       });
       ok = true;
+      // 详情加载成功即记入本机浏览历史(标题已由 ApiService 去掉"-版块"后缀)。
+      unawaited(BrowseHistoryService.instance.record(tid: d.tid, title: d.title, boardName: d.boardName));
     } catch (e) {
       if (mounted) {
         setState(() {

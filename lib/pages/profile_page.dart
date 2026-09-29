@@ -4,6 +4,7 @@ import '../services/auth_service.dart';
 import '../services/checkin_service.dart';
 import '../services/profile_identity_service.dart';
 import '../services/theme_mode_controller.dart';
+import 'browse_history_page.dart';
 import 'login_page.dart';
 import 'member_feature_page.dart';
 import 'native_notice_hub_page.dart';
@@ -479,6 +480,7 @@ class _ProfilePageState extends State<ProfilePage> {
         childAspectRatio: 1.9,
         children: [
           _featureTile(icon: Icons.search, title: '搜索', subtitle: '帖子、用户、版块', onTap: () => Navigator.of(context).push(MaterialPageRoute(builder: (_) => const SearchPage()))),
+          _featureTile(icon: Icons.history_rounded, title: '浏览历史', subtitle: '看过的帖子记录', onTap: () => Navigator.of(context).push(MaterialPageRoute(builder: (_) => const BrowseHistoryPage()))),
           _featureTile(icon: Icons.public, title: '电脑版论坛', subtitle: '完整论坛入口', onTap: () => _openNativeSite('', '源论坛')),
         ],
       ),
