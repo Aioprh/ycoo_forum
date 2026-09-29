@@ -41,6 +41,25 @@ class SiteConfig {
   static const String cdnHost = 'cdn';
   static const String apiHost = 'api';
 
+  /// 与主站指向同一论坛的别名域名(同一套数据, 仅域名不同)。
+  /// 站点正文里的站内链接会按访问域名改写, 例如出现 `pc.sysbbs.com`,
+  /// 若只认 [base] 会被误判为外链, 改用浏览器打开而不是原生页面。
+  static const Set<String> aliasHosts = {'sysbbs.com'};
+
+  /// 判断主机名是否属于本站(忽略大小写与 `www.` 前缀, 并兼容 [aliasHosts])。
+  static bool isForumHost(String host) {
+    final h = _normalizeHost(host);
+    if (h.isEmpty) return false;
+    final main = _normalizeHost(Uri.parse(base).host);
+    if (h == main || h.endsWith('.$main')) return true;
+    return aliasHosts.any((alias) => h == alias || h.endsWith('.$alias'));
+  }
+
+  static String _normalizeHost(String host) {
+    final h = host.trim().toLowerCase();
+    return h.startsWith('www.') ? h.substring(4) : h;
+  }
+
   /// 把相对路径 / 网址统一解析为基于 [host] 的绝对地址。
   static String _resolveWith(String host, String value) {
     final v = value.trim();

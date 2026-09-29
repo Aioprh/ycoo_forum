@@ -602,11 +602,9 @@ class _DetailPageState extends State<DetailPage> {
       return;
     }
 
-    // 正文里的站内链接常写作 https://ycoo.net/...(不带 www), 与主站
-    // https://www.ycoo.net/ 是同一个论坛, 比较主机名时忽略 www. 前缀。
-    final host = _normalizeHost(uri.host);
-    final baseHost = _normalizeHost(Uri.parse(SiteConfig.base).host);
-    final sameForum = host == baseHost || host.endsWith('.$baseHost');
+    // 正文里的站内链接常写作 https://ycoo.net/...(不带 www) 或别名域名
+    // https://pc.sysbbs.com/..., 它们与主站是同一个论坛, 需按站内链接处理。
+    final sameForum = SiteConfig.isForumHost(uri.host);
 
     // 帖子正文里的论坛主题链接：直接进入原生帖子详情，而不是再套一层网页。
     final tid = sameForum ? _threadIdOf(uri) : null;
@@ -628,15 +626,6 @@ class _DetailPageState extends State<DetailPage> {
         builder: (_) => WebViewPage(url: uri.toString(), title: '网页'),
       ),
     );
-  }
-
-  /// 主机名归一化: 忽略大小写与 `www.` 前缀。
-  /// 站点正文里常把站内链接写成 `https://ycoo.net/...`, 与主站
-  /// `https://www.ycoo.net/` 实为同一论坛, 直接比较会判定为外链。
-  static String _normalizeHost(String host) {
-    var h = host.trim().toLowerCase();
-    if (h.startsWith('www.')) h = h.substring(4);
-    return h;
   }
 
   /// 从同站链接里解析所属主题 tid, 覆盖 Discuz 的几种帖子地址写法:
