@@ -119,7 +119,6 @@ class FollowService {
               'Accept-Language': 'zh-CN,zh;q=0.9',
               'Referer': profileUrl,
               'Cookie': cookie,
-              'X-Requested-With': 'XMLHttpRequest',
             },
           ).timeout(const Duration(seconds: 20)));
 
@@ -127,6 +126,30 @@ class FollowService {
       if (_success(body, follow)) return null;
       if (_looksLikeLogin(body)) return '登录态已失效，请重新登录论坛';
       if (_tokenError(body)) return '操作令牌已失效，请刷新后重试';
+
+      // 部分 Comiis 模板执行成功后返回普通 HTML/跳转页，没有 succeed/成功 文案。
+      // 重新读取个人资料页，用服务端真实渲染出的 add/del 操作判断关系是否已改变。
+      final verifyUrl = '${_base}home.php?mod=space&uid=$uid&do=profile&mobile=2&_ycoo_follow_verify=${DateTime.now().millisecondsSinceEpoch}';
+      final verifyResp = await NetClient.retry(() => client.get(
+            Uri.parse(verifyUrl),
+            headers: {
+              'User-Agent': NetClient.ua,
+              'Accept': 'text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8',
+              'Accept-Language': 'zh-CN,zh;q=0.9',
+              'Cache-Control': 'no-cache, no-store',
+              'Pragma': 'no-cache',
+              'Referer': profileUrl,
+              'Cookie': cookie,
+            },
+          ).timeout(const Duration(seconds: 20)));
+      if (verifyResp.statusCode == 200) {
+        final verifyHtml = NetClient.decode(verifyResp.bodyBytes);
+        if (_looksLikeLogin(verifyHtml)) return '登录态已失效，请重新登录论坛';
+        // follow=true 成功后应出现 del；follow=false 成功后应出现 add。
+        final actualAction = _findFollowAction(verifyHtml, uid, !follow);
+        if (actualAction != null) return null;
+      }
+
       final message = _serverMessage(body);
       if (message != null) return '${follow ? '关注' : '取消关注'}失败：$message';
       return follow ? '关注失败，请稍后重试' : '取消关注失败，请稍后重试';
@@ -244,7 +267,7 @@ class FollowService {
     final lower = html.toLowerCase();
     return lower.contains('name="loginfield"') ||
         lower.contains('id="ls_username"') ||
-        (html.contains('登录') && lower.contains('password'));
+        lower.contains('member.php?mod=logging&action=login');
   }
 
   static String _absolute(String value) {
