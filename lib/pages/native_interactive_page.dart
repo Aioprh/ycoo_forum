@@ -164,7 +164,7 @@ class _NativeInteractiveTypePageState extends State<NativeInteractiveTypePage> {
     final uid = item.notice.uid > 0 ? item.notice.uid : _uid(uri);
     if (!mounted) return;
     if (tid > 0) {
-      await Navigator.push(context, MaterialPageRoute(builder: (_) => DetailPage(tid: tid, title: forumText(item.notice.title))));
+      await Navigator.push(context, MaterialPageRoute(builder: (_) => DetailPage(tid: tid, title: forumText(item.notice.title), pid: item.notice.pid)));
       return;
     }
     if (uid > 0) {

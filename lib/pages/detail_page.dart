@@ -28,7 +28,9 @@ import 'webview_page.dart';
 class DetailPage extends StatefulWidget {
   final int tid;
   final String title;
-  const DetailPage({super.key, required this.tid, required this.title});
+  /// 目标楼层 pid: >0 时进入后自动翻到该评论所在页并定位高亮。
+  final int pid;
+  const DetailPage({super.key, required this.tid, required this.title, this.pid = 0});
   @override
   State<DetailPage> createState() => _DetailPageState();
 }
@@ -52,6 +54,12 @@ class _DetailPageState extends State<DetailPage> {
   bool _authorOnly = false;
   String? _error;
   int _likeCount = 0;
+  /// 外层列表滚动控制器: 从通知进入时用于滚动到目标评论。
+  final ScrollController _scroll = ScrollController();
+  /// 目标评论卡片的上下文, 供 Scrollable.ensureVisible 定位。
+  final GlobalKey _targetCommentKey = GlobalKey();
+  /// 当前需要高亮的评论 pid(0 表示无)。
+  int _highlightPid = 0;
 
   @override
   void initState() {
@@ -63,6 +71,7 @@ class _DetailPageState extends State<DetailPage> {
   void dispose() {
     _replyCtrl.dispose();
     _replyFocus.dispose();
+    _scroll.dispose();
     super.dispose();
   }
 
@@ -71,6 +80,49 @@ class _DetailPageState extends State<DetailPage> {
     await AuthService.instance.checkLoggedIn();
     if (mounted) setState(() => _loggedIn = AuthService.instance.isLoggedIn);
     await _fetch();
+    // 来自"回复了我的帖子"等通知时携带 pid: 再取一次目标楼层所在页并定位。
+    if (widget.pid > 0) await _jumpToComment(widget.pid);
+  }
+
+  /// 定位到指定楼层: 先按跳楼链接取到该楼层所在的评论页,
+  /// 再滚动到对应评论并高亮。
+  Future<void> _jumpToComment(int pid) async {
+    if (_detail == null) return;
+    try {
+      final target = await ApiService.instance.fetchThreadDetail(widget.tid, pid: pid);
+      if (!mounted) return;
+      setState(() {
+        _detail = target;
+        _commentPage = target.commentPage > 0 ? target.commentPage : _commentPage;
+        _likeCount = target.likeCount;
+        _liked = target.likedByMe;
+      });
+    } catch (_) {
+      // 定位失败时仍停留在已加载的帖子页, 不影响正常浏览。
+      return;
+    }
+    if (!mounted) return;
+    await _focusTargetComment(pid);
+  }
+
+  Future<void> _focusTargetComment(int pid) async {
+    setState(() => _highlightPid = pid);
+    await WidgetsBinding.instance.endOfFrame;
+    if (!mounted) return;
+    // 外层列表懒构建, 评论区块可能在屏幕外; 先滚到底部确保它被构建。
+    if (_scroll.hasClients) {
+      _scroll.jumpTo(_scroll.position.maxScrollExtent);
+      await WidgetsBinding.instance.endOfFrame;
+    }
+    if (!mounted) return;
+    final ctx = _targetCommentKey.currentContext;
+    if (ctx == null) return;
+    await Scrollable.ensureVisible(
+      ctx,
+      alignment: 0.05,
+      duration: const Duration(milliseconds: 320),
+      curve: Curves.easeOutCubic,
+    );
   }
 
   /// 拉取帖子详情。返回主内容是否加载成功(互动状态的刷新不计入)。
@@ -474,6 +526,7 @@ class _DetailPageState extends State<DetailPage> {
     return RefreshIndicator(
       onRefresh: () => _fetch(),
       child: ListView(
+        controller: _scroll,
         physics: const AlwaysScrollableScrollPhysics(),
         padding: const EdgeInsets.fromLTRB(12, 4, 12, 28),
         children: [
@@ -612,11 +665,16 @@ class _DetailPageState extends State<DetailPage> {
     // 帖子正文里的论坛主题链接：直接进入原生帖子详情，而不是再套一层网页。
     final tid = sameForum ? _threadIdOf(uri) : null;
     if (tid != null && tid > 0) {
-      if (tid == _detail?.tid) return;
+      final pid = sameForum ? _postIdOf(uri) : 0;
+      if (tid == _detail?.tid) {
+        // 指向本主题内某楼层的链接: 直接定位到该评论。
+        if (pid > 0) await _jumpToComment(pid);
+        return;
+      }
       if (!mounted) return;
       Navigator.of(context).push(
         MaterialPageRoute(
-          builder: (_) => DetailPage(tid: tid, title: '帖子详情'),
+          builder: (_) => DetailPage(tid: tid, title: '帖子详情', pid: pid),
         ),
       );
       return;
@@ -658,6 +716,20 @@ class _DetailPageState extends State<DetailPage> {
       if (id != null && id > 0) return id;
     }
     return null;
+  }
+
+  /// 解析链接里的目标楼层 pid, 覆盖 `pid=123`、`#pid123`、`#pid_123` 等写法。
+  static int _postIdOf(Uri uri) {
+    final direct = int.tryParse(uri.queryParameters['pid'] ?? '');
+    if (direct != null && direct > 0) return direct;
+    String raw;
+    try {
+      raw = Uri.decodeFull(uri.toString());
+    } catch (_) {
+      raw = uri.toString();
+    }
+    final m = RegExp(r'(?:[?&]|%3F|%26|#)pid(?:=|%3D|_)?(\d+)', caseSensitive: false).firstMatch(raw);
+    return int.tryParse(m?.group(1) ?? '') ?? 0;
   }
 
   /// 判断 URL 是否为可预览的正文图片。
@@ -1115,6 +1187,7 @@ class _DetailPageState extends State<DetailPage> {
           _commentPage = page;
           _likeCount = nd.likeCount;
           _liked = nd.likedByMe;
+          _highlightPid = 0;
         });
       }
     } catch (e) {
@@ -1135,6 +1208,7 @@ class _DetailPageState extends State<DetailPage> {
     setState(() {
       _authorOnly = target;
       _commentPage = 1;
+      _highlightPid = 0;
     });
     await _fetch();
   }
@@ -1192,6 +1266,8 @@ class _DetailPageState extends State<DetailPage> {
               fid: d.fid,
               onLinkTap: _handlePostLink,
               onFloorEdited: (_) => _reloadCommentsPage(),
+              highlightPid: _highlightPid,
+              highlightKey: _targetCommentKey,
             ),
             _commentPager(context, d),
           ],

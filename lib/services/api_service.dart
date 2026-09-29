@@ -222,6 +222,11 @@ class ApiService {
 
   static String detailUrl(int tid) => '$_base' 'thread-$tid-1-1.html';
 
+  /// Discuz 的跳楼链接: 服务端会 301 到该楼层所在的 viewthread 页,
+  /// 因此直接请求它就能拿到正确页面的 HTML(并得到所在页码)。
+  static String postRedirectUrl(int tid, int pid) =>
+      '$_base' 'forum.php?mod=redirect&goto=findpost&ptid=$tid&pid=$pid';
+
   static String commentListUrl(int tid, int page, {int? authorId}) {
     // “只看楼主” 时原站的过滤链接是 viewthread 查询形式, 带 authorid。
     if (authorId != null && authorId > 0) {
@@ -230,8 +235,12 @@ class ApiService {
     return '$_base' 'thread-$tid-$page-1.html';
   }
 
-  Future<ThreadDetail> fetchThreadDetail(int tid, {int page = 1, int? authorId}) async {
-    final html = await _get(commentListUrl(tid, page, authorId: authorId), query: {'mobile': '2'});
+  Future<ThreadDetail> fetchThreadDetail(int tid, {int page = 1, int? authorId, int? pid}) async {
+    // 带 pid 时通过跳楼链接取到目标楼层所在的页面; 其余情况按页码请求。
+    final url = (pid != null && pid > 0)
+        ? postRedirectUrl(tid, pid)
+        : commentListUrl(tid, page, authorId: authorId);
+    final html = await _get(url, query: {'mobile': '2'});
     final doc = parser.parse(html);
     // 由精确到宽泛依次尝试板块链接。
     // 宽泛的 a[href*="forum-"] 会先命中页面顶部的面包屑导航链
@@ -259,12 +268,16 @@ class ApiService {
     if (boardName.isNotEmpty) title = title.replaceAll(' - $boardName', '').replaceAll('-$boardName', '');
     title = title.replaceAll(' - 源论坛', '').replaceAll('- 源论坛', '').trim();
 
+    // 评论分页信息: 这里的当前页码才是服务端实际返回的页码。
+    // 跳楼链接(findpost)会重定向到该楼层所在页, 不能再用入参 page 判断。
+    final pageInfo = _parseCommentPage(doc, page);
+    final currentPage = pageInfo.$1;
     final paid = _parsePaidState(doc);
     final posts = _collectPosts(doc);
     // 第 1 页 posts[0] 是楼主正文; 翻页(>1)的页面里没有楼主, 全部是回帖, 不能再次 skip。
-    final hasAuthor = page <= 1;
+    final hasAuthor = currentPage <= 1;
     String body = '';
-    if (posts.isNotEmpty && page <= 1) {
+    if (posts.isNotEmpty && currentPage <= 1) {
       // 正文只取 p-body 内的真实内容, 过滤掉 post-hd(楼主/用户名/Lv) 和 p-time 等头部信息
       final fragment = parser.parseFragment(posts.first);
       final pBody = fragment.querySelector('.p-body');
@@ -286,8 +299,6 @@ class ApiService {
     final comments = commentFloors.isEmpty
         ? ''
         : '<div class="comments-section"><div class="comments-title">评论 / 回复</div>${commentFloors.join()}</div>';
-    // 解析评论分页信息
-    final pageInfo = _parseCommentPage(doc, page);
     final firstPost = _firstPostNode(doc);
     final myUid = AuthService.instance.uid ?? 0;
     final firstPid = _firstInt(RegExp(r'id="pid(\d+)"'), html) ?? 0;
