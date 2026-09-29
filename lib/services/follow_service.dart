@@ -259,8 +259,15 @@ class FollowService {
 
   static bool _tokenError(String body) {
     final lower = body.toLowerCase();
-    return lower.contains('formhash') ||
-        (lower.contains('hash') && (lower.contains('错误') || lower.contains('invalid') || lower.contains('失效')));
+    // 不能只要响应里出现 formhash 就判定失败：Discuz 普通 HTML 页面
+    // 本身经常包含 formhash。只有明确出现验证失败/非法/失效等错误时才算令牌错误。
+    final explicitError = lower.contains('错误') ||
+        lower.contains('invalid') ||
+        lower.contains('失效') ||
+        lower.contains('非法请求') ||
+        lower.contains('验证失败') ||
+        lower.contains('token');
+    return (lower.contains('formhash') || lower.contains('hash')) && explicitError;
   }
 
   static bool _looksLikeLogin(String html) {
