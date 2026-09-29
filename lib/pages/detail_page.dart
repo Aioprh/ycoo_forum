@@ -1187,6 +1187,7 @@ class _DetailPageState extends State<DetailPage> {
             NativeCommentList(
               html: d.commentsHtml,
               fid: d.fid,
+              onLinkTap: _handlePostLink,
               onFloorEdited: (_) => _reloadCommentsPage(),
             ),
             _commentPager(context, d),

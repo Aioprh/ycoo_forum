@@ -22,6 +22,9 @@ class NativeCommentList extends StatelessWidget {
   final Future<void> Function(int pid, String author)? onReplySent;
   /// 编辑某条普通楼层回帖成功后的回调，用于让外层刷新该楼层正文。
   final Future<void> Function(int pid)? onFloorEdited;
+  /// 评论/楼中楼正文里的链接点击回调。不传时会退回外部浏览器打开,
+  /// 因此调用方应与正文一样传入站内链接处理器。
+  final ValueChanged<String>? onLinkTap;
 
   const NativeCommentList({
     super.key,
@@ -30,6 +33,7 @@ class NativeCommentList extends StatelessWidget {
     this.onReply,
     this.onReplySent,
     this.onFloorEdited,
+    this.onLinkTap,
   });
 
   List<_CommentFloor> _parse() {
@@ -127,6 +131,7 @@ class NativeCommentList extends StatelessWidget {
           tid: tid,
           fid: fid,
           onFloorEdited: onFloorEdited,
+          onLinkTap: onLinkTap,
           onReply: () => _handleReply(context, tid, fid, index, comment),
           onProfile: () => _openProfile(context, comment),
         );
@@ -244,10 +249,11 @@ class _CommentCard extends StatefulWidget {
   final Future<void> Function(int pid)? onFloorEdited;
   final Future<void> Function() onReply;
   final VoidCallback onProfile;
+  final ValueChanged<String>? onLinkTap;
   const _CommentCard({
     super.key,
     required this.comment, required this.index, required this.tid, required this.fid,
-    required this.onReply, required this.onProfile, this.onFloorEdited,
+    required this.onReply, required this.onProfile, this.onFloorEdited, this.onLinkTap,
   });
   @override
   State<_CommentCard> createState() => _CommentCardState();
@@ -923,7 +929,7 @@ class _CommentCardState extends State<_CommentCard> {
         const SizedBox(height: 11),
         Container(height: 1, color: colors.outlineVariant.withValues(alpha: .35)),
         const SizedBox(height: 10),
-        NativePostContent(html: comment.bodyHtml),
+        NativePostContent(html: comment.bodyHtml, onLinkTap: widget.onLinkTap),
         if (showReplyToggle) ...[
           Align(alignment: Alignment.centerLeft, child: TextButton.icon(
             onPressed: _toggleReplies,
@@ -945,6 +951,7 @@ class _CommentCardState extends State<_CommentCard> {
                     onEdit: () => _editNested(reply),
                     onDelete: () => _deleteNested(reply),
                     onReport: () => _reportFloorReply(reply),
+                    onLinkTap: widget.onLinkTap,
                   ),
               ])),
         ],
@@ -995,8 +1002,9 @@ class _FloorReplyTile extends StatelessWidget {
   final VoidCallback onEdit;
   final VoidCallback onDelete;
   final VoidCallback onReport;
+  final ValueChanged<String>? onLinkTap;
   const _FloorReplyTile({
-    required this.reply, required this.onReply, required this.onEdit, required this.onDelete, required this.onReport,
+    required this.reply, required this.onReply, required this.onEdit, required this.onDelete, required this.onReport, this.onLinkTap,
   });
 
   bool get _isMine => reply.uid > 0 && reply.uid == AuthService.instance.uid;
@@ -1019,9 +1027,9 @@ class _FloorReplyTile extends StatelessWidget {
         ]),
         if (textHtml.trim().isNotEmpty) ...[
           const SizedBox(height: 4),
-          NativePostContent(html: textHtml),
+          NativePostContent(html: textHtml, onLinkTap: onLinkTap),
         ],
-        for (final image in images) NativePostContent(html: image),
+        for (final image in images) NativePostContent(html: image, onLinkTap: onLinkTap),
         Align(alignment: Alignment.centerRight, child: Row(
           mainAxisSize: MainAxisSize.min,
           children: [
