@@ -44,9 +44,70 @@ class FollowService {
       // Discuz 的标准关注入口会把真正可用的 hash/formhash 直接渲染进 href：
       // home.php?mod=spacecp&ac=follow&op=add&hash={FORMHASH}&fuid=xxx
       // 这里直接复用页面生成的完整操作 URL，不再自行猜测 token 放在哪里。
-      final action = _findFollowAction(html, uid, follow);
+      var action = _findFollowAction(html, uid, follow);
+
+      // 移动版 Comiis 个人资料页可能只有“关注”按钮，没有实际 href。
+      // 这时从 Discuz 的 spacecp 页面取得当前会话 formhash，再构造原生关注接口。
       if (action == null) {
-        return '个人资料页未找到有效的关注操作，请刷新后重试';
+        final followPagePath = 'home.php?mod=spacecp&ac=follow&uid=' + uid.toString() + '&mobile=2';
+        final followPageResp = await NetClient.retry(() => client.get(
+              Uri.parse(_base + followPagePath),
+              headers: {
+                'User-Agent': NetClient.ua,
+                'Accept': 'text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8',
+                'Accept-Language': 'zh-CN,zh;q=0.9',
+                'Cache-Control': 'no-cache, no-store',
+                'Pragma': 'no-cache',
+                'Referer': profileUrl,
+                'Cookie': cookie,
+              },
+            ).timeout(const Duration(seconds: 20)));
+
+        if (followPageResp.statusCode == 200) {
+          final followHtml = NetClient.decode(followPageResp.bodyBytes);
+          if (_looksLikeLogin(followHtml)) return '登录态已失效，请重新登录论坛';
+          action = _findFollowAction(followHtml, uid, follow);
+          if (action == null) {
+            final hash = _globalHash(parser.parse(followHtml), followHtml);
+            if (hash.isNotEmpty) {
+              final op = follow ? 'add' : 'del';
+              action = 'home.php?mod=spacecp&ac=follow&op=' + op +
+                  '&hash=' + Uri.encodeQueryComponent(hash) +
+                  '&fuid=' + uid.toString() + '&mobile=2';
+            }
+          }
+        }
+      }
+
+      // 兼容没有输出操作链接、但标准已登录页仍有 formhash 的模板。
+      if (action == null) {
+        final tokenPath = 'home.php?mod=spacecp&mobile=2';
+        final tokenResp = await NetClient.retry(() => client.get(
+              Uri.parse(_base + tokenPath),
+              headers: {
+                'User-Agent': NetClient.ua,
+                'Accept': 'text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8',
+                'Accept-Language': 'zh-CN,zh;q=0.9',
+                'Referer': profileUrl,
+                'Cookie': cookie,
+              },
+            ).timeout(const Duration(seconds: 20)));
+
+        if (tokenResp.statusCode == 200) {
+          final tokenHtml = NetClient.decode(tokenResp.bodyBytes);
+          if (_looksLikeLogin(tokenHtml)) return '登录态已失效，请重新登录论坛';
+          final hash = _globalHash(parser.parse(tokenHtml), tokenHtml);
+          if (hash.isNotEmpty) {
+            final op = follow ? 'add' : 'del';
+            action = 'home.php?mod=spacecp&ac=follow&op=' + op +
+                '&hash=' + Uri.encodeQueryComponent(hash) +
+                '&fuid=' + uid.toString() + '&mobile=2';
+          }
+        }
+      }
+
+      if (action == null) {
+        return '未取得关注操作令牌，请刷新后重试';
       }
 
       final uri = Uri.parse(_absolute(action));
