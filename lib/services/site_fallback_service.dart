@@ -93,26 +93,56 @@ class SiteFallbackService {
 
   Future<List<ForumCategory>> fetchBoards() async {
     final doc = parser.parse(await _get('${_base}forum.php?forumlist=1&mobile=2'));
-    final boards = <int, ForumBoard>{};
-    for (final a in doc.querySelectorAll('a')) {
-      final href = a.attributes['href'] ?? '';
-      final fid = _id(RegExp(r'(?:forum-|[?&]fid=)(\d+)', caseSensitive: false), href);
-      if (fid == null || fid == 0) continue;
-      var name = _clean(a.querySelector('em')?.text ?? '');
-      if (!_validBoardName(name)) name = _clean(a.querySelector('img')?.attributes['alt'] ?? '');
-      if (!_validBoardName(name)) name = _clean(a.text);
-      if (!_validBoardName(name)) name = _clean(a.querySelector('span')?.text ?? '');
-      if (!_validBoardName(name)) {
-        final parent = _container(a);
-        name = _clean(parent?.querySelector('span')?.text ?? parent?.text ?? '');
+    final categories = <ForumCategory>[];
+    final seen = <int>{};
+
+    // 跟随源站 Comiis 的一级分区结构解析，而不是把所有版块混成一个“全部版块”。
+    for (final key in doc.querySelectorAll('li.comiis_fxpostlistkey[fid]')) {
+      final parentFid = int.tryParse(key.attributes['fid'] ?? '');
+      if (parentFid == null) continue;
+      final name = _clean(key.querySelector('a')?.text ?? key.text);
+      final box = doc.querySelector('ul.comiis_fxpostlistbox_$parentFid');
+      if (name.isEmpty || box == null) continue;
+
+      final boards = <ForumBoard>[];
+      for (final a in box.querySelectorAll('a[href]')) {
+        final href = a.attributes['href'] ?? '';
+        final fid = _id(RegExp(r'(?:forum-|[?&]fid=)(\d+)', caseSensitive: false), href);
+        if (fid == null || fid == 0 || seen.contains(fid)) continue;
+        var boardName = _clean(a.querySelector('em')?.text ?? '');
+        if (!_validBoardName(boardName)) boardName = _clean(a.querySelector('img')?.attributes['alt'] ?? '');
+        if (!_validBoardName(boardName)) boardName = _clean(a.querySelector('span')?.text ?? '');
+        if (!_validBoardName(boardName)) boardName = _clean(a.text);
+        if (!_validBoardName(boardName)) continue;
+        final img = a.querySelector('img') ?? _container(a)?.querySelector('img');
+        final today = _firstText(_container(a), ['p', '.today', '.num']);
+        seen.add(fid);
+        boards.add(ForumBoard(fid: fid, name: boardName, icon: _abs(img?.attributes['src'] ?? ''), today: today));
       }
-      if (!_validBoardName(name)) continue;
-      final img = a.querySelector('img') ?? _container(a)?.querySelector('img');
-      final today = _firstText(_container(a), ['p', '.today', '.num']);
-      boards.putIfAbsent(fid, () => ForumBoard(fid: fid, name: name, icon: _abs(img?.attributes['src'] ?? ''), today: today));
+      if (boards.isNotEmpty) categories.add(ForumCategory(name: name, boards: boards));
     }
-    if (boards.isEmpty) throw Exception('未解析到版块数据');
-    return [ForumCategory(name: '全部版块', boards: boards.values.toList())];
+
+    // 一级菜单缺失时保留旧的扁平兜底。
+    if (categories.isEmpty) {
+      final boards = <int, ForumBoard>{};
+      for (final a in doc.querySelectorAll('a')) {
+        final href = a.attributes['href'] ?? '';
+        final fid = _id(RegExp(r'(?:forum-|[?&]fid=)(\d+)', caseSensitive: false), href);
+        if (fid == null || fid == 0 || boards.containsKey(fid)) continue;
+        var name = _clean(a.querySelector('em')?.text ?? '');
+        if (!_validBoardName(name)) name = _clean(a.querySelector('img')?.attributes['alt'] ?? '');
+        if (!_validBoardName(name)) name = _clean(a.text);
+        if (!_validBoardName(name)) name = _clean(a.querySelector('span')?.text ?? '');
+        if (!_validBoardName(name)) continue;
+        final img = a.querySelector('img') ?? _container(a)?.querySelector('img');
+        final today = _firstText(_container(a), ['p', '.today', '.num']);
+        boards[fid] = ForumBoard(fid: fid, name: name, icon: _abs(img?.attributes['src'] ?? ''), today: today);
+      }
+      if (boards.isNotEmpty) categories.add(ForumCategory(name: '全部版块', boards: boards.values.toList()));
+    }
+
+    if (categories.isEmpty) throw Exception('未解析到版块数据');
+    return categories;
   }
 
   dom.Element? _container(dom.Element e) {
