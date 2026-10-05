@@ -164,43 +164,70 @@ class ApiService {
     final html = await _get(boardUrl);
     final doc = parser.parse(html);
 
-    // 版块列表页面同时存在两套结构, 两处都收集后按 fid 去重:
-    //   1) 新版快捷列表: <li class="b_b"><a class="bbslist_ico"><img alt="书源发布"/></a>
-    //                                    <a class="post_tit"><em>书源发布</em></a></li>
-    //   2) 老版分组列表: <div class="comiis_forum_nbox"><li><a href="forum-2-1.html">
-    //                        <em><img alt="书源发布"/></em><span>书源发布</span><p>今日: 567</p></a></li>
-    // 注意: 登录后源站会在版块卡片最前面插一个纯数字徽章(如今日帖数 "578"),
-    // 直接取第一个 <span> 会把徽章当成版块名, 所以名字提取必须跳过纯数字节点。
-    final anchors = <dom.Element>[];
-    for (final li in doc.querySelectorAll('li.b_b, li.b_a')) {
-      anchors.addAll(li.querySelectorAll('a[href]'));
-    }
-    for (final li in doc.querySelectorAll('.comiis_forum_nbox li')) {
-      anchors.addAll(li.querySelectorAll('a[href]'));
-    }
-
-    final boards = <ForumBoard>[];
+    // 源站按 6 个一级分区组织版块：书源交流、网络资源、小说专区、
+    // 综合交流、福利娱乐、日常站务。Comiis 移动模板通过
+    // .comiis_fxpostlistkey + .comiis_fxpostlistbox_{fid} 表达这层关系。
+    final categories = <ForumCategory>[];
     final seen = <int>{};
-    for (final a in anchors) {
-      final href = a.attributes['href'] ?? '';
-      // 只认 href 里的真实 fid: 分类 Tab 的 href 是 javascript:; 会被跳过
-      final fid = _firstInt(RegExp(r'(?:forum-|[?&]fid=)(\d+)'), href) ?? 0;
-      if (fid <= 0 || !seen.add(fid)) continue;
-      final name = _boardNameOf(a);
-      if (name.isEmpty) {
-        seen.remove(fid); // 名字没取到, 让同 fid 的下一个链接再试
-        continue;
+    for (final key in doc.querySelectorAll('li.comiis_fxpostlistkey[fid]')) {
+      final parentFid = int.tryParse(key.attributes['fid'] ?? '');
+      if (parentFid == null) continue;
+      final name = _normSpace(key.querySelector('a')?.text ?? key.text);
+      final box = doc.querySelector('ul.comiis_fxpostlistbox_$parentFid');
+      if (name.isEmpty || box == null) continue;
+
+      final boards = <ForumBoard>[];
+      for (final a in box.querySelectorAll('a[href]')) {
+        final href = a.attributes['href'] ?? '';
+        final fid = _firstInt(RegExp(r'(?:forum-|[?&]fid=)(\d+)'), href) ?? 0;
+        if (fid <= 0 || seen.contains(fid)) continue;
+        final boardName = _boardNameOf(a);
+        if (boardName.isEmpty) continue;
+        seen.add(fid);
+        final img = a.querySelector('img');
+        boards.add(ForumBoard(
+          fid: fid,
+          name: boardName,
+          icon: _abs(img?.attributes['src'] ?? ''),
+          today: _normSpace(a.querySelector('p')?.text ?? ''),
+        ));
       }
-      boards.add(ForumBoard(
-        fid: fid,
-        name: name,
-        icon: _abs(a.querySelector('img')?.attributes['src'] ?? ''),
-        today: _normSpace(a.querySelector('p')?.text ?? ''),
-      ));
+      if (boards.isNotEmpty) {
+        categories.add(ForumCategory(name: name, boards: boards));
+      }
     }
 
-    if (boards.isEmpty) throw Exception('未解析到版块数据');
-    return [ForumCategory(name: '全部版块', boards: boards)];
+    // 旧模板/异常登录态没有一级菜单时，保留扁平解析兜底。
+    if (categories.isEmpty) {
+      final anchors = <dom.Element>[];
+      for (final li in doc.querySelectorAll('li.b_b, li.b_a')) {
+        anchors.addAll(li.querySelectorAll('a[href]'));
+      }
+      for (final li in doc.querySelectorAll('.comiis_forum_nbox li')) {
+        anchors.addAll(li.querySelectorAll('a[href]'));
+      }
+      final boards = <ForumBoard>[];
+      for (final a in anchors) {
+        final href = a.attributes['href'] ?? '';
+        final fid = _firstInt(RegExp(r'(?:forum-|[?&]fid=)(\d+)'), href) ?? 0;
+        if (fid <= 0 || seen.contains(fid)) continue;
+        final name = _boardNameOf(a);
+        if (name.isEmpty) continue;
+        seen.add(fid);
+        boards.add(ForumBoard(
+          fid: fid,
+          name: name,
+          icon: _abs(a.querySelector('img')?.attributes['src'] ?? ''),
+          today: _normSpace(a.querySelector('p')?.text ?? ''),
+        ));
+      }
+      if (boards.isNotEmpty) {
+        categories.add(ForumCategory(name: '全部版块', boards: boards));
+      }
+    }
+
+    if (categories.isEmpty) throw Exception('未解析到版块数据');
+    return categories;
   }
 
   /// 从版块链接里稳妥地取版块名, 依次尝试:
