@@ -222,14 +222,28 @@ class AttachmentUploadService {
   }
 
   String _uploadError(String body, int status) {
-    final text = body.replaceAll(RegExp(r'<[^>]+>'), ' ').replaceAll(RegExp(r'\s+'), ' ').trim();
-    if (text.contains('formhash') || text.contains('非法操作')) return '附件上传令牌已失效，请刷新后重试';
-    if (text.contains('不支持此类扩展名')) return '当前版块不允许上传该文件类型';
-    if (text.contains('附件文件无法保存')) return '论坛服务器无法保存附件';
-    if (text.contains('没有合法的文件')) return '没有合法的文件被上传';
-    final parts = body.replaceAll('\\r', '').replaceAll('\\n', '').split('|');
-    if (parts.isNotEmpty && parts[0].trim() == 'DISCUZUPLOAD' && parts.length >= 3) {
+    final text = body
+        .replaceAll(RegExp(r'<[^>]+>'), ' ')
+        .replaceAll(RegExp(r'\s+'), ' ')
+        .trim();
+
+    // Discuz 的 SWFUpload 接口即使 HTTP=200，失败也会返回
+    // DISCUZUPLOAD|...|错误码|...，不能把原始协议直接显示给用户。
+    final normalized = body.replaceAll('\r', '').replaceAll('\n', '').trim();
+    final parts = normalized.split('|');
+    if (parts.length >= 3 && parts[0].trim() == 'DISCUZUPLOAD') {
       final code = int.tryParse(parts[2].trim()) ?? -1;
+      final limit = parts.length > 7 ? parts[7].trim() : '';
+      final limitValue = parts.length > 8 ? parts[8].trim() : '';
+
+      if (code == 7) {
+        // Discuz X 的 7 对应上传扩展名/图片扩展名校验失败。
+        // 该错误由论坛服务端的允许扩展名配置决定，客户端不能伪造通过。
+        return limit.isNotEmpty && limit != '0'
+            ? '论坛不允许上传此文件类型（服务器限制：$limit）'
+            : '论坛不允许上传此文件类型，请改用论坛允许的附件格式';
+      }
+
       const messages = <int, String>{
         1: '当前版块不允许上传该文件类型',
         2: '论坛服务器限制了附件大小',
@@ -237,15 +251,23 @@ class AttachmentUploadService {
         4: '当前版块不支持该文件类型',
         5: '当前用户组不允许上传该文件类型',
         6: '今日上传附件数量已达上限',
-        7: '服务器把本次上传识别为图片上传，请重新上传；非图片附件将自动使用附件上传接口',
         8: '论坛服务器无法保存附件',
         9: '没有合法的文件被上传',
         10: '附件上传操作无效',
         11: '今日附件上传总量已达上限',
       };
       final message = messages[code];
-      if (message != null) return message;
+      if (message != null) {
+        return limitValue.isNotEmpty && limitValue != '0'
+            ? '$message（服务器限制：$limitValue）'
+            : message;
+      }
     }
+
+    if (text.contains('formhash') || text.contains('非法操作')) return '附件上传令牌已失效，请刷新后重试';
+    if (text.contains('不支持此类扩展名')) return '当前版块不允许上传该文件类型';
+    if (text.contains('附件文件无法保存')) return '论坛服务器无法保存附件';
+    if (text.contains('没有合法的文件')) return '没有合法的文件被上传';
     if (text.contains('登录')) return '登录态已失效，请重新登录论坛';
     if (text.isEmpty) return '附件上传失败 HTTP $status';
     final end = text.length < 120 ? text.length : 120;
