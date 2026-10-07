@@ -3,7 +3,8 @@ import 'dart:convert';
 import 'dart:io';
 
 import 'package:charset/charset.dart';
-import 'package:cronet_http/cronet_http.dart';
+
+import 'site_config.dart';
 import 'package:http/http.dart' as http;
 import 'package:http/io_client.dart';
 
@@ -13,7 +14,9 @@ class NetClient {
   NetClient._();
   static final NetClient instance = NetClient._();
 
-  static const String ua = 'Mozilla/5.0 (Linux; Android 10) YcoForum/1.0';
+  static const String ua =
+      'Mozilla/5.0 (Linux; Android 16) AppleWebKit/537.36 '
+      '(KHTML, like Gecko) Chrome/140.0.0.0 Mobile Safari/537.36';
   static const Duration timeout = Duration(seconds: 20);
 
   http.Client? _client;
@@ -27,16 +30,9 @@ class NetClient {
   }
 
   Future<http.Client> _build() async {
-    if (!Platform.isAndroid) return IOClient(HttpClient()..userAgent = ua);
-    final engine = CronetEngine.build(
-      cacheMode: CacheMode.memory,
-      cacheMaxSize: 8 * 1024 * 1024,
-      enableHttp2: true,
-      enableBrotli: true,
-      enableQuic: false,
-      userAgent: ua,
-    );
-    return CronetClient.fromCronetEngine(engine, closeEngine: true);
+    // Android 端使用系统 HttpClient，避免部分网络环境下 Cronet 的
+    // DNS/TLS/HTTP2 协商与源论坛不兼容。
+    return IOClient(HttpClient()..userAgent = ua);
   }
 
   static String decode(List<int> bytes) {
@@ -207,7 +203,7 @@ class NetClient {
     http.Client inner,
     http.BaseRequest request,
   ) async {
-    final response = await inner.send(request);
+    final response = await _sendWithSiteFallback(inner, request);
     if (response.statusCode < 200 || response.statusCode >= 500) return response;
 
     final isUrlEncoded = request is http.Request &&
@@ -243,6 +239,50 @@ class NetClient {
       return inner.send(replacement);
     }
     return _buffered(response, bodyBytes);
+  }
+
+  /// GET 请求网络失败时尝试源论坛备用域名。
+  /// 不对 POST/PUT 等写请求跨域重试，避免登录 Cookie 或表单误投到备用域名。
+  static Future<http.StreamedResponse> _sendWithSiteFallback(
+    http.Client inner,
+    http.BaseRequest request,
+  ) async {
+    try {
+      return await inner.send(request);
+    } catch (primaryError) {
+      if (request.method.toUpperCase() != 'GET') rethrow;
+      final currentHost = request.url.host.toLowerCase();
+
+      for (final base in SiteConfig.fallbackBases) {
+        final fallbackBase = Uri.parse(base);
+        if (fallbackBase.host.toLowerCase() == currentHost) continue;
+
+        final uri = fallbackBase.replace(
+          path: request.url.path.isEmpty ? '/' : request.url.path,
+          query: request.url.hasQuery ? request.url.query : null,
+        );
+        final clone = http.Request('GET', uri);
+        clone.headers.addAll(request.headers);
+
+        final referer = request.headers['Referer'] ?? request.headers['referer'];
+        if (referer != null && referer.trim().isNotEmpty) {
+          final ref = Uri.tryParse(referer);
+          if (ref != null && SiteConfig.isForumHost(ref.host)) {
+            clone.headers['Referer'] = fallbackBase.replace(
+              path: ref.path.isEmpty ? '/' : ref.path,
+              query: ref.hasQuery ? ref.query : null,
+            ).toString();
+          }
+        }
+
+        try {
+          final response = await inner.send(clone);
+          if (response.statusCode >= 200 && response.statusCode < 500) return response;
+          await response.stream.drain();
+        } catch (_) {}
+      }
+      Error.throwWithStackTrace(primaryError, StackTrace.current);
+    }
   }
 
   static http.StreamedResponse _buffered(
