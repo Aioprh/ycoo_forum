@@ -17,6 +17,14 @@ class SiteConfig {
   /// 编译期默认域名(最终兜底)。
   static const String defaultBase = 'https://www.ycoo.net';
 
+  /// 论坛可用的备用入口。主入口无法从当前网络访问时自动探测并切换。
+  static const List<String> fallbackBases = <String>[
+    'https://www.ycoo.net/',
+    'https://ycoo.net/',
+    'https://pc.sysbbs.com/',
+    'https://src.top/',
+  ];
+
   /// 远程域名配置地址。放在本仓库, 与站点域名无关, 位置恒定。
   static const String remoteConfigUrl =
       'https://raw.githubusercontent.com/Aioprh/ycoo_forum/main/config/site.json';
@@ -26,6 +34,7 @@ class SiteConfig {
   /// 当前生效的域名配置(host -> 带尾部 `/` 的绝对地址)。
   /// 来自远程配置, 至少含 [baseHost]; cdn / api 可选, 缺省时回退到 base。
   static Map<String, String> _hosts = const {};
+  static bool _probing = false;
 
   /// 主站点基址(带尾部 `/`)。
   static String get base => _hosts[baseHost] ?? '$defaultBase/';
@@ -91,6 +100,7 @@ class SiteConfig {
     } catch (err) {
       debugPrint('SiteConfig: 读取本地缓存失败 $err');
     }
+    await _selectReachableBase();
     unawaited(_refreshRemote());
   }
 
@@ -103,6 +113,7 @@ class SiteConfig {
       final data = jsonDecode(resp.body);
       if (data is! Map) return;
       if (!_apply(data)) return;
+      await _selectReachableBase();
       // 把完整的、校验通过后的配置原样缓存, 供下次启动离线使用。
       final sp = await SharedPreferences.getInstance();
       await sp.setString(_prefKey, jsonEncode(_hosts));
@@ -114,11 +125,67 @@ class SiteConfig {
 
   /// 应用远程配置。要求 base 合法; cdn / api 可选且必须合法才接受。
   /// 返回是否接受(即 base 合法)。
+  static List<String> _candidateBases() {
+    final values = <String>[];
+    final configured = _hosts[baseHost];
+    if (configured != null && configured.isNotEmpty) values.add(configured);
+    final configuredList = _hosts.entries
+        .where((e) => e.key.startsWith('base_'))
+        .map((e) => e.value);
+    for (final value in configuredList) {
+      if (!values.contains(value)) values.add(value);
+    }
+    for (final value in fallbackBases) {
+      if (!values.contains(value)) values.add(value);
+    }
+    return values;
+  }
+
+  /// 并行探测备用入口，按候选优先级选择第一个可正常建立 HTTP(S) 连接的站点。
+  static Future<void> _selectReachableBase() async {
+    if (_probing) return;
+    _probing = true;
+    try {
+      final candidates = _candidateBases();
+      final results = await Future.wait(candidates.map((base) async {
+        try {
+          final response = await http.head(Uri.parse(base)).timeout(const Duration(seconds: 3));
+          if (response.statusCode >= 200 && response.statusCode < 400) return true;
+          if (response.statusCode == 405 || response.statusCode == 501) {
+            final get = await http.get(Uri.parse(base)).timeout(const Duration(seconds: 3));
+            return get.statusCode >= 200 && get.statusCode < 400;
+          }
+        } catch (_) {}
+        return false;
+      }));
+      final index = results.indexWhere((ok) => ok);
+      if (index >= 0) {
+        _hosts = <String, String>{..._hosts, baseHost: candidates[index]};
+      }
+    } finally {
+      _probing = false;
+    }
+  }
+
   static bool _apply(Map data) {
     final next = <String, String>{};
+    final rawBases = data['bases'];
+    if (rawBases is List) {
+      var index = 0;
+      for (final item in rawBases) {
+        final value = item?.toString().trim() ?? '';
+        if (value.isNotEmpty && _looksLikeHttp(value)) {
+          next['base_' + index.toString()] = value.endsWith('/') ? value : value + '/';
+          index++;
+        }
+      }
+    }
     final b = (data[baseHost] as String?)?.trim();
-    if (b == null || b.isEmpty || !_looksLikeHttp(b)) return false;
-    next[baseHost] = b.endsWith('/') ? b : '$b/';
+    final selected = b != null && b.isNotEmpty && _looksLikeHttp(b)
+        ? b
+        : (next['base_0'] ?? '');
+    if (selected.isEmpty) return false;
+    next[baseHost] = selected.endsWith('/') ? selected : selected + '/';
     final c = (data[cdnHost] as String?)?.trim();
     if (c != null && c.isNotEmpty && _looksLikeHttp(c)) {
       next[cdnHost] = c.endsWith('/') ? c : '$c/';
