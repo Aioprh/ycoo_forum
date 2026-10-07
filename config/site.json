@@ -1,5 +1,11 @@
 {
   "base": "https://www.ycoo.net/",
   "cdn": "",
-  "api": ""
+  "api": "",
+  "bases": [
+    "https://www.ycoo.net/",
+    "https://ycoo.net/",
+    "https://pc.sysbbs.com/",
+    "https://src.top/"
+  ]
 }
