@@ -181,11 +181,28 @@ class AttachmentUploadService {
         // 非图片附件必须切换到 type=attach，否则服务器会返回：
         // DISCUZUPLOAD|1|7|0|...（仅允许图片）。
         final params = Map<String, String>.from(resolved.queryParameters);
-        params['type'] = imageFile ? 'image' : 'attach';
+        // Discuz 官方网页端：图片上传才带 type=image，普通附件上传不带
+        // type 参数。传入 type=attach 会被部分站点按图片模式处理，
+        // JSON/ZIP/TXT 等非图片文件因此返回 DISCUZUPLOAD 错误码 7。
+        if (imageFile) {
+          params['type'] = 'image';
+        } else {
+          params.remove('type');
+        }
         return resolved.replace(queryParameters: params);
       }
     }
-    return Uri.parse('${_base}misc.php').replace(queryParameters: {'mod': 'swfupload', 'action': 'swfupload', 'operation': 'upload', 'fid': '$fid', 'type': imageFile ? 'image' : 'attach', 'inajax': 'yes', 'infloat': 'yes', 'simple': '2'});
+    final params = <String, String>{
+      'mod': 'swfupload',
+      'action': 'swfupload',
+      'operation': 'upload',
+      'fid': '$fid',
+      'inajax': 'yes',
+      'infloat': 'yes',
+      'simple': '2',
+    };
+    if (imageFile) params['type'] = 'image';
+    return Uri.parse('${_base}misc.php').replace(queryParameters: params);
   }
 
   static bool _isImageFile(String name) {
