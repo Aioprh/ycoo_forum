@@ -177,9 +177,7 @@ class AttachmentUploadService {
       if (match != null) {
         final value = match.group(1)!.replaceAll('\\/', '/').replaceAll('&amp;', '&');
         final resolved = Uri.parse(value.startsWith('http') ? value : '$_base${value.startsWith('/') ? value.substring(1) : value}');
-        // Discuz Comiis 发帖页通常只把图片上传地址写成 type=image。
-        // 非图片附件必须切换到 type=attach，否则服务器会返回：
-        // DISCUZUPLOAD|1|7|0|...（仅允许图片）。
+        // Discuz Comiis：图片上传才带 type=image，普通附件不带 type。
         final params = Map<String, String>.from(resolved.queryParameters);
         // Discuz 官方网页端：图片上传才带 type=image，普通附件上传不带
         // type 参数。传入 type=attach 会被部分站点按图片模式处理，
