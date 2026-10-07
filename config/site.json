@@ -2,10 +2,8 @@
   "base": "https://www.ycoo.net/",
   "cdn": "",
   "api": "",
-  "bases": [
-    "https://www.ycoo.net/",
-    "https://ycoo.net/",
-    "https://pc.sysbbs.com/",
-    "https://src.top/"
+  "fallbacks": [
+    "https://src.top/",
+    "https://pc.sysbbs.com/"
   ]
 }
