@@ -4,7 +4,6 @@ import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:html/dom.dart' as dom;
 import 'package:html/parser.dart' as html_parser;
-import 'package:url_launcher/url_launcher.dart';
 
 import '../models/thread_detail.dart';
 import '../services/site_config.dart';
@@ -678,20 +677,6 @@ class _DetailPageState extends State<DetailPage> {
           builder: (_) => DetailPage(tid: tid, title: '帖子详情', pid: pid),
         ),
       );
-      return;
-    }
-
-    // GitHub 等站外代码托管页面在 Android WebView 中容易出现“无法访问”，
-    // 尤其是 Issue/PR 页面会受到 WebView 网络策略影响。GitHub 链接直接交给系统浏览器，
-    // 避免用户点击仓库 Issue 后卡在应用内的错误页；论坛站内链接仍保持原生页面。
-    final host = uri.host.toLowerCase();
-    final isGitHub = host == 'github.com' ||
-        host.endsWith('.github.com') ||
-        host == 'githubusercontent.com' ||
-        host.endsWith('.githubusercontent.com');
-    if (isGitHub) {
-      final opened = await launchUrl(uri, mode: LaunchMode.externalApplication);
-      if (!opened && mounted) _snack('无法打开 GitHub 链接，请检查浏览器是否可用');
       return;
     }
 
