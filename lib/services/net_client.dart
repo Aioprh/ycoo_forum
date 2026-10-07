@@ -263,6 +263,10 @@ class NetClient {
         );
         final clone = http.Request('GET', uri);
         clone.headers.addAll(request.headers);
+        // 不同备用域名的登录 Cookie 不互通，且不能把主站 Cookie
+        // 泄露到另一个域名；备用 GET 只用于公共页面可达性兜底。
+        clone.headers.remove('Cookie');
+        clone.headers.remove('cookie');
 
         final referer = request.headers['Referer'] ?? request.headers['referer'];
         if (referer != null && referer.trim().isNotEmpty) {
