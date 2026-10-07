@@ -50,16 +50,6 @@ class SiteConfig {
   static const String cdnHost = 'cdn';
   static const String apiHost = 'api';
 
-  /// 源论坛备用域名。不同域名的登录 Cookie 不互通，因此仅用于 GET 兜底。
-  static const List<String> defaultFallbackBases = <String>[
-    'https://src.top/',
-    'https://pc.sysbbs.com/',
-  ];
-
-  static List<String> _fallbackBases = defaultFallbackBases;
-
-  static List<String> get fallbackBases => List.unmodifiable(_fallbackBases);
-
   /// 与主站指向同一论坛的别名域名(同一套数据, 仅域名不同)。
   /// 站点正文里的站内链接会按访问域名改写, 例如出现 `pc.sysbbs.com`,
   /// 若只认 [base] 会被误判为外链, 改用浏览器打开而不是原生页面。
@@ -210,14 +200,19 @@ class SiteConfig {
         }
       }
     }
-    if (fallbacks.isEmpty) fallbacks.addAll(defaultFallbackBases);
+    if (fallbacks.isEmpty) fallbacks.addAll(fallbackBases);
+    for (final value in fallbacks) {
+      if (!next.values.contains(value)) {
+        final index = next.keys.where((key) => key.startsWith('base_')).length;
+        next['base_' + index.toString()] = value;
+      }
+    }
 
     final a = (data[apiHost] as String?)?.trim();
     if (a != null && a.isNotEmpty && _looksLikeHttp(a)) {
       next[apiHost] = a.endsWith('/') ? a : '$a/';
     }
     _hosts = next;
-    _fallbackBases = List.unmodifiable(fallbacks);
     return true;
   }
 
