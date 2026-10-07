@@ -68,6 +68,45 @@ class ApiService {
     return _parseGenericThreads(doc);
   }
 
+  /// 站务公告版块 fid: 官方置顶帖(公告、版规等)集中在该版块顶部的置顶列表里。
+  static const int announcementFid = 42;
+
+  static String pinnedThreadsUrl() =>
+      '$_base' 'forum.php?mod=forumdisplay&fid=$announcementFid&mobile=2';
+
+  /// 抓取官方置顶帖。原站把置顶帖单独渲染在 `#comiis_displayorder` 里,
+  /// 每项形如 `<li><a href="thread-xxx-1-1.html"><em>置顶</em>标题</a></li>`。
+  Future<List<PinnedThread>> fetchPinnedThreads() async {
+    final html = await _get(pinnedThreadsUrl());
+    return parsePinnedThreads(parser.parse(html));
+  }
+
+  static List<PinnedThread> parsePinnedThreads(dom.Document doc) {
+    var anchors = doc.querySelectorAll('#comiis_displayorder li a').toList();
+    // 置顶容器 id 变化时, 退回到版块顶部区域里带「置顶」标记的链接。
+    if (anchors.isEmpty) {
+      anchors = doc
+          .querySelectorAll('.comiis_forumlist_top li a')
+          .where((a) => a.querySelectorAll('em').any((em) => _normSpace(em.text).contains('置顶')))
+          .toList();
+    }
+    final result = <PinnedThread>[];
+    final seen = <int>{};
+    for (final a in anchors) {
+      final tid = _firstInt(RegExp(r'thread-(\d+)'), a.attributes['href'] ?? '') ?? 0;
+      if (tid <= 0 || !seen.add(tid)) continue;
+      // 剔除原站用来标记置顶的 <em>置顶</em>, 只保留标题文本。
+      final clone = a.clone(true);
+      for (final em in clone.querySelectorAll('em').toList()) {
+        if (_normSpace(em.text).contains('置顶')) em.remove();
+      }
+      final title = _normSpace(clone.text).replaceFirst(RegExp(r'^置顶\s*'), '');
+      if (title.isEmpty) continue;
+      result.add(PinnedThread(tid: tid, title: title));
+    }
+    return result;
+  }
+
   ThreadItem? _parseThreadItem(dom.Element li) {
     final titleA = li.querySelector('.mmlist_li_box h2 a');
     final title = _normSpace(titleA?.text ?? '');
@@ -724,4 +763,11 @@ class PurchaseResult {
   final bool success;
   final String message;
   const PurchaseResult(this.success, this.message);
+}
+
+/// 官方置顶帖摘要(来源: 站务公告版块的置顶列表, 只有标题与 tid)。
+class PinnedThread {
+  final int tid;
+  final String title;
+  const PinnedThread({required this.tid, required this.title});
 }

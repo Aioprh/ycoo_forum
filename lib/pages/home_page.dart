@@ -7,8 +7,10 @@ import '../services/site_fallback_service.dart';
 import '../widgets/thread_list_view.dart';
 import 'create_group_thread_page.dart';
 import 'create_thread_page.dart';
+import 'detail_page.dart';
 import 'login_page.dart';
 import 'search_page.dart';
+import 'thread_list_page.dart';
 import 'upload_album_page.dart';
 import 'write_blog_page.dart';
 import 'write_doing_page.dart';
@@ -28,6 +30,25 @@ class _HomePageState extends State<HomePage> {
     ('热门', 'hot', Icons.local_fire_department_rounded),
   ];
   int _index = 0;
+  List<PinnedThread> _pinned = const <PinnedThread>[];
+
+  @override
+  void initState() {
+    super.initState();
+    _loadPinned();
+  }
+
+  /// 加载官方置顶帖(站务公告版块顶部置顶列表)。
+  Future<void> _loadPinned() async {
+    try {
+      final items = await ApiService.instance.fetchPinnedThreads();
+      if (!mounted) return;
+      setState(() => _pinned = items);
+    } catch (_) {
+      if (!mounted) return;
+      setState(() => _pinned = const <PinnedThread>[]);
+    }
+  }
 
   Future<List<ThreadItem>> _load(String view) async {
     final baseUrl = ApiService.guideUrl(view);
@@ -94,6 +115,7 @@ class _HomePageState extends State<HomePage> {
           children: [
             _buildHeader(context, scheme),
             _buildSearch(context, scheme),
+            if (_pinned.isNotEmpty) _buildPinned(context, scheme),
             _buildSectionHeader(context, scheme),
             _buildTabs(context, scheme),
             Expanded(
@@ -160,6 +182,82 @@ class _HomePageState extends State<HomePage> {
             ]),
           ),
         ),
+      ),
+    );
+  }
+
+  /// 官方置顶帖区域: 展示站务公告版块的置顶帖, 点击进入帖子详情。
+  Widget _buildPinned(BuildContext context, ColorScheme scheme) {
+    const maxVisible = 3;
+    final visible = _pinned.take(maxVisible).toList();
+    return Padding(
+      padding: const EdgeInsets.fromLTRB(16, 0, 16, 12),
+      child: Container(
+        padding: const EdgeInsets.fromLTRB(14, 12, 14, 6),
+        decoration: BoxDecoration(
+          color: scheme.primaryContainer.withValues(alpha: .32),
+          borderRadius: BorderRadius.circular(18),
+          border: Border.all(color: scheme.primary.withValues(alpha: .18)),
+        ),
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            Row(children: [
+              Icon(Icons.push_pin_rounded, size: 18, color: scheme.primary),
+              const SizedBox(width: 6),
+              Text('官方置顶', style: TextStyle(fontSize: 14, fontWeight: FontWeight.w800, color: scheme.primary)),
+              const Spacer(),
+              if (_pinned.length > maxVisible)
+                InkWell(
+                  borderRadius: BorderRadius.circular(8),
+                  onTap: () => _openAnnouncementBoard(context),
+                  child: Padding(
+                    padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 2),
+                    child: Text('更多', style: TextStyle(fontSize: 12, fontWeight: FontWeight.w600, color: scheme.primary)),
+                  ),
+                ),
+            ]),
+            const SizedBox(height: 2),
+            for (final item in visible) _pinnedRow(context, scheme, item),
+          ],
+        ),
+      ),
+    );
+  }
+
+  Widget _pinnedRow(BuildContext context, ColorScheme scheme, PinnedThread item) {
+    return InkWell(
+      borderRadius: BorderRadius.circular(10),
+      onTap: () => Navigator.of(context).push(
+        MaterialPageRoute(builder: (_) => DetailPage(tid: item.tid, title: item.title)),
+      ),
+      child: Padding(
+        padding: const EdgeInsets.symmetric(vertical: 8),
+        child: Row(children: [
+          Container(
+            padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 2),
+            decoration: BoxDecoration(color: scheme.primary, borderRadius: BorderRadius.circular(5)),
+            child: Text('置顶', style: TextStyle(fontSize: 10, fontWeight: FontWeight.w700, color: scheme.onPrimary)),
+          ),
+          const SizedBox(width: 8),
+          Expanded(
+            child: Text(
+              item.title,
+              maxLines: 1,
+              overflow: TextOverflow.ellipsis,
+              style: const TextStyle(fontSize: 13.5, fontWeight: FontWeight.w600),
+            ),
+          ),
+          Icon(Icons.chevron_right_rounded, size: 18, color: scheme.onSurfaceVariant),
+        ]),
+      ),
+    );
+  }
+
+  void _openAnnouncementBoard(BuildContext context) {
+    Navigator.of(context).push(
+      MaterialPageRoute(
+        builder: (_) => const BoardThreadListPage(fid: ApiService.announcementFid, filter: '站务公告'),
       ),
     );
   }
