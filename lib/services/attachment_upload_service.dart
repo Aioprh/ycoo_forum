@@ -126,7 +126,7 @@ class AttachmentUploadService {
       if (uid == null || uid <= 0) throw Exception('未取得当前用户ID，请重新登录');
       final uploadHash = _uploadHash(doc, html);
       if (uploadHash.isEmpty) throw Exception('未取得附件上传令牌，请重新进入发帖页面后重试');
-      final uploadUrl = _uploadUrl(doc, html, fid);
+      final uploadUrl = _uploadUrl(doc, html, fid, _isImageFile(file.name));
 
       final request = http.MultipartRequest('POST', uploadUrl);
       request.headers.addAll(_headers(referer: pageUrl.toString(), ajax: true));
@@ -170,16 +170,27 @@ class AttachmentUploadService {
     return '';
   }
 
-  Uri _uploadUrl(dynamic doc, String html, int fid) {
+  Uri _uploadUrl(dynamic doc, String html, int fid, bool imageFile) {
     for (final element in doc.querySelectorAll('form[action],script')) {
       final raw = element.localName == 'form' ? (element.attributes['action'] ?? '') : element.text;
       final match = RegExp(r'''((?:https?:)?//[^\s"']*misc\.php[^\s"']*mod=swfupload[^\s"']*operation=upload[^\s"']*)''', caseSensitive: false).firstMatch(raw) ?? RegExp(r'''([\w./?=&:%-]*misc\.php[^\s"']*mod=swfupload[^\s"']*operation=upload[^\s"']*)''', caseSensitive: false).firstMatch(raw);
       if (match != null) {
         final value = match.group(1)!.replaceAll('\\/', '/').replaceAll('&amp;', '&');
-        return Uri.parse(value.startsWith('http') ? value : '$_base${value.startsWith('/') ? value.substring(1) : value}');
+        final resolved = Uri.parse(value.startsWith('http') ? value : '$_base${value.startsWith('/') ? value.substring(1) : value}');
+        // Discuz Comiis 发帖页通常只把图片上传地址写成 type=image。
+        // 非图片附件必须切换到 type=attach，否则服务器会返回：
+        // DISCUZUPLOAD|1|7|0|...（仅允许图片）。
+        final params = Map<String, String>.from(resolved.queryParameters);
+        params['type'] = imageFile ? 'image' : 'attach';
+        return resolved.replace(queryParameters: params);
       }
     }
-    return Uri.parse('${_base}misc.php').replace(queryParameters: {'mod': 'swfupload', 'action': 'swfupload', 'operation': 'upload', 'fid': '$fid', 'inajax': 'yes', 'infloat': 'yes', 'simple': '2'});
+    return Uri.parse('${_base}misc.php').replace(queryParameters: {'mod': 'swfupload', 'action': 'swfupload', 'operation': 'upload', 'fid': '$fid', 'type': imageFile ? 'image' : 'attach', 'inajax': 'yes', 'infloat': 'yes', 'simple': '2'});
+  }
+
+  static bool _isImageFile(String name) {
+    final lower = name.toLowerCase();
+    return const ['.jpg', '.jpeg', '.png', '.gif', '.webp', '.bmp', '.heic', '.heif'].any(lower.endsWith);
   }
 
   bool _isTokenFailure(String body) {
@@ -216,6 +227,25 @@ class AttachmentUploadService {
     if (text.contains('不支持此类扩展名')) return '当前版块不允许上传该文件类型';
     if (text.contains('附件文件无法保存')) return '论坛服务器无法保存附件';
     if (text.contains('没有合法的文件')) return '没有合法的文件被上传';
+    final parts = body.replaceAll('\\r', '').replaceAll('\\n', '').split('|');
+    if (parts.isNotEmpty && parts[0].trim() == 'DISCUZUPLOAD' && parts.length >= 3) {
+      final code = int.tryParse(parts[2].trim()) ?? -1;
+      const messages = <int, String>{
+        1: '当前版块不允许上传该文件类型',
+        2: '论坛服务器限制了附件大小',
+        3: '当前用户组限制了附件大小',
+        4: '当前版块不支持该文件类型',
+        5: '当前用户组不允许上传该文件类型',
+        6: '今日上传附件数量已达上限',
+        7: '服务器把本次上传识别为图片上传，请重新上传；非图片附件将自动使用附件上传接口',
+        8: '论坛服务器无法保存附件',
+        9: '没有合法的文件被上传',
+        10: '附件上传操作无效',
+        11: '今日附件上传总量已达上限',
+      };
+      final message = messages[code];
+      if (message != null) return message;
+    }
     if (text.contains('登录')) return '登录态已失效，请重新登录论坛';
     if (text.isEmpty) return '附件上传失败 HTTP $status';
     final end = text.length < 120 ? text.length : 120;
