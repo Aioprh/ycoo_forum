@@ -1,8 +1,11 @@
 import 'package:flutter/material.dart';
 import 'package:html/parser.dart' as parser;
 
+import '../models/board.dart';
 import '../models/thread_item.dart';
+import '../services/api_service.dart';
 import '../services/site_config.dart';
+import '../services/site_fallback_service.dart';
 import '../services/auth_service.dart';
 import '../services/net_client.dart';
 import 'detail_page.dart';
@@ -19,14 +22,40 @@ class _SearchPageState extends State<SearchPage> {
   String? _error;
   List<ThreadItem> _results = [];
 
+  /// 当前选中的搜索版块, 0 表示所有版块(与网页端 `fid=0` 一致)。
+  int _fid = 0;
+  String _boardName = '所有版块';
+  List<ForumCategory> _categories = const <ForumCategory>[];
+
   /// xunsearch 每页结果数与最多拉取页数。
   static const int _perPage = 10;
   static const int _maxPages = 7;
 
   @override
+  void initState() {
+    super.initState();
+    _loadBoards();
+  }
+
+  @override
   void dispose() {
     _controller.dispose();
     super.dispose();
+  }
+
+  /// 加载可搜索版块列表, 供“按版块搜索”使用。
+  /// 加载失败时静默忽略, 仅保留“所有版块”选项, 不影响搜索本身。
+  Future<void> _loadBoards() async {
+    try {
+      var categories = await ApiService.instance.fetchBoards();
+      if (categories.isEmpty) {
+        categories = await SiteFallbackService.instance.fetchBoards();
+      }
+      if (!mounted) return;
+      setState(() => _categories = categories);
+    } catch (_) {
+      // 忽略: 版块列表不可用时仍可搜索全部版块。
+    }
   }
 
   Map<String, String> _headers(String? cookie, {String? referer}) => {
@@ -50,6 +79,7 @@ class _SearchPageState extends State<SearchPage> {
         'f': '_all',
         's': 'relevance',
         'syn': 'yes',
+        'fid': '$_fid',
         'p': '$page',
       });
 
@@ -194,6 +224,87 @@ class _SearchPageState extends State<SearchPage> {
     }
   }
 
+  /// 打开“按版块搜索”选择面板, 结构与网页端搜索页的版块下拉一致。
+  Future<void> _pickBoard() async {
+    final chosen = await showModalBottomSheet<int>(
+      context: context,
+      showDragHandle: true,
+      isScrollControlled: true,
+      builder: (context) => SafeArea(
+        child: ConstrainedBox(
+          constraints: BoxConstraints(maxHeight: MediaQuery.of(context).size.height * 0.72),
+          child: Column(mainAxisSize: MainAxisSize.min, children: [
+            const ListTile(
+              leading: Icon(Icons.forum_outlined),
+              title: Text('搜索指定版块', style: TextStyle(fontWeight: FontWeight.w800)),
+              subtitle: Text('仅在该版块内搜索帖子'),
+            ),
+            const Divider(height: 1),
+            Flexible(
+              child: ListView(
+                padding: const EdgeInsets.only(bottom: 12),
+                children: [
+                  _boardOption(0, '所有版块'),
+                  for (final cat in _categories) ...[
+                    Padding(
+                      padding: const EdgeInsets.fromLTRB(20, 14, 20, 4),
+                      child: Text(
+                        cat.name,
+                        style: TextStyle(
+                          fontSize: 12.5,
+                          fontWeight: FontWeight.w700,
+                          color: Theme.of(context).colorScheme.primary,
+                        ),
+                      ),
+                    ),
+                    for (final b in cat.boards) _boardOption(b.fid, _cleanBoardName(b.name)),
+                  ],
+                ],
+              ),
+            ),
+          ]),
+        ),
+      ),
+    );
+    if (chosen == null || !mounted) return;
+    var name = '所有版块';
+    if (chosen != 0) {
+      for (final cat in _categories) {
+        for (final b in cat.boards) {
+          if (b.fid == chosen) {
+            name = _cleanBoardName(b.name);
+            break;
+          }
+        }
+      }
+    }
+    setState(() {
+      _fid = chosen;
+      _boardName = name;
+    });
+    // 已有关键词时, 切换版块后自动按新范围重新搜索。
+    if (_controller.text.trim().isNotEmpty) _search();
+  }
+
+  Widget _boardOption(int fid, String name) {
+    final selected = _fid == fid;
+    return ListTile(
+      dense: true,
+      title: Text(name, style: TextStyle(fontWeight: selected ? FontWeight.w700 : FontWeight.w500)),
+      trailing: selected ? Icon(Icons.check_rounded, color: Theme.of(context).colorScheme.primary) : null,
+      onTap: () => Navigator.pop(context, fid),
+    );
+  }
+
+  /// 去掉版块名里混入的“今日: N”“帖数: N”等统计文本。
+  String _cleanBoardName(String name) {
+    var n = name.replaceAll(RegExp(r'\s+'), ' ').trim();
+    n = n.replaceAll(RegExp(r'\s*(?:今日|今天)\s*[:：]?\s*\d+'), '');
+    n = n.replaceAll(RegExp(r'\s*(?:帖子数|贴数|主题数|帖数)\s*[:：]?\s*\d+'), '');
+    n = n.replaceAll(RegExp(r'\s+'), ' ').trim();
+    return n.isEmpty ? name : n;
+  }
+
   Widget _meta(IconData icon, String text) {
     final hint = Theme.of(context).colorScheme.onSurfaceVariant;
     return Row(mainAxisSize: MainAxisSize.min, children: [
@@ -239,6 +350,18 @@ class _SearchPageState extends State<SearchPage> {
                 border: OutlineInputBorder(borderRadius: BorderRadius.circular(18), borderSide: BorderSide.none),
               ),
             ),
+          ),
+          Padding(
+            padding: const EdgeInsets.fromLTRB(16, 0, 16, 8),
+            child: Row(children: [
+              Expanded(
+                child: ActionChip(
+                  avatar: const Icon(Icons.forum_outlined, size: 18),
+                  label: Text('版块：$_boardName', maxLines: 1, overflow: TextOverflow.ellipsis),
+                  onPressed: _categories.isEmpty ? null : _pickBoard,
+                ),
+              ),
+            ]),
           ),
           if (_error != null)
             Padding(
