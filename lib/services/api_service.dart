@@ -10,6 +10,15 @@ import 'site_config.dart';
 import 'auth_service.dart';
 import 'net_client.dart';
 
+/// 帖子超出当前账号的观看权限(或需要密码)时抛出。
+/// 原站此时不返回帖子内容, 而是渲染"提示信息"占位页; 携带原因交给详情页明确提示。
+class ThreadAccessRestricted implements Exception {
+  final String message;
+  const ThreadAccessRestricted(this.message);
+  @override
+  String toString() => message;
+}
+
 /// 源论坛移动端数据抓取与解析。
 class ApiService {
   ApiService._();
@@ -340,6 +349,20 @@ class ApiService {
     final currentPage = pageInfo.$1;
     final paid = _parsePaidState(doc);
     final posts = _collectPosts(doc);
+    // 阅读权限不足/主题需密码时, 原站不返回帖子列表, 而是渲染"提示信息"占位页
+    // (.comiis_password_top)。若继续按普通帖子解析, 详情页会变成空壳:
+    // 标题显示成"提示信息"、板块名误取面包屑"详情"、正文为空。直接抛出原因即可。
+    if (posts.isEmpty) {
+      final gate = doc.querySelector('.comiis_password_top, .comiis_password_form');
+      if (gate != null) {
+        final message = _normSpace(
+          doc.querySelector('.comiis_password_top p')?.text ?? gate.text,
+        ).replaceAll(RegExp(r'\[?\s*点击这里返回上一页\s*\]?'), '').trim();
+        throw ThreadAccessRestricted(
+          message.isEmpty ? '抱歉，本帖内容受权限保护，暂时无法查看' : message,
+        );
+      }
+    }
     // 第 1 页 posts[0] 是楼主正文; 翻页(>1)的页面里没有楼主, 全部是回帖, 不能再次 skip。
     final hasAuthor = currentPage <= 1;
     String body = '';
