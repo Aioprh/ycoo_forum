@@ -55,6 +55,8 @@ class _DetailPageState extends State<DetailPage> {
   String? _error;
   /// 帖子超出当前账号观看权限时, 原站返回的原因文案; 非空时展示受限提示页。
   String? _restricted;
+  /// 受限原因是否为未登录(为 true 时受限提示页提供"去登录"入口)。
+  bool _restrictedLogin = false;
   int _likeCount = 0;
   /// 外层列表滚动控制器: 从通知进入时用于滚动到目标评论。
   final ScrollController _scroll = ScrollController();
@@ -138,6 +140,7 @@ class _DetailPageState extends State<DetailPage> {
         _loading = !hadDetail;
         _error = null;
         _restricted = null;
+        _restrictedLogin = false;
       });
     var ok = false;
     try {
@@ -158,7 +161,12 @@ class _DetailPageState extends State<DetailPage> {
       unawaited(BrowseHistoryService.instance.record(tid: d.tid, title: d.title, boardName: d.boardName));
     } on ThreadAccessRestricted catch (e) {
       // 权限不足不是加载失败: 原站给了明确原因, 原样呈现即可。
-      if (mounted) setState(() => _restricted = e.message);
+      if (mounted) {
+        setState(() {
+          _restricted = e.message;
+          _restrictedLogin = e.loginRequired;
+        });
+      }
     } catch (e) {
       if (mounted) {
         setState(() {
@@ -775,9 +783,9 @@ class _DetailPageState extends State<DetailPage> {
           children: [
             Icon(Icons.lock_outline_rounded, size: 48, color: c.primary),
             const SizedBox(height: 14),
-            const Text(
-              '无权查看该主题',
-              style: TextStyle(fontWeight: FontWeight.w700, fontSize: 16),
+            Text(
+              _restrictedLogin ? '需要登录后查看' : '无权查看该主题',
+              style: const TextStyle(fontWeight: FontWeight.w700, fontSize: 16),
             ),
             const SizedBox(height: 7),
             Text(
@@ -796,11 +804,18 @@ class _DetailPageState extends State<DetailPage> {
                   icon: const Icon(Icons.arrow_back_rounded),
                   label: const Text('返回'),
                 ),
-                FilledButton.icon(
-                  onPressed: _openInWeb,
-                  icon: const Icon(Icons.public_rounded),
-                  label: const Text('网页打开'),
-                ),
+                if (_restrictedLogin && !_loggedIn)
+                  FilledButton.icon(
+                    onPressed: _login,
+                    icon: const Icon(Icons.login_rounded),
+                    label: const Text('去登录'),
+                  )
+                else
+                  FilledButton.icon(
+                    onPressed: _openInWeb,
+                    icon: const Icon(Icons.public_rounded),
+                    label: const Text('网页打开'),
+                  ),
               ],
             ),
           ],

@@ -10,11 +10,13 @@ import 'site_config.dart';
 import 'auth_service.dart';
 import 'net_client.dart';
 
-/// 帖子超出当前账号的观看权限(或需要密码)时抛出。
-/// 原站此时不返回帖子内容, 而是渲染"提示信息"占位页; 携带原因交给详情页明确提示。
+/// 帖子超出当前账号的观看权限(或需要登录/密码)时抛出。
+/// 原站此时不返回帖子内容, 而是渲染"提示信息"占位页或重定向到登录页; 携带原因交给详情页明确提示。
 class ThreadAccessRestricted implements Exception {
   final String message;
-  const ThreadAccessRestricted(this.message);
+  /// true 表示原因是未登录(原站把详情页重定向到了登录页), 详情页据此给出"去登录"入口。
+  final bool loginRequired;
+  const ThreadAccessRestricted(this.message, {this.loginRequired = false});
   @override
   String toString() => message;
 }
@@ -349,6 +351,10 @@ class ApiService {
     final currentPage = pageInfo.$1;
     final paid = _parsePaidState(doc);
     final posts = _collectPosts(doc);
+    // 未登录访问详情会被原站重定向到登录页, 同样没有帖子内容, 需单独识别。
+    if (posts.isEmpty && _isLoginPage(doc)) {
+      throw const ThreadAccessRestricted('请先登录后查看该主题', loginRequired: true);
+    }
     // 阅读权限不足/主题需密码时, 原站不返回帖子列表, 而是渲染"提示信息"占位页
     // (.comiis_password_top)。若继续按普通帖子解析, 详情页会变成空壳:
     // 标题显示成"提示信息"、板块名误取面包屑"详情"、正文为空。直接抛出原因即可。
@@ -425,6 +431,15 @@ class ApiService {
   dom.Element? _firstPostNode(dom.Document doc) {
     const selectors = '.comiis_postli, #postlist .plhin, #postlist .plc, #postlist > div[id^="post_"], div[id^="postmessage_"]';
     return doc.querySelector(selectors);
+  }
+
+  /// 当前页面是否为登录页(未登录访问受保护页面时被重定向到这里)。
+  bool _isLoginPage(dom.Document doc) {
+    if (doc.querySelector('#loginform, .comiis_loginbox, form[action*="action=login"]') != null) {
+      return true;
+    }
+    final title = _normSpace(doc.querySelector('title')?.text ?? '');
+    return title.startsWith('登录');
   }
 
   _PaidState _parsePaidState(dom.Document doc) {
