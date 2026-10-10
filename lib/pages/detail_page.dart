@@ -772,7 +772,7 @@ class _DetailPageState extends State<DetailPage> {
     return query.contains('mod=image');
   }
 
-  /// 观看权限不足(或主题需密码)时的提示页: 展示原站原因, 并提供返回/网页打开。
+  /// 观看权限不足(或主题需密码)时的提示页: 展示原站原因, 并提供返回(未登录时附登录入口)。
   Widget _restrictedView(BuildContext context) {
     final c = Theme.of(context).colorScheme;
     return Center(
@@ -804,32 +804,16 @@ class _DetailPageState extends State<DetailPage> {
                   icon: const Icon(Icons.arrow_back_rounded),
                   label: const Text('返回'),
                 ),
+                // 权限不足时网页端也是同一张受限提示页, 打开网页没有意义, 因此只提供登录入口。
                 if (_restrictedLogin && !_loggedIn)
                   FilledButton.icon(
                     onPressed: _login,
                     icon: const Icon(Icons.login_rounded),
                     label: const Text('去登录'),
-                  )
-                else
-                  FilledButton.icon(
-                    onPressed: _openInWeb,
-                    icon: const Icon(Icons.public_rounded),
-                    label: const Text('网页打开'),
                   ),
               ],
             ),
           ],
-        ),
-      ),
-    );
-  }
-
-  void _openInWeb() {
-    Navigator.of(context).push(
-      MaterialPageRoute(
-        builder: (_) => WebViewPage(
-          url: ApiService.detailUrl(widget.tid),
-          title: widget.title,
         ),
       ),
     );
