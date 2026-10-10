@@ -53,6 +53,8 @@ class _DetailPageState extends State<DetailPage> {
   bool _commentChanging = false;
   bool _authorOnly = false;
   String? _error;
+  /// 帖子超出当前账号观看权限时, 原站返回的原因文案; 非空时展示受限提示页。
+  String? _restricted;
   int _likeCount = 0;
   /// 外层列表滚动控制器: 从通知进入时用于滚动到目标评论。
   final ScrollController _scroll = ScrollController();
@@ -135,6 +137,7 @@ class _DetailPageState extends State<DetailPage> {
         _fetching = true;
         _loading = !hadDetail;
         _error = null;
+        _restricted = null;
       });
     var ok = false;
     try {
@@ -153,6 +156,9 @@ class _DetailPageState extends State<DetailPage> {
       ok = true;
       // 详情加载成功即记入本机浏览历史(标题已由 ApiService 去掉"-版块"后缀)。
       unawaited(BrowseHistoryService.instance.record(tid: d.tid, title: d.title, boardName: d.boardName));
+    } on ThreadAccessRestricted catch (e) {
+      // 权限不足不是加载失败: 原站给了明确原因, 原样呈现即可。
+      if (mounted) setState(() => _restricted = e.message);
     } catch (e) {
       if (mounted) {
         setState(() {
@@ -178,7 +184,13 @@ class _DetailPageState extends State<DetailPage> {
   /// 右上角手动刷新: 刷新完成后给出明确反馈, 避免"点了没反应"的观感。
   Future<void> _manualRefresh() async {
     final ok = await _fetch();
-    if (mounted && ok) _snack('已刷新');
+    if (!mounted) return;
+    if (ok) {
+      _snack('已刷新');
+    } else if (_restricted != null) {
+      // 受限状态下刷新没有新内容可展示, 直接回显原站原因, 避免"点了没反应"。
+      _snack(_restricted!);
+    }
   }
 
   Future<void> _loadInteractionState() async {
@@ -521,6 +533,7 @@ class _DetailPageState extends State<DetailPage> {
 
   Widget _buildBody(BuildContext context) {
     if (_loading) return const Center(child: CircularProgressIndicator());
+    if (_restricted != null) return _restrictedView(context);
     if (_error != null || _detail == null) return _errorView(context);
     final d = _detail!;
     return RefreshIndicator(
@@ -749,6 +762,62 @@ class _DetailPageState extends State<DetailPage> {
     }
     // Comicis/Discuz 图片放大查看走 mod=image, 文件附件走 mod=attachment。
     return query.contains('mod=image');
+  }
+
+  /// 观看权限不足(或主题需密码)时的提示页: 展示原站原因, 并提供返回/网页打开。
+  Widget _restrictedView(BuildContext context) {
+    final c = Theme.of(context).colorScheme;
+    return Center(
+      child: Padding(
+        padding: const EdgeInsets.all(32),
+        child: Column(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            Icon(Icons.lock_outline_rounded, size: 48, color: c.primary),
+            const SizedBox(height: 14),
+            const Text(
+              '无权查看该主题',
+              style: TextStyle(fontWeight: FontWeight.w700, fontSize: 16),
+            ),
+            const SizedBox(height: 7),
+            Text(
+              _restricted!,
+              textAlign: TextAlign.center,
+              style: TextStyle(color: c.onSurfaceVariant),
+            ),
+            const SizedBox(height: 16),
+            Wrap(
+              alignment: WrapAlignment.center,
+              spacing: 12,
+              runSpacing: 8,
+              children: [
+                OutlinedButton.icon(
+                  onPressed: () => Navigator.maybePop(context),
+                  icon: const Icon(Icons.arrow_back_rounded),
+                  label: const Text('返回'),
+                ),
+                FilledButton.icon(
+                  onPressed: _openInWeb,
+                  icon: const Icon(Icons.public_rounded),
+                  label: const Text('网页打开'),
+                ),
+              ],
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+
+  void _openInWeb() {
+    Navigator.of(context).push(
+      MaterialPageRoute(
+        builder: (_) => WebViewPage(
+          url: ApiService.detailUrl(widget.tid),
+          title: widget.title,
+        ),
+      ),
+    );
   }
 
   Widget _errorView(BuildContext context) {
