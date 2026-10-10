@@ -115,13 +115,13 @@ class _HomePageState extends State<HomePage> {
           children: [
             _buildHeader(context, scheme),
             _buildSearch(context, scheme),
-            if (_pinned.isNotEmpty) _buildPinned(context, scheme),
             _buildSectionHeader(context, scheme),
             _buildTabs(context, scheme),
             Expanded(
               child: ThreadListView(
                 key: ValueKey(view), paginate: false,
                 padding: const EdgeInsets.fromLTRB(12, 4, 12, 100),
+                header: _pinned.isEmpty ? null : _buildPinned(context, scheme),
                 loader: (_) => _load(view),
               ),
             ),
@@ -187,11 +187,12 @@ class _HomePageState extends State<HomePage> {
   }
 
   /// 官方置顶帖区域: 展示站务公告版块的置顶帖, 点击进入帖子详情。
+  /// 作为列表头部随内容一起滚动, 向下翻帖时会自然移出屏幕。
   Widget _buildPinned(BuildContext context, ColorScheme scheme) {
     const maxVisible = 3;
     final visible = _pinned.take(maxVisible).toList();
     return Padding(
-      padding: const EdgeInsets.fromLTRB(16, 0, 16, 12),
+      padding: const EdgeInsets.only(bottom: 2),
       child: Container(
         padding: const EdgeInsets.fromLTRB(14, 12, 14, 6),
         decoration: BoxDecoration(

@@ -14,11 +14,15 @@ class ThreadListView extends StatefulWidget {
   final bool paginate;
   final EdgeInsets? padding;
 
+  /// 随列表一起滚动的头部内容(如首页置顶), 传 null 则不显示。
+  final Widget? header;
+
   const ThreadListView({
     super.key,
     required this.loader,
     this.paginate = true,
     this.padding,
+    this.header,
   });
 
   @override
@@ -183,24 +187,25 @@ class _ThreadListViewState extends State<ThreadListView> {
     if (_error != null && _items.isEmpty) {
       return _ErrorView(error: _error!, onRetry: _load);
     }
-    if (_items.isEmpty && _loading) {
-      return const Center(child: CircularProgressIndicator());
-    }
+    final header = widget.header;
+    final headerCount = header == null ? 0 : 1;
     return RefreshIndicator(
       onRefresh: _load,
       child: ListView.separated(
         controller: _scroll,
         physics: const AlwaysScrollableScrollPhysics(),
         padding: widget.padding ?? const EdgeInsets.fromLTRB(14, 6, 14, 24),
-        itemCount: _items.length + 1,
+        itemCount: _items.length + headerCount + 1,
         separatorBuilder: (_, _) => const SizedBox(height: 10),
         itemBuilder: (context, i) {
-          if (i >= _items.length) return _footer(context);
-          final item = _items[i];
+          if (headerCount > 0 && i == 0) return header!;
+          final index = i - headerCount;
+          if (index >= _items.length) return _footer(context);
+          final item = _items[index];
           return ThreadCard(
             item: item,
             onTap: () => _openDetail(item),
-            onImageTap: (index) => _openImage(item, index),
+            onImageTap: (idx) => _openImage(item, idx),
           );
         },
       ),
