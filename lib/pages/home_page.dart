@@ -150,15 +150,6 @@ class _HomePageState extends State<HomePage> {
               Text('发现新内容，和大家聊聊', style: TextStyle(fontSize: 13, color: scheme.onSurfaceVariant)),
             ]),
           ),
-          Material(
-            color: scheme.primaryContainer,
-            shape: const CircleBorder(),
-            child: InkWell(
-              customBorder: const CircleBorder(),
-              onTap: () => Navigator.of(context).push(MaterialPageRoute(builder: (_) => const SearchPage())),
-              child: const Padding(padding: EdgeInsets.all(12), child: Icon(Icons.search_rounded, size: 22)),
-            ),
-          ),
         ],
       ),
     );
