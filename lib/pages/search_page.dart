@@ -333,7 +333,6 @@ class _SearchPageState extends State<SearchPage> {
   Widget build(BuildContext context) => Scaffold(
         appBar: AppBar(
           title: const Text('搜索'),
-          actions: [IconButton(onPressed: _loading ? null : _search, icon: const Icon(Icons.search))],
         ),
         body: Column(children: [
           Padding(
