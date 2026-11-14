@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 import 'package:webview_flutter/webview_flutter.dart';
 
 import '../services/auth_service.dart';
+import '../services/credential_store.dart';
 import '../services/login_log.dart';
 
 class LoginPage extends StatefulWidget {
@@ -19,6 +20,7 @@ class _LoginPageState extends State<LoginPage> {
   bool _loading = false;
   bool _obscure = true;
   bool _agreed = false;
+  bool _remember = true;
   String _questionId = '0';
   String? _error;
 
@@ -32,6 +34,30 @@ class _LoginPageState extends State<LoginPage> {
     ('6', '您最喜欢的餐馆名称'),
     ('7', '驾驶执照最后四位数字'),
   ];
+
+  @override
+  void initState() {
+    super.initState();
+    _restoreSaved();
+  }
+
+  /// 回填本机记住的账号密码，免去每次登录重新输入。
+  Future<void> _restoreSaved() async {
+    final saved = await CredentialStore.instance.load();
+    final choice = await CredentialStore.instance.rememberChoice();
+    if (!mounted) return;
+    setState(() {
+      // 首次登录默认勾选；用户上次明确取消过则保持不勾选。
+      _remember = saved != null || choice != false;
+      if (saved == null) return;
+      _usernameController.text = saved.username;
+      _passwordController.text = saved.password;
+      if (_questions.any((q) => q.$1 == saved.questionId)) {
+        _questionId = saved.questionId;
+        _answerController.text = saved.answer;
+      }
+    });
+  }
 
   @override
   void dispose() {
@@ -69,15 +95,38 @@ class _LoginPageState extends State<LoginPage> {
     if (!mounted) return;
     setState(() => _loading = false);
     if (error == null) {
+      await _persistCredential();
+      if (!mounted) return;
       Navigator.of(context).pop(true);
     } else {
       setState(() => _error = error);
     }
   }
 
+  /// 按「记住账号密码」的勾选状态保存或清除本机凭证。
+  Future<void> _persistCredential() async {
+    if (_remember) {
+      await CredentialStore.instance.save(SavedCredential(
+        username: _usernameController.text.trim(),
+        password: _passwordController.text,
+        questionId: _questionId,
+        answer: _answerController.text.trim(),
+      ));
+      LoginLog.instance.add('已记住账号密码（仅保存在本机）');
+    } else {
+      await CredentialStore.instance.clear();
+      LoginLog.instance.add('未勾选记住账号密码，已清除本机保存的凭证');
+    }
+  }
+
   Future<void> _webFallback() async {
     final ok = await Navigator.of(context).push<bool>(MaterialPageRoute(builder: (_) => const _LegacyLoginPage()));
-    if (ok == true && mounted) Navigator.of(context).pop(true);
+    if (ok != true || !mounted) return;
+    // 网页验证登录的账号不一定是本机记住的那个，且拿不到密码，
+    // 清掉旧凭证，避免下次自动登录回错误的账号。
+    await CredentialStore.instance.clear();
+    if (!mounted) return;
+    Navigator.of(context).pop(true);
   }
 
   @override
@@ -180,7 +229,17 @@ class _LoginPageState extends State<LoginPage> {
                         ),
                       ),
                     ],
-                    const SizedBox(height: 12),
+                    CheckboxListTile(
+                      value: _remember,
+                      onChanged: _loading ? null : (v) => setState(() => _remember = v ?? false),
+                      title: const Text('记住账号密码', style: TextStyle(fontSize: 14, fontWeight: FontWeight.w600)),
+                      subtitle: const Text('下次登录自动填充，登录过期后自动重新登录', style: TextStyle(fontSize: 12)),
+                      controlAffinity: ListTileControlAffinity.leading,
+                      contentPadding: EdgeInsets.zero,
+                      dense: true,
+                      visualDensity: VisualDensity.compact,
+                    ),
+                    const SizedBox(height: 8),
                     InkWell(
                       borderRadius: BorderRadius.circular(12),
                       onTap: _loading ? null : () => setState(() => _agreed = !_agreed),
@@ -236,7 +295,13 @@ class _LoginPageState extends State<LoginPage> {
                       label: const Text('需要验证码？使用网页验证'),
                     ),
                     const SizedBox(height: 14),
-                    Text('登录请求直接发送到源论坛，密码不会保存到应用配置或代码中。', textAlign: TextAlign.center, style: TextStyle(fontSize: 12, color: scheme.onSurfaceVariant)),
+                    Text(
+                      _remember
+                          ? '登录请求直接发送到源论坛。账号密码仅加密保存在本机，不会上传，取消勾选后登录即可清除。'
+                          : '登录请求直接发送到源论坛，密码不会保存到应用配置或代码中。',
+                      textAlign: TextAlign.center,
+                      style: TextStyle(fontSize: 12, color: scheme.onSurfaceVariant),
+                    ),
                   ],
                 ),
               ),

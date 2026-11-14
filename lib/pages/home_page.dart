@@ -62,6 +62,10 @@ class _HomePageState extends State<HomePage> {
 
   Future<void> _ensureLoggedIn() async {
     await AuthService.instance.init();
+    if (!AuthService.instance.isLoggedIn) {
+      // 已记住账号密码时先行静默登录，避免无谓地弹登录页。
+      await AuthService.instance.tryAutoLogin();
+    }
     if (!AuthService.instance.isLoggedIn && mounted) {
       final login = await Navigator.of(context).push<bool>(MaterialPageRoute(builder: (_) => const LoginPage()));
       if (login != true || !mounted) return;

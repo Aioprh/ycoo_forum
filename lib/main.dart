@@ -97,8 +97,13 @@ class _RootShellState extends State<RootShell> {
   Future<void> _autoCheckIn() async {
     // 先恢复本地登录会话，再执行自动签到；签到服务自身还会按本地日期限流。
     await AuthService.instance.init();
-    if (!AuthService.instance.isLoggedIn) return;
-    await AuthService.instance.checkLoggedIn();
+    if (AuthService.instance.isLoggedIn) {
+      await AuthService.instance.checkLoggedIn();
+    }
+    // Cookie 缺失或已过期时，用「记住账号密码」保存的凭证静默重登。
+    if (!AuthService.instance.isLoggedIn) {
+      await AuthService.instance.tryAutoLogin();
+    }
     if (!AuthService.instance.isLoggedIn || !mounted) return;
     await CheckinService.instance.autoSignOncePerDay();
   }

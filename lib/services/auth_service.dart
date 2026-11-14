@@ -3,6 +3,7 @@ import 'package:http/http.dart' as http;
 import 'package:html/dom.dart' as dom;
 import 'package:html/parser.dart' as html_parser;
 import 'package:shared_preferences/shared_preferences.dart';
+import 'credential_store.dart';
 import 'user_permission_service.dart';
 import 'site_config.dart';
 import 'login_log.dart';
@@ -25,6 +26,8 @@ class AuthService {
   String? _avatarUrl;
   String? _cookie;
   http.Client? _client;
+  bool _autoLoginTried = false;
+  Future<bool>? _autoLoginTask;
   bool get isLoggedIn => _loggedIn;
   String? get username => _username;
   int? get uid => _uid;
@@ -179,6 +182,56 @@ class AuthService {
     }
   }
 
+  /// 使用本地保存的账号密码静默登录，用于「记住账号密码」后免重复输入。
+  ///
+  /// 只在当前没有有效登录态时尝试；默认每个应用生命周期只尝试一次，
+  /// 避免密码已变更时反复触发登录请求与站点风控。
+  /// 多个页面同时触发时会共用同一个在途任务，不会重复登录。
+  /// 失败时返回 false 且不抛异常，调用方继续走正常的登录引导即可。
+  Future<bool> tryAutoLogin({bool force = false}) {
+    if (_loggedIn) return Future<bool>.value(true);
+    if (force) {
+      _autoLoginTask = null;
+    } else if (_autoLoginTask != null) {
+      // 已有在途/已完成的尝试：直接复用结果，避免多页面并发重复登录。
+      return _autoLoginTask!;
+    } else if (_autoLoginTried) {
+      return Future<bool>.value(false);
+    }
+    _autoLoginTried = true;
+    return _autoLoginTask = _autoLoginWithSaved();
+  }
+
+  Future<bool> _autoLoginWithSaved() async {
+    final saved = await CredentialStore.instance.load();
+    if (saved == null || !saved.autoLogin) return false;
+    LoginLog.instance.add('尝试使用已保存的账号自动登录: ${saved.username}');
+    final error = await loginNative(
+      saved.username,
+      saved.password,
+      questionId: saved.questionId,
+      answer: saved.answer,
+    );
+    if (error == null) {
+      LoginLog.instance.add('自动登录成功: ${_username ?? saved.username}');
+      return true;
+    }
+    LoginLog.instance.add('自动登录失败: $error');
+    // 账号密码本身失效时关闭静默重登，避免每次启动都撞一次风控；
+    // 用户重新登录并勾选「记住账号密码」会再次开启。
+    // 注意只认明确的凭证错误，网络异常时不改动设置。
+    final credentialInvalid = error.contains('密码错误') ||
+        error.contains('用户名或密码') ||
+        error.contains('账号不存在') ||
+        error.contains('用户不存在') ||
+        error.contains('安全提问') ||
+        error.contains('答案不正确');
+    if (credentialInvalid) {
+      await CredentialStore.instance.disableAutoLogin();
+    }
+    return false;
+  }
+
   bool _looksLikeSuccess(String body) {
     final lower = body.toLowerCase();
     return lower.contains('login_succeed') ||
@@ -307,10 +360,14 @@ class AuthService {
 
   Future<bool> checkLoggedIn() async {
     try {
+      final cookieBefore = _cookie;
       final client = await _http();
       final resp = await client.get(Uri.parse('${base}forum.php?mobile=2'), headers: _headers()).timeout(NetClient.timeout);
       final body = NetClient.decode(resp.bodyBytes);
       final ok = body.contains('action=logout') || body.contains('退出登录');
+      // 探测期间若已通过「记住账号密码」重新登录（Cookie 已被替换），
+      // 不能用旧会话的探测结果覆盖新的登录态。
+      if (!ok && _loggedIn && _cookie != cookieBefore) return _loggedIn;
       if (_loggedIn != ok) {
         _loggedIn = ok;
         if (!ok) {
@@ -338,6 +395,9 @@ class AuthService {
     _avatarUrl = null;
     _cookie = null;
     UserPermissionService.resetCache();
+    // 主动退出后不再静默自动登录（避免刚退出又被登回去），
+    // 但保留已记住的账号密码，登录页仍会自动填充。
+    await CredentialStore.instance.disableAutoLogin();
     await _save();
   }
 

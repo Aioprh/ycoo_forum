@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 
 import '../services/auth_service.dart';
 import '../services/checkin_service.dart';
+import '../services/credential_store.dart';
 import '../services/profile_identity_service.dart';
 import '../services/theme_mode_controller.dart';
 import 'browse_history_page.dart';
@@ -33,6 +34,7 @@ class _ProfilePageState extends State<ProfilePage> {
   bool _ready = false;
   bool _signing = false;
   bool _alreadySigned = false;
+  bool _hasSavedCredential = false;
   String? _checkinResult;
 
   @override
@@ -43,6 +45,9 @@ class _ProfilePageState extends State<ProfilePage> {
 
   Future<void> _load() async {
     await AuthService.instance.init();
+    if (!AuthService.instance.isLoggedIn) {
+      await AuthService.instance.tryAutoLogin();
+    }
     if (AuthService.instance.isLoggedIn) {
       await AuthService.instance.checkLoggedIn();
       final identity = await ProfileIdentityService.instance.fetch();
@@ -61,6 +66,7 @@ class _ProfilePageState extends State<ProfilePage> {
     _avatarUrl ??= AuthService.instance.avatarUrl;
     _alreadySigned =
         AuthService.instance.isLoggedIn ? await CheckinService.instance.isCheckedInToday() : false;
+    _hasSavedCredential = await CredentialStore.instance.hasSaved();
     if (mounted) setState(() => _ready = true);
   }
 
@@ -84,6 +90,31 @@ class _ProfilePageState extends State<ProfilePage> {
       _alreadySigned = false;
       _checkinResult = null;
     });
+  }
+
+  /// 清除本机记住的账号密码。
+  ///
+  /// 「退出登录」只关闭自动登录、保留凭证用于下次填充，
+  /// 真正要让本机不再保存账号密码时走这里。
+  Future<void> _clearSavedCredential() async {
+    final ok = await showDialog<bool>(
+      context: context,
+      builder: (dialogContext) => AlertDialog(
+        title: const Text('清除已保存的账号密码？'),
+        content: const Text('清除后，下次登录需要重新输入用户名和密码；退出登录不会自动清除。'),
+        actions: [
+          TextButton(onPressed: () => Navigator.pop(dialogContext, false), child: const Text('取消')),
+          FilledButton(onPressed: () => Navigator.pop(dialogContext, true), child: const Text('清除')),
+        ],
+      ),
+    );
+    if (ok != true) return;
+    await CredentialStore.instance.clear();
+    if (!mounted) return;
+    setState(() => _hasSavedCredential = false);
+    ScaffoldMessenger.of(context).showSnackBar(
+      const SnackBar(content: Text('已清除本机保存的账号密码'), behavior: SnackBarBehavior.floating),
+    );
   }
 
   Future<void> _checkIn() async {
@@ -492,6 +523,15 @@ class _ProfilePageState extends State<ProfilePage> {
       _featureTile(icon: Icons.info_outline_rounded, title: '关于', subtitle: '项目地址、版本与更新', onTap: _openAbout),
       _appearanceSection(context),
       const SizedBox(height: 8),
+      if (_hasSavedCredential)
+        ListTile(
+          contentPadding: const EdgeInsets.symmetric(horizontal: 14),
+          leading: const Icon(Icons.key_off_outlined),
+          title: const Text('清除已保存的账号密码'),
+          subtitle: const Text('下次登录需重新输入'),
+          trailing: const Icon(Icons.chevron_right),
+          onTap: _clearSavedCredential,
+        ),
       ListTile(contentPadding: const EdgeInsets.symmetric(horizontal: 14), leading: const Icon(Icons.logout), title: const Text('退出登录'), trailing: const Icon(Icons.chevron_right), onTap: _logout),
     ];
   }
