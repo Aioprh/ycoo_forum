@@ -28,6 +28,9 @@ class AuthService {
   http.Client? _client;
   bool _autoLoginTried = false;
   Future<bool>? _autoLoginTask;
+  /// 正在进行的原生登录，用于合并并发请求。
+  String? _loginKey;
+  Future<String?>? _loginTask;
   bool get isLoggedIn => _loggedIn;
   String? get username => _username;
   int? get uid => _uid;
@@ -82,18 +85,44 @@ class AuthService {
     return null;
   }
 
+  /// 用站点自身的登录接口登录，成功返回 null，失败返回给用户看的文案。
   Future<String?> loginNative(
     String username,
     String password, {
     String questionId = '0',
     String answer = '',
-  }) async {
+  }) {
     final user = username.trim();
     final cleanAnswer = answer.trim();
-    if (user.isEmpty) return '请输入用户名';
-    if (password.isEmpty) return '请输入密码';
-    if (questionId != '0' && cleanAnswer.isEmpty) return '请输入安全提问答案';
+    if (user.isEmpty) return Future<String?>.value('请输入用户名');
+    if (password.isEmpty) return Future<String?>.value('请输入密码');
+    if (questionId != '0' && cleanAnswer.isEmpty) {
+      return Future<String?>.value('请输入安全提问答案');
+    }
 
+    // 启动时的静默登录与用户手动点「登录」可能同时触发。
+    // 并发提交会互相顶掉会话，还会白白消耗站点给的尝试次数，这里合并成一次。
+    final key = '$user\u0000$password\u0000$questionId\u0000$cleanAnswer';
+    final running = _loginTask;
+    if (running != null && _loginKey == key) return running;
+
+    final task = _loginWithFallback(user, password, questionId, cleanAnswer);
+    _loginKey = key;
+    _loginTask = task;
+    return task.whenComplete(() {
+      if (identical(_loginTask, task)) {
+        _loginTask = null;
+        _loginKey = null;
+      }
+    });
+  }
+
+  Future<String?> _loginWithFallback(
+    String user,
+    String password,
+    String questionId,
+    String cleanAnswer,
+  ) async {
     final client = await _http();
     // 不同地区/运营商能连通的入口不一样，依次尝试，避免卡在一条被拦截的线路上。
     final bases = await SiteConfig.reachableCandidates();
@@ -104,17 +133,21 @@ class AuthService {
       final outcome = await _loginOnce(client, baseUrl, user, password, questionId, cleanAnswer);
       if (outcome.error == null) return null;
       lastError = outcome.error;
+      // 站点已给出明确答复(密码不对、需要验证码)时换线没有意义，
+      // 多提交一次反而会再消耗一次站点的登录尝试次数。
       if (!outcome.retryNext) return lastError;
-      LoginLog.instance.add('登录换线: $baseUrl 不可用, 尝试下一个入口');
+      LoginLog.instance.add('登录换线: $baseUrl 不可用($lastError)，尝试下一个入口');
     }
-    LoginLog.instance.add('原生登录: ${candidates.length} 个入口均不可用');
-    return '当前网络无法连接论坛登录页（已尝试 ${candidates.length} 个入口），请换网络后重试或使用网页验证';
+    LoginLog.instance.add('原生登录: ${candidates.length} 个入口均失败，最后错误=$lastError');
+    if (lastError == null) return '登录失败，请稍后重试';
+    return candidates.length > 1 ? '$lastError（已尝试 ${candidates.length} 个入口）' : lastError;
   }
 
   /// 在指定入口上完成一次登录。
   ///
-  /// [retryNext] 为 true 表示这个入口本身有问题(取不到令牌/连不上)，换线还有机会；
-  /// 为 false 表示站点已给出明确答复(密码错误、需要验证码等)，换线没有意义。
+  /// [retryNext] 为 true 表示这个入口本身有问题(取不到令牌/连不上/服务端报错)，
+  /// 换线还有机会；为 false 表示站点已给出明确答复(密码错误、需要验证码等)，
+  /// 换线既没必要，也可能多消耗一次站点的登录尝试次数。
   Future<({String? error, bool retryNext})> _loginOnce(
     http.Client client,
     String baseUrl,
@@ -123,23 +156,36 @@ class AuthService {
     String questionId,
     String cleanAnswer,
   ) async {
+    final jar = _CookieJar();
     try {
       final loginUri = Uri.parse('$baseUrl$loginPath');
 
-      // 登录页与提交都不带旧 Cookie：避免上一次失效会话把页面带偏，
-      // 新会话完全由本次登录的 Set-Cookie 建立。
+      // 不带应用里存的旧 Cookie(失效会话会把页面带偏)，但必须把本次登录页
+      // 下发的 Cookie 一路带到提交请求：Discuz 的登录提交依赖这里下发的
+      // saltkey/sid，缺了会直接返回 503 System Error。
       final loginPage = await client.get(
         loginUri,
         headers: _headers(referer: baseUrl, withCookie: false),
       ).timeout(const Duration(seconds: 8));
+      jar.absorb(loginPage.headers);
       final page = NetClient.decode(loginPage.bodyBytes);
       final formhash = _hiddenValue(page, 'formhash');
 
       LoginLog.instance.add(
         '原生登录页[$baseUrl]: http=${loginPage.statusCode}, bytes=${loginPage.bodyBytes.length}, '
         'title=${_pageTitle(page)}, formhash=${formhash == null ? 'missing' : 'ok'}, '
-        'loginhash=${_loginHash(page) == null ? 'missing' : 'ok'}',
+        'loginhash=${_loginHash(page) == null ? 'missing' : 'ok'}, cookies=${jar.length}',
       );
+
+      if (loginPage.statusCode >= 500) {
+        return (error: '当前线路返回系统错误(HTTP ${loginPage.statusCode})', retryNext: true);
+      }
+
+      // 登录页上出现验证码输入框时，原生登录必然提交不过去，
+      // 先提示网页验证，避免白白消耗一次登录尝试次数。
+      if (page.contains('seccodeverify') || page.contains('seccodehash')) {
+        return (error: '该账号需要验证码，请使用网页验证完成登录', retryNext: false);
+      }
 
       if (formhash == null || formhash.isEmpty) {
         if (_looksBlocked(page)) {
@@ -159,11 +205,13 @@ class AuthService {
         '&inajax=1',
       );
 
-      // 参数与 Discuz X3 登录表单保持一致：安全提问未设置时 questionid=0。
+      // 参数对齐 Discuz X3 登录表单：安全提问未设置时 questionid=0；
+      // submit / agreebbrule 与页面上的登录按钮、协议勾选框同名同值。
       final response = await client.post(
         endpoint,
         headers: {
           ..._headers(referer: loginUri.toString(), withCookie: false),
+          if (jar.header.isNotEmpty) 'Cookie': jar.header,
           'Content-Type': 'application/x-www-form-urlencoded; charset=UTF-8',
           'Origin': baseUrl,
           'X-Requested-With': 'XMLHttpRequest',
@@ -171,57 +219,54 @@ class AuthService {
         body: <String, String>{
           'formhash': formhash,
           'referer': baseUrl,
+          'fastloginfield': 'username',
           'loginfield': 'username',
           'username': user,
           'password': password,
           'cookietime': '2592000',
           'questionid': questionId,
           'answer': cleanAnswer,
+          'submit': 'true',
+          'agreebbrule': '1',
         },
       ).timeout(NetClient.timeout);
 
+      jar.absorb(response.headers);
       final body = NetClient.decode(response.bodyBytes);
-      final setCookie = response.headers['set-cookie'];
-      if (setCookie != null && setCookie.isNotEmpty) {
-        final parsed = _cookieFromSetCookie(setCookie);
-        if (parsed.isNotEmpty) _cookie = _mergeCookies(_cookie, parsed);
-      }
+      final message = _serverMessage(body);
 
       LoginLog.instance.add(
         '原生登录响应[$baseUrl]: http=${response.statusCode}, bytes=${response.bodyBytes.length}, '
-        'cookie=${_cookie == null ? 'none' : 'present'}',
+        'cookies=${jar.length}, auth=${jar.hasAuth}, msg=${message ?? '(无)'}',
       );
 
-      if (_looksLikeSuccess(body) || await _verifySession(client, baseUrl)) {
+      if (response.statusCode >= 500) {
+        return (error: '当前线路返回系统错误(HTTP ${response.statusCode})', retryNext: true);
+      }
+
+      // 站点给了明确失败答复时直接返回，不再多试一条线路。
+      final failure = _classifyLoginFailure(body, statusCode: response.statusCode);
+      if (failure != null) return failure;
+
+      // 只有服务端真的建立了会话才算登录成功：成功后站点会下发 auth Cookie，
+      // 再访问论坛首页应能看到「退出登录」入口，而不是「请登录或注册」。
+      final verified = await _verifySession(client, baseUrl, jar.header);
+      if (verified || (jar.hasAuth && _looksLikeSuccess(body))) {
+        _cookie = jar.header;
         // 记住这条能正常登录的线路，后续请求直接用它。
         SiteConfig.useBase(baseUrl);
         _loggedIn = true;
         _username = user;
+        // 换了账号时旧 uid / 头像必须作废，否则会拉到上一个账号的资料。
+        _uid = null;
+        _avatarUrl = null;
         await _save();
         await refreshProfile();
         LoginLog.instance.add('原生登录成功: ${_username ?? user}, uid=${_uid ?? 0}, 线路=$baseUrl');
         return (error: null, retryNext: false);
       }
 
-      if (_needsVerification(body)) {
-        return (error: '网站要求验证码或安全验证，请使用网页验证完成登录', retryNext: false);
-      }
-      if (_looksLikeQuestionError(body)) {
-        return (error: '安全提问或答案不正确，请检查后重试', retryNext: false);
-      }
-      if (body.contains('密码错误') || body.contains('用户名或密码错误')) {
-        return (error: '用户名或密码错误', retryNext: false);
-      }
-      if (body.contains('登录次数过多') || body.contains('请稍后再试')) {
-        return (error: '登录尝试过于频繁，请稍后再试', retryNext: false);
-      }
-
-      final serverMessage = _extractServerMessage(body);
-      if (serverMessage != null) {
-        LoginLog.instance.add('原生登录服务器返回: $serverMessage');
-        return (error: serverMessage, retryNext: false);
-      }
-      return (error: '登录失败，请检查账号信息', retryNext: false);
+      return (error: '登录未成功，请重试或使用网页验证', retryNext: true);
     } on TimeoutException {
       LoginLog.instance.add('原生登录超时[$baseUrl]');
       return (error: '当前线路连接超时', retryNext: true);
@@ -297,7 +342,10 @@ class AuthService {
         error.contains('账号不存在') ||
         error.contains('用户不存在') ||
         error.contains('安全提问') ||
-        error.contains('答案不正确');
+        error.contains('答案不正确') ||
+        error.contains('还可尝试') ||
+        error.contains('锁定') ||
+        error.contains('次数过多');
     if (credentialInvalid) {
       await CredentialStore.instance.disableAutoLogin();
     }
@@ -308,6 +356,9 @@ class AuthService {
     final lower = body.toLowerCase();
     return lower.contains('login_succeed') ||
         lower.contains('succeed') ||
+        lower.contains('window.location.href') ||
+        lower.contains('location.href=') ||
+        lower.contains('location.replace') ||
         body.contains('登录成功') ||
         body.contains('欢迎您回来') ||
         body.contains('现在将转入');
@@ -330,49 +381,108 @@ class AuthService {
         body.contains('问题答案错误');
   }
 
-  String? _extractServerMessage(String body) {
-    // Discuz inajax 通常返回 <root><![CDATA[...]]></root>，优先取其中的可读文本。
-    final cdata = RegExp(r'<!\[CDATA\[(.*?)\]\]>', dotAll: true).firstMatch(body)?.group(1);
-    final source = (cdata ?? body)
-        .replaceAll(RegExp(r'<script\b[^>]*>.*?</script>', caseSensitive: false, dotAll: true), ' ')
-        .replaceAll(RegExp(r'<[^>]+>'), ' ')
-        .replaceAll(RegExp(r'\\s+'), ' ')
-        .trim();
-    if (source.isEmpty || source.length > 120) return null;
-    if (source.contains('登录') || source.contains('密码') || source.contains('账号') || source.contains('验证')) {
-      return source;
+  /// 把站点回复归类成给用户看的错误；返回 null 表示没有明确的失败信号。
+  ({String? error, bool retryNext})? _classifyLoginFailure(
+    String body, {
+    required int statusCode,
+  }) {
+    // 会话/令牌缺失时 Discuz 会直接抛 System Error 页，换一条线路重走一遍通常就好了。
+    if (body.contains('System Error') || body.contains('系统错误')) {
+      return (error: '论坛返回系统错误', retryNext: true);
     }
-    return null;
+    final text = _serverMessage(body) ?? '';
+    if (text.isEmpty) return null;
+
+    if (_needsVerification(text)) {
+      return (error: '网站要求验证码或安全验证，请使用网页验证完成登录', retryNext: false);
+    }
+    if (_looksLikeQuestionError(text)) {
+      return (error: '安全提问或答案不正确，请检查后重试', retryNext: false);
+    }
+
+    // 「登录失败，您还可以尝试 N 次」是 Discuz 对账号密码错误的提示，N 为剩余次数。
+    final attempts = RegExp(r'还可以尝试\s*(\d+)\s*次').firstMatch(text);
+    if (attempts != null) {
+      final left = int.tryParse(attempts.group(1)!) ?? 0;
+      if (left <= 0) {
+        return (error: '登录失败次数过多，账号已被临时锁定，请稍后重试或使用网页验证', retryNext: false);
+      }
+      return (error: '用户名或密码不正确（还可尝试 $left 次）', retryNext: false);
+    }
+    if (text.contains('密码错误') || text.contains('用户名或密码')) {
+      return (error: '用户名或密码错误', retryNext: false);
+    }
+    if (text.contains('次数过多') || text.contains('禁止') || text.contains('锁定') || text.contains('冻结')) {
+      return (error: text, retryNext: false);
+    }
+    if (text.contains('不存在')) {
+      return (error: '账号不存在，请检查用户名', retryNext: false);
+    }
+    if (text.contains('同意') && text.contains('协议')) {
+      return (error: '需要先同意用户协议才能登录，请使用网页验证完成', retryNext: false);
+    }
+    if (text.contains('来路') || text.contains('令牌') || text.toLowerCase().contains('formhash')) {
+      // 令牌/会话不匹配：重新走一遍登录流程会拿到新令牌。
+      return (error: text, retryNext: true);
+    }
+    if (_looksLikeSuccess(body)) return null;
+    return (error: text, retryNext: false);
   }
 
-  Future<bool> _verifySession(http.Client client, [String? baseUrl]) async {
-    final site = baseUrl ?? base;
+  /// 取出 Discuz 回复里真正给用户看的那句提示。
+  String? _serverMessage(String body) {
+    if (body.isEmpty) return null;
+    var source = body;
+    final cdata = RegExp(r'<!\[CDATA\[([\s\S]*?)\]\]>').firstMatch(source)?.group(1);
+    if (cdata != null) source = cdata;
+    // 默认模板与 Comiis 模板都把提示正文放在 id="messagetext" 里。
+    // 只取这一块，避免把整页导航文字也当成提示（旧实现就是因此取不到文案）。
+    final boxed = RegExp(
+      r'''id=["']messagetext["'][^>]*>([\s\S]*?)</(?:dt|dd|div|p)>''',
+      caseSensitive: false,
+    ).firstMatch(source)?.group(1);
+    if (boxed != null && boxed.trim().isNotEmpty) source = boxed;
+
+    final text = _plainText(source);
+    if (text.isEmpty) return null;
+    if (!RegExp(r'登录|登陆|密码|账号|帐号|用户|验证|禁止|锁定|失败|错误|稍后|协议|安全|系统').hasMatch(text)) {
+      return null;
+    }
+    return text.length > 120 ? '${text.substring(0, 120)}…' : text;
+  }
+
+  /// 去标签取纯文本。
+  ///
+  /// 注意空白折叠必须用 `\s+`（旧实现写成 `\\s+`，等价于「反斜杠+s」，
+  /// 换行根本不会被折叠，提取出的文案超长后被丢弃，用户只能看到兜底提示）。
+  String _plainText(String html) => html
+      .replaceAll(RegExp(r'<script\b[^>]*>[\s\S]*?</script>', caseSensitive: false), ' ')
+      .replaceAll(RegExp(r'<style\b[^>]*>[\s\S]*?</style>', caseSensitive: false), ' ')
+      .replaceAll(RegExp(r'<[^>]+>'), ' ')
+      .replaceAll('&nbsp;', ' ')
+      .replaceAll('&amp;', '&')
+      .replaceAll('&quot;', '"')
+      .replaceAll('&#39;', "'")
+      .replaceAll('&lt;', '<')
+      .replaceAll('&gt;', '>')
+      .replaceAll(RegExp(r'\s+'), ' ')
+      .trim();
+
+  Future<bool> _verifySession(http.Client client, String site, String cookie) async {
     try {
       final resp = await client.get(
         Uri.parse('${site}forum.php?mobile=2'),
-        headers: _headers(referer: site),
+        headers: {
+          ..._headers(referer: site, withCookie: false),
+          if (cookie.isNotEmpty) 'Cookie': cookie,
+        },
       ).timeout(const Duration(seconds: 10));
       final body = NetClient.decode(resp.bodyBytes);
+      // 已登录：页面有「退出登录」入口；未登录：页面是「请登录或注册」。
       return body.contains('action=logout') || body.contains('退出登录');
     } catch (_) {
       return false;
     }
-  }
-
-  String _cookieFromSetCookie(String raw) => raw
-      .split(RegExp(r',\s*(?=[A-Za-z0-9_]+=[^;]+)'))
-      .map((v) => v.trim().split(';').first.trim())
-      .where((v) => v.contains('='))
-      .join('; ');
-
-  String _mergeCookies(String? oldCookie, String newCookie) {
-    final map = <String, String>{};
-    for (final part in [...?oldCookie?.split(';'), ...newCookie.split(';')]) {
-      final p = part.trim();
-      final i = p.indexOf('=');
-      if (i > 0) map[p.substring(0, i)] = p.substring(i + 1);
-    }
-    return map.entries.map((e) => '${e.key}=${e.value}').join('; ');
   }
 
   Future<void> refreshProfile() async {
@@ -821,5 +931,51 @@ class AuthService {
       await sp.setBool(_prefFlag, _loggedIn);
       await sp.setString(_prefCookie, _cookie ?? '');
     } catch (_) {}
+  }
+}
+
+/// 一次登录流程内的 Cookie 罐。
+///
+/// `package:http` 的 IOClient 不保存 Cookie，而 Discuz 的登录提交必须带上
+/// 登录页下发的 saltkey/sid，否则服务端会直接返回 503 System Error；
+/// 登录成功后下发的 auth 也必须原样回传给后续请求才能维持会话。
+/// 这里按「一次登录」的粒度收集并回放，避免把上一次的失效会话带进来。
+class _CookieJar {
+  final Map<String, String> _values = <String, String>{};
+
+  int get length => _values.length;
+
+  /// 是否已拿到登录凭证 Cookie（形如 `xxxx_auth`）。服务端只在登录成功时下发。
+  bool get hasAuth =>
+      _values.entries.any((e) => e.key.endsWith('_auth') && e.value.isNotEmpty);
+
+  String get header =>
+      _values.entries.map((e) => '${e.key}=${e.value}').join('; ');
+
+  /// 吸收一个响应的 `Set-Cookie` 头。
+  ///
+  /// http 包会把多条 Set-Cookie 用逗号拼成一个字符串，因此按
+  /// 「逗号 + 紧跟着 name=」切分；Expires 里的 `Wed, 15-Nov-2026` 不会命中。
+  void absorb(Map<String, String> headers) {
+    final raw = headers['set-cookie'];
+    if (raw == null || raw.isEmpty) return;
+    for (final piece in raw.split(RegExp(r',\s*(?=[A-Za-z0-9_.\-]+=)'))) {
+      final first = piece.split(';').first.trim();
+      final index = first.indexOf('=');
+      if (index <= 0) continue;
+      final name = first.substring(0, index).trim();
+      final value = first.substring(index + 1).trim();
+      if (name.isEmpty) continue;
+      final lower = piece.toLowerCase();
+      final expired = value.isEmpty ||
+          value.toLowerCase() == 'deleted' ||
+          lower.contains('max-age=0') ||
+          lower.contains('expires=thu, 01 jan 1970');
+      if (expired) {
+        _values.remove(name);
+      } else {
+        _values[name] = value;
+      }
+    }
   }
 }
