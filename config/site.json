@@ -3,7 +3,11 @@
   "cdn": "",
   "api": "",
   "fallbacks": [
+    "https://ycoo.net/",
     "https://src.top/",
-    "https://pc.sysbbs.com/"
+    "https://pc.sysbbs.com/",
+    "https://m.sysbbs.com/",
+    "https://srcbbs.com/",
+    "https://ycoo-tool.com/"
   ]
 }
