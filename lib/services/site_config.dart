@@ -80,6 +80,40 @@ class SiteConfig {
     return h.startsWith('www.') ? h.substring(4) : h;
   }
 
+  /// 关键流程(登录等)可尝试的入口候选, 按优先级去重。
+  static List<String> loginCandidates({int limit = 6}) =>
+      _candidateBases().take(limit).toList();
+
+  /// 并行快速探测, 只返回当前网络确实连得上的入口。
+  ///
+  /// 全部不可达时退回候选前 [take] 个强行尝试: 探测失败也可能只是 HEAD 被拒,
+  /// 真正能否登录要等实际请求结果。
+  static Future<List<String>> reachableCandidates({int scan = 6, int take = 3}) async {
+    final candidates = loginCandidates(limit: scan);
+    if (candidates.isEmpty) return const <String>[];
+    // 登录是用户主动等待的操作，探测超时比启动时更短。
+    final flags = await Future.wait(candidates.map(
+      (b) => _probe(
+        b,
+        headTimeout: const Duration(seconds: 2),
+        getTimeout: const Duration(seconds: 3),
+      ),
+    ));
+    final reachable = <String>[
+      for (var i = 0; i < candidates.length; i++)
+        if (flags[i]) candidates[i],
+    ];
+    if (reachable.isEmpty) return candidates.take(take).toList();
+    return reachable.take(take).toList();
+  }
+
+  /// 临时切换当前入口(仅本次运行生效), 用于登录时确认了哪条线路可用。
+  static void useBase(String value) {
+    final v = value.trim();
+    if (v.isEmpty) return;
+    _hosts = <String, String>{..._hosts, baseHost: v.endsWith('/') ? v : '$v/'};
+  }
+
   /// 把相对路径 / 网址统一解析为基于 [host] 的绝对地址。
   static String _resolveWith(String host, String value) {
     final v = value.trim();
@@ -196,14 +230,19 @@ class SiteConfig {
   /// 部分 CDN 对无 UA 的 HEAD 直接返回 403, 因此 HEAD 不通过时再用 GET 复核,
   /// 避免把「有防护但正常」的站点误判为不可达。
   /// [verifyForum] 为 true 时还要求页面确实是本站(用于发布页来源的候选)。
-  static Future<bool> _probe(String base, {bool verifyForum = false}) async {
+  static Future<bool> _probe(
+    String base, {
+    bool verifyForum = false,
+    Duration headTimeout = const Duration(seconds: 3),
+    Duration getTimeout = const Duration(seconds: 4),
+  }) async {
     const headers = <String, String>{'User-Agent': _probeUa};
     try {
-      final head = await http.head(Uri.parse(base), headers: headers).timeout(const Duration(seconds: 3));
+      final head = await http.head(Uri.parse(base), headers: headers).timeout(headTimeout);
       if (!verifyForum && head.statusCode >= 200 && head.statusCode < 400) return true;
     } catch (_) {}
     try {
-      final get = await http.get(Uri.parse(base), headers: headers).timeout(const Duration(seconds: 4));
+      final get = await http.get(Uri.parse(base), headers: headers).timeout(getTimeout);
       if (get.statusCode < 200 || get.statusCode >= 400) return false;
       if (!verifyForum) return true;
       return get.body.contains('forum.php') || get.body.contains('源论坛');

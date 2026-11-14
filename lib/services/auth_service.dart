@@ -35,13 +35,13 @@ class AuthService {
   String? get authCookie => _cookie;
   Future<http.Client> _http() async => _client ??= await NetClient.instance.client;
 
-  Map<String, String> _headers({String? referer}) => <String, String>{
+  Map<String, String> _headers({String? referer, bool withCookie = true}) => <String, String>{
     'User-Agent': NetClient.ua,
     'Accept': 'text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8',
     'Accept-Language': 'zh-CN,zh;q=0.9',
     'Cache-Control': 'no-cache',
     if (referer != null) 'Referer': referer,
-    if (_cookie != null && _cookie!.isNotEmpty) 'Cookie': _cookie!,
+    if (withCookie && _cookie != null && _cookie!.isNotEmpty) 'Cookie': _cookie!,
   };
 
   Future<void> init() async {
@@ -94,31 +94,67 @@ class AuthService {
     if (password.isEmpty) return '请输入密码';
     if (questionId != '0' && cleanAnswer.isEmpty) return '请输入安全提问答案';
 
-    try {
-      final client = await _http();
-      final loginUri = Uri.parse(base + loginPath);
+    final client = await _http();
+    // 不同地区/运营商能连通的入口不一样，依次尝试，避免卡在一条被拦截的线路上。
+    final bases = await SiteConfig.reachableCandidates();
+    final candidates = bases.isEmpty ? <String>[base] : bases;
 
-      // Discuz 登录令牌必须从本次登录页实时取得，不能缓存 formhash。
+    String? lastError;
+    for (final baseUrl in candidates) {
+      final outcome = await _loginOnce(client, baseUrl, user, password, questionId, cleanAnswer);
+      if (outcome.error == null) return null;
+      lastError = outcome.error;
+      if (!outcome.retryNext) return lastError;
+      LoginLog.instance.add('登录换线: $baseUrl 不可用, 尝试下一个入口');
+    }
+    LoginLog.instance.add('原生登录: ${candidates.length} 个入口均不可用');
+    return '当前网络无法连接论坛登录页（已尝试 ${candidates.length} 个入口），请换网络后重试或使用网页验证';
+  }
+
+  /// 在指定入口上完成一次登录。
+  ///
+  /// [retryNext] 为 true 表示这个入口本身有问题(取不到令牌/连不上)，换线还有机会；
+  /// 为 false 表示站点已给出明确答复(密码错误、需要验证码等)，换线没有意义。
+  Future<({String? error, bool retryNext})> _loginOnce(
+    http.Client client,
+    String baseUrl,
+    String user,
+    String password,
+    String questionId,
+    String cleanAnswer,
+  ) async {
+    try {
+      final loginUri = Uri.parse('$baseUrl$loginPath');
+
+      // 登录页与提交都不带旧 Cookie：避免上一次失效会话把页面带偏，
+      // 新会话完全由本次登录的 Set-Cookie 建立。
       final loginPage = await client.get(
         loginUri,
-        headers: _headers(referer: base),
-      ).timeout(NetClient.timeout);
+        headers: _headers(referer: baseUrl, withCookie: false),
+      ).timeout(const Duration(seconds: 8));
       final page = NetClient.decode(loginPage.bodyBytes);
       final formhash = _hiddenValue(page, 'formhash');
 
       LoginLog.instance.add(
-        '原生登录页: http=${loginPage.statusCode}, bytes=${loginPage.bodyBytes.length}, '
-        'formhash=${formhash == null ? 'missing' : 'ok'}, loginhash=${_loginHash(page) == null ? 'missing' : 'ok'}',
+        '原生登录页[$baseUrl]: http=${loginPage.statusCode}, bytes=${loginPage.bodyBytes.length}, '
+        'title=${_pageTitle(page)}, formhash=${formhash == null ? 'missing' : 'ok'}, '
+        'loginhash=${_loginHash(page) == null ? 'missing' : 'ok'}',
       );
 
       if (formhash == null || formhash.isEmpty) {
-        if (_needsVerification(page)) return '网站要求验证码或安全验证，请使用网页验证完成登录';
-        return '登录页面暂时无法取得登录令牌，请刷新后重试';
+        if (_looksBlocked(page)) {
+          // 站点前置防护(Cloudflare 等)拦下了该线路，换入口通常就能绕开。
+          return (error: '当前线路被站点安全校验拦截', retryNext: true);
+        }
+        if (_needsVerification(page)) {
+          return (error: '网站要求验证码或安全验证，请使用网页验证完成登录', retryNext: false);
+        }
+        return (error: '当前线路未返回登录令牌', retryNext: true);
       }
 
       final loginHash = _loginHash(page);
       final endpoint = Uri.parse(
-        '${base}member.php?mod=logging&action=login&loginsubmit=yes'
+        '${baseUrl}member.php?mod=logging&action=login&loginsubmit=yes'
         '${loginHash == null ? '' : '&loginhash=${Uri.encodeQueryComponent(loginHash)}'}'
         '&inajax=1',
       );
@@ -127,14 +163,14 @@ class AuthService {
       final response = await client.post(
         endpoint,
         headers: {
-          ..._headers(referer: loginUri.toString()),
+          ..._headers(referer: loginUri.toString(), withCookie: false),
           'Content-Type': 'application/x-www-form-urlencoded; charset=UTF-8',
-          'Origin': base,
+          'Origin': baseUrl,
           'X-Requested-With': 'XMLHttpRequest',
         },
         body: <String, String>{
           'formhash': formhash,
-          'referer': base,
+          'referer': baseUrl,
           'loginfield': 'username',
           'username': user,
           'password': password,
@@ -152,34 +188,70 @@ class AuthService {
       }
 
       LoginLog.instance.add(
-        '原生登录响应: http=${response.statusCode}, bytes=${response.bodyBytes.length}, '
+        '原生登录响应[$baseUrl]: http=${response.statusCode}, bytes=${response.bodyBytes.length}, '
         'cookie=${_cookie == null ? 'none' : 'present'}',
       );
 
-      if (_looksLikeSuccess(body) || await _verifySession(client)) {
+      if (_looksLikeSuccess(body) || await _verifySession(client, baseUrl)) {
+        // 记住这条能正常登录的线路，后续请求直接用它。
+        SiteConfig.useBase(baseUrl);
         _loggedIn = true;
         _username = user;
         await _save();
         await refreshProfile();
-        LoginLog.instance.add('原生登录成功: ${_username ?? user}, uid=${_uid ?? 0}');
-        return null;
+        LoginLog.instance.add('原生登录成功: ${_username ?? user}, uid=${_uid ?? 0}, 线路=$baseUrl');
+        return (error: null, retryNext: false);
       }
 
-      if (_needsVerification(body)) return '网站要求验证码或安全验证，请使用网页验证完成登录';
-      if (_looksLikeQuestionError(body)) return '安全提问或答案不正确，请检查后重试';
-      if (body.contains('密码错误') || body.contains('用户名或密码错误')) return '用户名或密码错误';
-      if (body.contains('登录次数过多') || body.contains('请稍后再试')) return '登录尝试过于频繁，请稍后再试';
+      if (_needsVerification(body)) {
+        return (error: '网站要求验证码或安全验证，请使用网页验证完成登录', retryNext: false);
+      }
+      if (_looksLikeQuestionError(body)) {
+        return (error: '安全提问或答案不正确，请检查后重试', retryNext: false);
+      }
+      if (body.contains('密码错误') || body.contains('用户名或密码错误')) {
+        return (error: '用户名或密码错误', retryNext: false);
+      }
+      if (body.contains('登录次数过多') || body.contains('请稍后再试')) {
+        return (error: '登录尝试过于频繁，请稍后再试', retryNext: false);
+      }
 
       final serverMessage = _extractServerMessage(body);
       if (serverMessage != null) {
         LoginLog.instance.add('原生登录服务器返回: $serverMessage');
-        return serverMessage;
+        return (error: serverMessage, retryNext: false);
       }
-      return '登录失败，请检查账号信息';
+      return (error: '登录失败，请检查账号信息', retryNext: false);
+    } on TimeoutException {
+      LoginLog.instance.add('原生登录超时[$baseUrl]');
+      return (error: '当前线路连接超时', retryNext: true);
     } catch (e) {
-      LoginLog.instance.add('原生登录异常: $e');
-      return '网络请求失败，请检查网络后重试';
+      LoginLog.instance.add('原生登录异常[$baseUrl]: $e');
+      return (error: '当前线路连接失败', retryNext: true);
     }
+  }
+
+  /// 取页面标题，仅用于登录诊断日志。
+  String _pageTitle(String html) {
+    final title = RegExp(r'<title[^>]*>([^<]*)</title>', caseSensitive: false).firstMatch(html)?.group(1);
+    final value = (title ?? '').replaceAll(RegExp(r'\s+'), ' ').trim();
+    if (value.isEmpty) return '(none)';
+    return value.length > 40 ? '${value.substring(0, 40)}…' : value;
+  }
+
+  /// 页面是否为站点前置防护(Cloudflare 等)/访问限制页，而不是真正的登录页。
+  bool _looksBlocked(String html) {
+    final lower = html.toLowerCase();
+    return lower.contains('cf-browser-verification') ||
+        lower.contains('cf_chl') ||
+        lower.contains('checking your browser') ||
+        lower.contains('just a moment') ||
+        lower.contains('attention required') ||
+        lower.contains('access denied') ||
+        html.contains('访问被拒绝') ||
+        html.contains('拒绝访问') ||
+        html.contains('当前IP') ||
+        html.contains('该地区');
   }
 
   /// 使用本地保存的账号密码静默登录，用于「记住账号密码」后免重复输入。
@@ -273,11 +345,12 @@ class AuthService {
     return null;
   }
 
-  Future<bool> _verifySession(http.Client client) async {
+  Future<bool> _verifySession(http.Client client, [String? baseUrl]) async {
+    final site = baseUrl ?? base;
     try {
       final resp = await client.get(
-        Uri.parse('${base}forum.php?mobile=2'),
-        headers: _headers(referer: base),
+        Uri.parse('${site}forum.php?mobile=2'),
+        headers: _headers(referer: site),
       ).timeout(const Duration(seconds: 10));
       final body = NetClient.decode(resp.bodyBytes);
       return body.contains('action=logout') || body.contains('退出登录');
