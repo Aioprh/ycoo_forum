@@ -44,7 +44,7 @@ class ThreadInteractionService {
 
   String? _parseResponse(List<int> bodyBytes) {
     final text = NetClient.decode(bodyBytes);
-    final normalized = text.replaceAll(RegExp(r'\\s+'), ' ');
+    final normalized = text.replaceAll(RegExp(r'\s+'), ' ');
     if (normalized.contains('succeedhandle_') || normalized.contains('succeed') || normalized.contains('do_success') || normalized.contains('操作成功')) return null;
     if (normalized.contains('请先登录') || normalized.contains('登录后才能')) return '请先登录论坛';
     if ((normalized.contains('formhash') && (normalized.contains('验证失败') || normalized.contains('非法请求') || normalized.contains('令牌') || normalized.contains('失效'))) || normalized.contains('来路不正确')) return '操作令牌已失效，请刷新后重试';
